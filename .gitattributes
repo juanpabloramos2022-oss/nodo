@@ -1,0 +1,7 @@
+# Normaliza finales de linea: el repositorio usa LF aunque se edite en Windows.
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.pdf binary

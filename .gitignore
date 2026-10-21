@@ -1,0 +1,35 @@
+# Compilacion
+build/
+DerivedData/
+*.ipa
+*.xcarchive
+xcuserdata/
+.DS_Store
+Thumbs.db
+
+# Generado por XcodeGen (no se versiona)
+Nodo.xcodeproj/
+Nodo/Info.plist
+
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Firma: NUNCA al repositorio
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+*.key
+*.pem
+
+# Secretos
+.env
+.env.*
+!.env.example
+credentials.json
+
+# Varios
+*.log

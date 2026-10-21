@@ -1,0 +1,75 @@
+# Definicion del proyecto Xcode, en texto.
+#
+# Motivo: un .xcodeproj es un arbol de archivos binarios que solo Xcode sabe
+# generar bien. Manteniendolo como YAML, el proyecto se puede crear en cualquier
+# maquina con `xcodegen generate` y no hay que versionar nada generado.
+#
+# `xcodegen generate` produce Nodo.xcodeproj y Nodo/Info.plist. Ambos estan en
+# .gitignore a proposito.
+
+name: Nodo
+
+options:
+  bundleIdPrefix: com.nodo
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # Compilacion sin firma: el .ipa se firma despues, fuera de la cadena de
+    # compilacion, con el certificado de quien lo instala.
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGN_IDENTITY: ""
+
+targets:
+  Nodo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Nodo
+        excludes:
+          - "Info.plist"
+      # El nucleo se compila dentro del propio modulo de la app. Asi el build de
+      # Xcode no resuelve paquetes externos y hay una cosa menos que falle a
+      # ciegas. El mismo codigo se compila aparte con `swift test`.
+      - path: NodoCore/Sources/NodoCore
+    info:
+      path: Nodo/Info.plist
+      properties:
+        CFBundleDisplayName: Nodo
+        CFBundleShortVersionString: "0.0.1"
+        CFBundleVersion: "1"
+        CFBundleIconName: AppIcon
+        LSRequiresIPhoneOS: true
+        UIUserInterfaceStyle: Dark
+        UIApplicationSupportsIndirectInputEvents: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios
+        PRODUCT_NAME: Nodo
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+
+schemes:
+  Nodo:
+    build:
+      targets:
+        Nodo: all
+    run:
+      config: Release
+    archive:
+      config: Release
