@@ -1,31 +1,36 @@
-# Nodo
+﻿# Nodo
 
 Una app de iOS para hablar con modelos de inteligencia artificial usando **tus
 propias claves de API**, desde el teléfono, sin depender de un computador
 encendido.
 
-Estado: **v0.0.1 — cadena de compilación**. Todavía no hace nada útil a
-propósito: esta entrega solo demuestra que el código compila, se empaqueta y se
-instala. Sirve para no construir sobre terreno sin probar.
+Estado: **v0.1.0 — usable**. Conversa, guarda el historial, ejecuta herramientas
+y se conecta a un servidor propio por MCP.
 
 ---
 
-## Qué va a ser y qué no
+## Qué hace
 
-| | |
-|---|---|
-| ✅ Chat con streaming contra APIs compatibles con el formato de OpenAI y contra la API de Anthropic | |
-| ✅ Tus claves en el Keychain del teléfono, nunca en el código ni en este repositorio | |
-| ✅ Historial de conversaciones local | |
-| ✅ Herramientas que el modelo puede pedir y ejecutar (traer una URL) | |
-| ✅ Cliente MCP genérico: apuntar a un servidor propio, presente o futuro | |
-| ❌ Un entorno de ejecución de agentes dentro del teléfono | |
+- **Chat con streaming**, palabra por palabra, con dos protocolos: el formato de
+  *chat completions* que hablan casi todos los proveedores y la API de mensajes
+  de Anthropic.
+- **Tus claves en el llavero del telefono**, nunca en el codigo, en la
+  configuracion ni en los registros.
+- **Proveedores ilimitados** dados de alta desde la propia app: nombre,
+  direccion, modelo y clave. Anadir uno nuevo no requiere recompilar nada.
+- **Historial** de conversaciones guardado en el telefono, varias a la vez.
+- **Herramientas**: el modelo puede pedir datos de la web (traer_url, solo
+  https) y ejecutar las que exponga tu servidor MCP.
+- **Servidor remoto opcional por MCP**: apuntas a una URL y la app descubre las
+  herramientas que ofrezca. Sin servidor, el chat funciona igual.
+- **Exportar e importar la configuracion** entre telefonos, sin claves dentro.
 
-Lo último es una limitación de iOS, no de la app: una aplicación vive en un
-sandbox, sin shell, sin acceso al sistema de archivos fuera de su contenedor y
-sin procesos en segundo plano. Los agentes que editan archivos o ejecutan
-comandos necesitan una máquina donde hacerlo. Nodo se conecta a esa máquina por
-MCP cuando existe; no la reemplaza.
+Lo que no puede hacer es un entorno de agentes dentro del telefono: ni editar
+archivos, ni ejecutar comandos, ni procesos en segundo plano. Es una limitacion
+de iOS, no de la app: una aplicacion vive en un sandbox, sin shell y sin acceso
+al sistema de archivos fuera de su contenedor. Los agentes que hacen cosas
+necesitan una maquina donde hacerlas; Nodo se conecta a esa maquina por MCP
+cuando existe, no la reemplaza. Ver docs/VPS.md.
 
 ---
 
@@ -45,7 +50,7 @@ La compilación ocurre en la nube. No hace falta un Mac.
 1. Sube un cambio a `main` (o lanza el workflow a mano desde la pestaña
    **Actions**).
 2. El workflow [`.github/workflows/ios.yml`](.github/workflows/ios.yml) ejecuta
-   las pruebas del núcleo, genera el proyecto Xcode con XcodeGen y compila.
+   las 115 pruebas del núcleo, genera el proyecto Xcode con XcodeGen y compila.
 3. Al terminar, descarga el artifact **Nodo-ipa** y descomprímelo. Dentro está
    `Nodo.ipa`, **sin firmar**.
 
