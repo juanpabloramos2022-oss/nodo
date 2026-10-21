@@ -87,19 +87,75 @@ cada cambio de todas formas.
 
 ---
 
-## Instalar en el iPhone
+## Instalar en el iPhone, paso a paso
 
-El `.ipa` que produce la compilación está **sin firmar**. Para instalarlo hay que
-firmarlo con un certificado propio:
+Todo esto se puede hacer **desde el propio teléfono**, sin computador. El `.ipa`
+que produce la compilación está **sin firmar**: hay que firmarlo con un
+certificado propio antes de instalarlo.
 
-1. Descarga `Nodo.ipa` del artifact.
-2. Fírmalo con tu certificado de desarrollo y tu perfil de aprovisionamiento,
-   con la herramienta de firma que uses (por ejemplo ESign, Sideloadly o
-   AltStore).
-3. Instálalo y, si el sistema lo pide, confía en el certificado en
-   **Ajustes → General → VPN y gestión de dispositivos**.
+### 1. Descargar el artifact desde el iPhone
 
-Notas:
+1. Abre **Safari** y entra en la pestaña [**Actions**](../../actions) de este
+   repositorio.
+2. Toca la ejecución más reciente que tenga el check verde (la de arriba del
+   todo). El nombre es el del último commit.
+3. Baja hasta el final de la página, a la sección **Artifacts**.
+4. Toca **Nodo-ipa**. Empieza a descargar y aparece el icono de descarga en la
+   barra de direcciones.
+
+> El artifact caduca a los **30 días**. Si ya no está, lanza la compilación de
+> nuevo: en la misma página, **Run workflow** → **Run workflow**.
+
+### 2. Descomprimir el ZIP
+
+El artifact **no** se descarga como `.ipa`, se descarga como **`.zip`** que
+contiene `Nodo.ipa` dentro. Hay que descomprimirlo:
+
+1. Abre la app **Archivos** (Files).
+2. Ve a **Descargas** (o *En mi iPhone → Descargas*).
+3. Toca el archivo `Nodo-ipa.zip`. iOS lo descomprime solo y crea una carpeta
+   llamada `Nodo-ipa`.
+4. Entra en esa carpeta: ahí está **`Nodo.ipa`**, que es el archivo que hay que
+   firmar.
+
+> Si al tocar el ZIP no pasa nada, mantén pulsado y elige **Descomprimir**.
+
+### 3. Firmar con ESign
+
+1. Abre **ESign**.
+2. En la pestaña **Archivo** (o *Files*), toca el botón de importar y elige
+   **Importar desde Archivos**.
+3. Navega a **Descargas → Nodo-ipa** y selecciona **`Nodo.ipa`**.
+4. Vuelve a la lista de apps importadas y toca `Nodo.ipa`.
+5. Elige **Firmar** (Sign) y selecciona tu certificado.
+6. En las opciones de firma, deja el *Bundle ID* como está
+   (`com.nodo.ios`) **salvo** que ESign avise de un conflicto: en ese caso,
+   cámbialo por algo único, por ejemplo `com.nodo.ios2`.
+7. Confirma la firma. Cuando termine, toca **Instalar**.
+
+### 4. Confiar en el certificado
+
+Si al abrir la app aparece *«No es posible verificar la app»* o *«Desarrollador
+no confiable»*:
+
+1. **Ajustes → General → VPN y gestión de dispositivos**.
+2. En **App de desarrollador**, toca el certificado que acabas de usar.
+3. Toca **Confiar en «…»** y confirma.
+
+### 5. Comprobar que funciona
+
+Abre **Nodo** en la pantalla de inicio. Debe mostrar:
+
+```
+        Nodo
+    Nodo v0.0.1
+Cadena de compilación operativa
+```
+
+Si aparece eso, la cadena completa funciona: código → GitHub Actions → `.ipa`
+→ firma → teléfono. A partir de ahí todo lo demás es añadir funciones.
+
+### Notas
 
 - El identificador de la app es `com.nodo.ios`. Se cambia en
   [`project.yml`](project.yml). Si tu perfil es comodín, cualquier
