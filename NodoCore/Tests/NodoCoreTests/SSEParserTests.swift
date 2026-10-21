@@ -47,9 +47,14 @@ final class SSEParserTests: XCTestCase {
         XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "hola")])
     }
 
-    func testRetornoDeCarroSoloComoTerminador() {
+    /// Un retorno de carro suelto al final de un trozo es ambiguo: puede que el
+    /// salto de linea venga en el siguiente trozo. El parser espera, y el evento
+    /// sale al cerrar el stream. Es el precio de no partir terminadores.
+    func testRetornoDeCarroSueltoEsperaAlSiguienteTrozo() {
         var parser = SSEParser()
-        let eventos = parser.consumir("data: hola\r\r")
+        XCTAssertEqual(parser.consumir("data: hola\r\r"), [])
+
+        let eventos = parser.terminar()
         XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "hola")])
     }
 
