@@ -40,8 +40,7 @@ public final class AnthropicClient: ChatEngine {
         var bloques: [Int: BloqueHerramienta] = [:]
 
         for try await trozo in stream {
-            guard let cadena = String(data: trozo, encoding: .utf8) else { continue }
-            for evento in parser.consumir(cadena) {
+            for evento in parser.consumir(trozo) {
                 if procesar(evento: evento, texto: &texto, bloques: &bloques, alRecibirTexto: alRecibirTexto) {
                     return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques))
                 }

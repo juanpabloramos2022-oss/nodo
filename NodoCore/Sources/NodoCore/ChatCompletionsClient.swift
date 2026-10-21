@@ -26,8 +26,7 @@ public final class ChatCompletionsClient: ChatEngine {
         var acumuladores: [Int: AcumuladorToolCall] = [:]
 
         for try await trozo in stream {
-            guard let cadena = String(data: trozo, encoding: .utf8) else { continue }
-            for evento in parser.consumir(cadena) {
+            for evento in parser.consumir(trozo) {
                 if let resultado = procesar(evento: evento, texto: &texto, acumuladores: &acumuladores, alRecibirTexto: alRecibirTexto) {
                     return resultado
                 }

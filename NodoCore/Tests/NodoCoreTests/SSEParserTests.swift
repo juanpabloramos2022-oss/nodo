@@ -31,6 +31,45 @@ final class SSEParserTests: XCTestCase {
         XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "hola")])
     }
 
+    /// Este caso es el que rompia: Swift considera "\r\n" un unico caracter, asi
+    /// que un parser que busque "\n" en la cadena no ve los finales de linea de
+    /// Windows y se queda mudo.
+    func testVariosEventosConFinalesDeLineaDeWindows() {
+        var parser = SSEParser()
+        let eventos = parser.consumir("data: uno\r\n\r\ndata: dos\r\n\r\n")
+        XCTAssertEqual(eventos.map(\.datos), ["uno", "dos"])
+    }
+
+    func testRetornoDeCarroPartidoEntreTrozos() {
+        var parser = SSEParser()
+        XCTAssertEqual(parser.consumir("data: hola\r"), [])
+        let eventos = parser.consumir("\n\r\n")
+        XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "hola")])
+    }
+
+    func testRetornoDeCarroSoloComoTerminador() {
+        var parser = SSEParser()
+        let eventos = parser.consumir("data: hola\r\r")
+        XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "hola")])
+    }
+
+    func testAcentosYEmojiNoSeRompen() {
+        var parser = SSEParser()
+        let eventos = parser.consumir("data: canción 🎵\n\n")
+        XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "canción 🎵")])
+    }
+
+    func testTrozoPartidoAMitadDeUnEmoji() {
+        var parser = SSEParser()
+        let bytes = Array("data: 🎵\n\n".utf8)
+        // El emoji ocupa cuatro bytes: se corta justo por la mitad.
+        let corte = 8
+
+        XCTAssertEqual(parser.consumir(Data(bytes[..<corte])), [])
+        let eventos = parser.consumir(Data(bytes[corte...]))
+        XCTAssertEqual(eventos, [SSEEvent(evento: nil, datos: "🎵")])
+    }
+
     func testComentarioIgnorado() {
         var parser = SSEParser()
         let eventos = parser.consumir(": latido\n\ndata: real\n\n")

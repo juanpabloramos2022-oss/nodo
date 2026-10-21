@@ -174,8 +174,7 @@ public final class MCPClient {
         var cabeceras: [String: String] = [
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream"
-        ]
-        if let token, !token.isEmpty {
+        ]        if let token, !token.isEmpty {
             cabeceras["Authorization"] = "Bearer \(token)"
         }
         if let sesion {
