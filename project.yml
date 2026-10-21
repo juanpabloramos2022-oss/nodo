@@ -1,8 +1,8 @@
 # Definicion del proyecto Xcode, en texto.
 #
-# Motivo: un .xcodeproj es un arbol de archivos binarios que solo Xcode sabe
-# generar bien. Manteniendolo como YAML, el proyecto se puede crear en cualquier
-# maquina con `xcodegen generate` y no hay que versionar nada generado.
+# Motivo: un .xcodeproj es un arbol de archivos que solo Xcode sabe generar bien.
+# Manteniendolo como YAML, el proyecto se crea en cualquier maquina con
+# `xcodegen generate` y no hay que versionar nada generado.
 #
 # `xcodegen generate` produce Nodo.xcodeproj y Nodo/Info.plist. Ambos estan en
 # .gitignore a proposito.
@@ -15,6 +15,10 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
+
+packages:
+  NodoCore:
+    path: .
 
 settings:
   base:
@@ -34,10 +38,10 @@ targets:
       - path: Nodo
         excludes:
           - "Info.plist"
-      # El nucleo se compila dentro del propio modulo de la app. Asi el build de
-      # Xcode no resuelve paquetes externos y hay una cosa menos que falle a
-      # ciegas. El mismo codigo se compila aparte con `swift test`.
-      - path: NodoCore/Sources/NodoCore
+    # El nucleo es un paquete Swift local. Asi el mismo codigo que corre
+    # `swift test` es el que se compila dentro de la app, sin copiarlo.
+    dependencies:
+      - package: NodoCore
     info:
       path: Nodo/Info.plist
       properties:
@@ -50,6 +54,10 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        # Permite hablar con un servidor de modelos en la red local por http.
+        # Todo lo que sale a internet sigue exigiendo https.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
