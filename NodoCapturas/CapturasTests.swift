@@ -23,16 +23,16 @@ final class CapturasTests: XCTestCase {
     // MARK: - Fase 1: salidas y teclado
 
     /// SPEC §5, Fase 1: "Editor de proveedor con el teclado numerico abierto y
-    /// la barra Listo visible". Se navega de verdad desde Ajustes hasta la hoja.
+    /// la barra Listo visible". Se navega de verdad desde Conexiones hasta la hoja.
     func testF1EditorProveedorTecladoNumerico() throws {
         lanzar(estado: "editor-proveedor")
 
-        let ajustes = app.tabBars.buttons["Ajustes"]
+        let conexiones = app.tabBars.buttons["Conexiones"]
         XCTAssertTrue(
-            ajustes.waitForExistence(timeout: 60),
-            "No aparecio la pestana Ajustes"
+            conexiones.waitForExistence(timeout: 60),
+            "No aparecio la pestana Conexiones"
         )
-        ajustes.tap()
+        conexiones.tap()
 
         let filaProveedor = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -65,33 +65,42 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f1-editor-teclado-numerico")
     }
 
-    /// SPEC §5, Fase 1: "campo de tope con teclado y barra".
-    func testF1AjustesTopeTecladoNumerico() throws {
+    /// SPEC §5, Fase 1: "campo de tope con teclado y barra". El campo vive
+    /// ahora detras de [Otro…] en Mi Contexto.
+    func testF1TopeTecladoNumerico() throws {
         lanzar(estado: "ajustes-tope")
 
-        let ajustes = app.tabBars.buttons["Ajustes"]
+        let contexto = app.tabBars.buttons["Mi Contexto"]
         XCTAssertTrue(
-            ajustes.waitForExistence(timeout: 60),
-            "No aparecio la pestana Ajustes"
+            contexto.waitForExistence(timeout: 60),
+            "No aparecio la pestana Mi Contexto"
         )
-        ajustes.tap()
+        contexto.tap()
+
+        let otro = app.buttons["tope-otro"]
+        XCTAssertTrue(
+            otro.waitForExistence(timeout: 30),
+            "No aparecio el boton [Otro…] del tope"
+        )
+        asegurarVisible(otro)
+        otro.tap()
 
         let campoTope = app.textFields.matching(
             NSPredicate(
                 format: "identifier == %@ OR label == %@",
-                "tope-aviso",
+                "tope-otro-campo",
                 "Tope de aviso por chat"
             )
         ).firstMatch
         XCTAssertTrue(
             campoTope.waitForExistence(timeout: 30),
-            "No aparecio el campo de tope de aviso"
+            "No aparecio el campo numerico del tope"
         )
         asegurarVisible(campoTope)
         campoTope.tap()
 
         esperarBarraListo()
-        adjuntarCaptura("f1-ajustes-tope-teclado-numerico")
+        adjuntarCaptura("f1-tope-teclado-numerico")
     }
 
     // MARK: - Fase 2: cabecera, tira fina, hojas y modo Tarea

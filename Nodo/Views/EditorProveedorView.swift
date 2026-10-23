@@ -183,7 +183,7 @@ struct EditorProveedorView: View {
                 }
             }
             // Esta hoja es su propia jerarquia de navegacion: la barra Listo
-            // se declara aqui una sola vez y no se hereda de Ajustes.
+            // se declara aqui una sola vez y no se hereda de Conexiones.
             .conBarraTecladoListo()
             .scrollDismissesKeyboard(.interactively)
             .onAppear(perform: cargarClaveInicial)

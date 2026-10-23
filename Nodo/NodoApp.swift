@@ -20,11 +20,11 @@ struct NodoApp: App {
     }
 }
 
-/// Las dos pantallas principales de esta fase.
+/// Raiz definitiva de la app: tres pestanas, cada una con su propia pila.
 ///
-/// La lista de chats y la conversacion viven en la MISMA pila (ley n. 1): la
-/// raiz es la lista y la conversacion se empuja encima. La raiz definitiva de
-/// tres pestanas es la Fase 4; aqui no se adelanta.
+/// Chats conserva la pila de la Fase 2 (lista -> conversacion). Mi Contexto
+/// reune Memoria, Tope y Skills. Conexiones queda como fontaneria; su
+/// reconstruccion completa llega en la sesion 4.5/4.7.
 struct RaizView: View {
     @State private var seleccion: PestanaRaiz = .chats
 
@@ -34,15 +34,20 @@ struct RaizView: View {
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right.fill") }
                 .tag(PestanaRaiz.chats)
 
-            SettingsView()
-                .tabItem { Label("Ajustes", systemImage: "gearshape.fill") }
-                .tag(PestanaRaiz.ajustes)
+            MiContextoView()
+                .tabItem { Label("Mi Contexto", systemImage: "brain") }
+                .tag(PestanaRaiz.contexto)
+
+            ConexionesView()
+                .tabItem { Label("Conexiones", systemImage: "network") }
+                .tag(PestanaRaiz.conexiones)
         }
     }
 }
 
-/// Pestanas de la raiz mientras dure la Fase 2-B1.
+/// Pestanas de la raiz definitiva (SPEC §3).
 enum PestanaRaiz: Hashable {
     case chats
-    case ajustes
+    case contexto
+    case conexiones
 }

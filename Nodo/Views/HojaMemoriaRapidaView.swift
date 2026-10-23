@@ -14,11 +14,15 @@ struct HojaMemoriaRapidaView: View {
     @State private var borrador: String
     @State private var original: String
     @State private var cargada: Bool
+    /// Titulo de la hoja: "Memoria rapida" desde el chat, "Editar memoria"
+    /// cuando se abre desde Mi Contexto.
+    private let titulo: String
 
     /// La presentacion puede pasar el texto actual ya en la mano; si no, la
     /// hoja lo lee al aparecer para no depender del orden de creacion.
-    init(textoInicial: String? = nil) {
+    init(textoInicial: String? = nil, titulo: String = "Memoria rápida") {
         let texto = textoInicial ?? ""
+        self.titulo = titulo
         _borrador = State(initialValue: texto)
         _original = State(initialValue: texto)
         _cargada = State(initialValue: textoInicial != nil)
@@ -76,7 +80,7 @@ struct HojaMemoriaRapidaView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Tema.fondo.ignoresSafeArea())
-            .navigationTitle("Memoria rápida")
+            .navigationTitle(titulo)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

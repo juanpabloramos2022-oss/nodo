@@ -36,7 +36,7 @@ struct ChatsRaizView: View {
                     ChatView(
                         alGestionarModelos: {
                             bajarTeclado()
-                            seleccion = .ajustes
+                            seleccion = .conexiones
                         },
                         alVolverALista: { ruta.removeAll() }
                     )

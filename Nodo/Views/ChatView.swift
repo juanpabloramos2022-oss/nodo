@@ -11,7 +11,7 @@ import NodoCore
 struct ChatView: View {
     @EnvironmentObject private var estado: EstadoApp
 
-    /// Lleva a la pestana Ajustes para gestionar modelos.
+    /// Lleva a la pestana Conexiones para gestionar modelos.
     let alGestionarModelos: () -> Void
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void

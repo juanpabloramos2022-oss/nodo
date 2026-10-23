@@ -39,7 +39,10 @@ struct AprobacionPendiente: Identifiable, Equatable {
 @MainActor
 final class EstadoApp: ObservableObject {
     @Published var config: AppConfig {
-        didSet { guardarConfig() }
+        didSet {
+            sincronizarSkills()
+            guardarConfig()
+        }
     }
 
     @Published private(set) var conversaciones: [Conversation] = []
@@ -111,9 +114,10 @@ final class EstadoApp: ObservableObject {
     private let estadoDePrueba: EstadoPrueba?
     /// Servicio de dictado: el real en produccion y el doble de CI en capturas.
     let dictado: SpeechRecognizing
-    /// Punto UNICO de construccion del puerto de skills de esta fase. La Fase 4
-    /// conectara el almacen persistido aqui, sin tocar el parser ni esta ruta.
-    private let resolvedorSkills: ResolvedorSkills
+    /// Punto UNICO de construccion del puerto de skills. Se rellena con
+    /// `config.skills` en cada cambio de configuracion, asi el parser y el
+    /// selector flotante leen el almacen real sin conocer la interfaz.
+    private let resolvedorSkills = ResolvedorSkillsEnMemoria()
     /// En modo capturas no se escribe nada en el almacenamiento del telefono:
     /// el estado llega sembrado en memoria y las capturas no deben ensuciar
     /// los datos de quien use la app de verdad.
@@ -176,7 +180,6 @@ final class EstadoApp: ObservableObject {
         } else {
             self.dictado = DictadoDePrueba()
         }
-        self.resolvedorSkills = ResolvedorSkillsEnMemoria()
 
         // Gancho de capturas (SPEC §6/H7): estado de PRUEBA en memoria, sin
         // leer ni escribir la configuracion, las conversaciones o el llavero
@@ -189,6 +192,7 @@ final class EstadoApp: ObservableObject {
             // estado sembrado debe ser determinista y no ensuciar el telefono.
             self.ventanasPorModelo = [:]
             self.store = nil
+            sincronizarSkills()
             return
         }
 
@@ -214,6 +218,7 @@ final class EstadoApp: ObservableObject {
         self.conversaciones = almacen?.listar() ?? []
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
+        sincronizarSkills()
     }
 
     // MARK: - Configuracion
@@ -221,6 +226,46 @@ final class EstadoApp: ObservableObject {
     private func guardarConfig() {
         guard persistir, let datos = try? config.json() else { return }
         UserDefaults.standard.set(datos, forKey: Self.claveConfig)
+    }
+
+    /// Copia las skills persistidas al puerto que consume el parser.
+    ///
+    /// Se llama en cada cambio de configuracion y al terminar el init: asi el
+    /// parser de "/" y el selector flotante ven siempre el almacen real.
+    private func sincronizarSkills() {
+        resolvedorSkills.skills = config.skills.map { skill in
+            SkillResuelta(
+                nombre: skill.nombre,
+                slug: skill.slug,
+                instrucciones: skill.instrucciones
+            )
+        }
+    }
+
+    // MARK: - Skills
+
+    /// Crea o edita una skill con las reglas del nucleo (§4.4).
+    @discardableResult
+    func guardarSkill(
+        nombre: String,
+        instrucciones: String,
+        idExistente: UUID? = nil
+    ) -> Result<SkillLocal, ErrorSkill> {
+        config.guardar(
+            nombre: nombre,
+            instrucciones: instrucciones,
+            idExistente: idExistente
+        )
+    }
+
+    /// Borra la skill por id. El `didSet` de la configuracion refresca el parser.
+    func borrarSkill(id: UUID) {
+        config.borrar(id: id)
+    }
+
+    /// Borra la skill indicada; comodo para las vistas que ya la tienen.
+    func borrarSkill(_ skill: SkillLocal) {
+        borrarSkill(id: skill.id)
     }
 
     // MARK: - Ventanas de contexto
@@ -415,6 +460,43 @@ final class EstadoApp: ObservableObject {
         )
     }
 
+    // MARK: - Memoria
+
+    /// Peso estimado de la Memoria: caracteres / 4, minimo 1 (§3.5).
+    ///
+    /// Es la misma heuristica de la Hoja Memoria rapida; vive aqui para que las
+    /// dos caras de la Memoria ensenen siempre la misma cifra.
+    var pesoEstimadoMemoria: Int {
+        max(1, config.systemPrompt.count / 4)
+    }
+
+    /// Costo estimado de mandar la Memoria en un envio.
+    ///
+    /// Usa solo el precio de entrada del proveedor activo y devuelve tambien su
+    /// nombre limpio para rotularlo. Sin precio de entrada no hay cifra.
+    var costoEstimadoDeMemoria: (costo: Double, modelo: String)? {
+        let memoria = config.systemPrompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !memoria.isEmpty,
+              let proveedor = config.proveedorSeleccionado,
+              let precioEntrada = proveedor.precioEntradaPorMillon,
+              precioEntrada.isFinite,
+              precioEntrada >= 0
+        else {
+            return nil
+        }
+
+        let costo = Double(pesoEstimadoMemoria) * precioEntrada / 1_000_000
+        let limpio = NombresLimpios.modelo(proveedor.modelo)
+        let modelo = limpio.isEmpty
+            ? NombresLimpios.proveedor(
+                nombre: proveedor.nombre,
+                baseURL: proveedor.baseURL
+            )
+            : limpio
+        return (costo, modelo)
+    }
+
     /// Ocupacion de la ventana del chat abierto (§4.1).
     ///
     /// Mientras la ultima operacion sea una compactacion, manda el uso de esa
@@ -450,6 +532,48 @@ final class EstadoApp: ObservableObject {
         guard !conversacion.topeIgnorado else { return }
         conversacion.topeIgnorado = true
         guardarActual()
+    }
+
+    /// [Reiniciar contador] de Mi Contexto: pone a cero solo el acumulado
+    /// desde el ultimo reinicio; el de "Hoy" se reinicia solo al cambiar el dia.
+    func reiniciarContadorGasto() {
+        config.gasto.reiniciar()
+    }
+
+    /// Gasto del dia que se debe ensenar ahora mismo.
+    ///
+    /// Si la fecha guardada no es la de hoy, el contador diario se lee como
+    /// cero aunque todavia no haya llegado ningun uso: el dia ya cambio.
+    var gastoDelDiaVisible: Double {
+        config.gasto.fechaDelDia == Self.hoyComoClave() ? config.gasto.delDia : 0
+    }
+
+    /// Suma a los contadores globales el costo de un uso recibido.
+    ///
+    /// Es el punto unico de alimentacion: lo llaman los turnos normales (envios,
+    /// regeneraciones y modo Tarea) y la llamada de resumen de /compact. El
+    /// contador vive en `AppConfig`, asi que borrar un chat no lo resta.
+    private func registrarGasto(uso: UsoTokens?, proveedor: ProviderConfig) {
+        guard let uso,
+              let costo = CostoEstimado.costo(
+                  uso: uso,
+                  precioEntrada: proveedor.precioEntradaPorMillon,
+                  precioSalida: proveedor.precioSalidaPorMillon
+              ),
+              costo > 0
+        else {
+            return
+        }
+        config.gasto.registrar(costo: costo, hoy: Self.hoyComoClave())
+    }
+
+    /// Fecha local de hoy en el formato que guarda `ContadoresGasto`.
+    private static func hoyComoClave() -> String {
+        let formateador = DateFormatter()
+        formateador.calendar = Calendar(identifier: .gregorian)
+        formateador.locale = Locale(identifier: "en_US_POSIX")
+        formateador.dateFormat = "yyyy-MM-dd"
+        return formateador.string(from: Date())
     }
 
     /// Proveedor y clave con los que se puede enviar, o nil si falta algo.
@@ -882,6 +1006,10 @@ final class EstadoApp: ObservableObject {
                 )
                 try Task.checkCancellation()
 
+                // La llamada de resumen tambien consume: cuenta para el
+                // acumulador global aunque luego se descarte el resumen.
+                self.registrarGasto(uso: respuesta.uso, proveedor: proveedor)
+
                 guard self.conversacion.id == idConversacion,
                       self.generacionCompactado == generacion
                 else {
@@ -968,8 +1096,16 @@ final class EstadoApp: ObservableObject {
 
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
+        // La etiqueta ⚡ y las instrucciones viajan juntas: una skill sin
+        // instrucciones no se pinta como aplicada ni se inyecta.
+        let aplicables = skills.filter { skill in
+            !skill.instrucciones
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
+
         var mensaje = ChatMessage(rol: .usuario, texto: limpio)
-        mensaje.skillsAplicadas = skills.map(\.nombre)
+        mensaje.skillsAplicadas = aplicables.map(\.nombre)
         conversacion.mensajes.append(mensaje)
         if conversacion.titulo == "Conversacion" {
             conversacion.titulo = conversacion.tituloSugerido
@@ -980,7 +1116,7 @@ final class EstadoApp: ObservableObject {
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
-            instrucciones: skills.map(\.instrucciones),
+            instrucciones: aplicables.map(\.instrucciones),
             alFracasar: {}
         )
     }
@@ -1135,6 +1271,10 @@ final class EstadoApp: ObservableObject {
                     }
                 }
             )
+
+            // Todo uso recibido alimenta el acumulador global, incluso si el
+            // usuario pulso Detener justo despues de que llegara la respuesta.
+            registrarGasto(uso: resultado.usoTotal, proveedor: proveedor)
 
             // Si el usuario pulso Detener mientras esperaba una aprobacion o
             // una herramienta, el turno no se publica aunque el bucle haya

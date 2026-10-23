@@ -45,6 +45,24 @@ struct BurbujaMensaje: View {
                     etiquetaHerramienta
                 }
 
+                // Skills aplicadas en este envio: la etiqueta visual ⚡ nombre
+                // (§4.4). Las instrucciones viajan solo en el payload del turno.
+                if !mensaje.skillsAplicadas.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(mensaje.skillsAplicadas, id: \.self) { nombre in
+                            Text("⚡ \(nombre)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Tema.acento)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Tema.acento.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .accessibilityIdentifier("skills-aplicadas")
+                }
+
                 if !mensaje.texto.isEmpty {
                     if esDelUsuario || esHerramienta {
                         Text(mensaje.texto)

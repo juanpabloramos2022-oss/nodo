@@ -40,7 +40,7 @@ cada PNG a las "Capturas exigidas" de SPEC §5. El nombre viaja en
 | Archivo | Fase | Qué exige SPEC §5 | Estado de prueba |
 |---|---|---|---|
 | `f1-editor-teclado-numerico` | 1 | Editor de proveedor con el teclado numérico abierto y la barra **Listo** visible | `editor-proveedor` |
-| `f1-ajustes-tope-teclado-numerico` | 1 | Campo de tope con teclado y barra **Listo** visible | `ajustes-tope` |
+| `f1-tope-teclado-numerico` | 1 | Campo de tope (detrás de [Otro…]) con teclado y barra **Listo** visible | `ajustes-tope` |
 | `f2-cabecera-teclado-abierto` | 2 | Cabecera despejada completa (← Chats, píldora y •••) con el teclado abierto | `chat` |
 | `f2-tira-fina` | 2 | Tira fina con el conmutador Chat \| Tarea y el botón 🧠 sobre la caja | `chat` |
 | `f2-menu-pildora` | 2 | Menú de la píldora abierto, con los modelos y el ✓ en el activo | `chat` |
@@ -59,6 +59,14 @@ cada PNG a las "Capturas exigidas" de SPEC §5. El nombre viaja en
 | `f3-comando-costo` | 3 | Resultado de /costo como evento dentro de la conversación | `chat` |
 | `f3-selector-flotante` | 3 | Selector flotante de "/" abierto sobre la caja con los comandos | `chat` |
 | `f3-error-en-linea` | 3 | Burbuja de error en línea con [Reintentar] y [Cambiar modelo] | `error-en-linea` |
+| `f4-tres-pestanas` | 4 | Raíz con las 3 pestañas Chats / Mi Contexto / Conexiones, sin Ajustes | `chat` |
+| `f4-mi-contexto` | 4 | Mi Contexto: Memoria con peso `~N tokens est.`, acumulador encima de los botones y tope vigente marcado | `mi-contexto` |
+| `f4-mi-contexto-skills` | 4 | Bloque Skills con una skill de ejemplo y su `/slug` visible | `mi-contexto` |
+| `f4-mi-contexto-memoria-editor` | 4 | Editor de Memoria con Cancelar y Guardar | `mi-contexto` |
+| `f4-mi-contexto-skill-nueva` | 4 | Skill recién creada en la lista con su slug visible | `mi-contexto` |
+| `f4-mi-contexto-skill-reservada` | 4 | Aviso de nombre reservado en la hoja de skill, sin guardar | `mi-contexto` |
+| `f4-skill-enviada` | 4 | Burbuja del mensaje con la etiqueta visual ⚡ nombre de la skill invocada | `mi-contexto` |
+| `f4-bienvenida-tope` | 4 | Tarjeta de Bienvenida con el tope vigente real bajo el título | `bienvenida` |
 
 ## Estados de prueba disponibles
 
@@ -78,6 +86,7 @@ exactamente como siempre.
 | `bienvenida-sin-clave` | Chat vacío con el preset y la clave vacía: tarjeta con ⚠️ Falta tu clave y botón de pegado |
 | `tope` | Chat con consumo alto (2.000.000/1.000.000 tokens) y tope de aviso 0.10: franja ámbar visible |
 | `error-en-linea` | Chat vacío con el motor determinista en modo fallo: al enviar se pinta la burbuja de error |
+| `mi-contexto` | Memoria con texto, tope 0.25, dos skills con slug y contadores de gasto de ejemplo |
 
 `chat` se reutiliza para el pie, el selector, `/costo` y el dictado: en modo
 capturas el servicio de dictado siempre es el doble `DictadoDePrueba`, que

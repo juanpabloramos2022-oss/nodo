@@ -69,6 +69,8 @@ enum EstadosDePrueba {
         case tope = "tope"
         /// Chat vacio con un motor que falla al enviar, para el error en linea.
         case errorEnLinea = "error-en-linea"
+        /// Mi Contexto con Memoria, tope, skills y contadores de ejemplo.
+        case miContexto = "mi-contexto"
     }
 
     /// Devuelve el estado pedido por los argumentos de lanzamiento, o nil si la
@@ -247,6 +249,40 @@ enum EstadosDePrueba {
         return config
     }
 
+    /// Configuracion del estado `mi-contexto`: Memoria con texto, tope 0.25
+    /// (para que el boton vigente se vea marcado), dos skills con su slug y
+    /// contadores globales con cifras de ejemplo.
+    private static func configuracionMiContexto() -> AppConfig {
+        var config = configuracionChat(tope: 0.25)
+        config.skills = [
+            SkillLocal(
+                nombre: "Resumidor",
+                slug: "resumidor",
+                instrucciones: "Resume el texto en tres puntos claros."
+            ),
+            SkillLocal(
+                nombre: "Ventas",
+                slug: "ventas",
+                instrucciones: "Responde con tono comercial y sin tecnicismos."
+            )
+        ]
+        config.gasto = ContadoresGasto(
+            delDia: 0.1234,
+            fechaDelDia: hoyComoClave(),
+            desdeReinicio: 0.4321
+        )
+        return config
+    }
+
+    /// Fecha local de hoy con el mismo formato que guarda `ContadoresGasto`.
+    private static func hoyComoClave() -> String {
+        let formateador = DateFormatter()
+        formateador.calendar = Calendar(identifier: .gregorian)
+        formateador.locale = Locale(identifier: "en_US_POSIX")
+        formateador.dateFormat = "yyyy-MM-dd"
+        return formateador.string(from: Date())
+    }
+
     private static func configuracion(tope: Double = 1.00) -> AppConfig {
         AppConfig(
             proveedores: [proveedorEjemplo],
@@ -342,6 +378,13 @@ enum EstadosDePrueba {
                 conversacion: conversacionVaciaBienvenida,
                 conversaciones: [conversacionVaciaBienvenida],
                 motorFalla: true
+            )
+        case .miContexto:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionMiContexto(),
+                conversacion: conversacionVaciaBienvenida,
+                conversaciones: [conversacionVaciaBienvenida]
             )
         }
     }

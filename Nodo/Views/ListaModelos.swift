@@ -51,7 +51,7 @@ private func nombreDeModelo(_ proveedor: ProviderConfig) -> String {
 /// Hoja modal con la misma lista de modelos de la pildora (/modelos, §4.2).
 ///
 /// Elegir cambia el modelo y cierra; Gestionar modelos… cierra y salta a
-/// Ajustes por el callback que ya usa la cabecera.
+/// Conexiones por el callback que ya usa la cabecera.
 struct HojaModelosView: View {
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss

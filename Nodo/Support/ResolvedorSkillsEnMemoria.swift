@@ -2,17 +2,17 @@ import Foundation
 
 import NodoCore
 
-/// Resolvedor de skills de esta fase (§4.2/§4.4).
+/// Resolvedor de skills conectado al almacen real (§4.2/§4.4).
 ///
-/// Hoy la lista esta VACIA en produccion: el parser ya nace con el puerto y la
-/// ruta de envio, pero el almacen persistido de skills llega en la Fase 4. Esa
-/// fase solo tendra que rellenar `skills` (o sustituir esta instancia por otra
-/// que cumpla `ResolvedorSkills`); el parser y `EstadoApp` no cambian.
+/// `EstadoApp` copia aqui `config.skills` cada vez que cambia la configuracion
+/// (al crear, editar, borrar o importar). Asi el parser de "/" y el selector
+/// flotante leen las skills persistidas sin conocer la interfaz, y una skill
+/// borrada deja de resolverse en el acto.
 ///
 /// Vive en la app, no en NodoCore, porque es una fuente de datos de interfaz y
 /// no una regla del parser.
 final class ResolvedorSkillsEnMemoria: ResolvedorSkills {
-    /// Skills disponibles ahora mismo. En esta fase arranca vacia.
+    /// Espejo de `config.skills` en la forma que consume el parser.
     var skills: [SkillResuelta] = []
 
     func skill(porSlug slug: String) -> SkillResuelta? {

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import UIKit
 
@@ -37,6 +38,15 @@ struct TarjetaBienvenidaView: View {
         return limpio.isEmpty ? "Sin modelo" : limpio
     }
 
+    /// Tope de aviso vigente, con el formato de costo de la app.
+    private var topeTexto: String {
+        let tope = estado.config.topeAvisoCostoEfectivo
+        guard tope > 0 else {
+            return "Tope de aviso por chat: sin tope"
+        }
+        return "Tope de aviso por chat: $\(String(format: "%.2f", tope))"
+    }
+
     /// Sin clave guardada la tarjeta no puede fingir que hay conexion.
     private var faltaClave: Bool {
         guard let proveedor else { return true }
@@ -70,6 +80,14 @@ struct TarjetaBienvenidaView: View {
                 .font(.headline)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // El tope vigente real tambien vive en la Tarjeta (§3.2): no es un
+            // dato de plantilla, sale de la configuracion.
+            Text(topeTexto)
+                .font(.footnote)
+                .foregroundStyle(Tema.textoSuave)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("tope-bienvenida")
 
             if faltaClave {
                 Text("⚠️ Falta tu clave de \(proveedorLimpio)")
