@@ -98,4 +98,24 @@ public struct Conversation: Codable, Identifiable, Equatable {
         if limpio.count <= 48 { return limpio }
         return String(limpio.prefix(48)) + "..."
     }
+
+    /// Descarta lo que haya despues del ultimo mensaje del usuario y devuelve
+    /// ese turno descartado, para poder restaurarlo si la regeneracion falla.
+    ///
+    /// El turno puede traer mensajes de asistente y de herramienta mezclados:
+    /// todo lo posterior al ultimo mensaje del usuario forma parte de la
+    /// respuesta que se esta regenerando. Si no hay nada que descartar (sin
+    /// usuario o sin respuesta todavia) el historial queda intacto.
+    @discardableResult
+    public mutating func descartarUltimoTurno() -> [ChatMessage] {
+        guard let indice = mensajes.lastIndex(where: { $0.rol == .usuario }),
+              indice + 1 < mensajes.count
+        else {
+            return []
+        }
+
+        let descartados = Array(mensajes.suffix(from: indice + 1))
+        mensajes.removeLast(descartados.count)
+        return descartados
+    }
 }

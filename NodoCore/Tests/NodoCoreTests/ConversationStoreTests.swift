@@ -118,4 +118,46 @@ final class ConversationStoreTests: XCTestCase {
     func testTituloSugeridoSinMensajes() {
         XCTAssertEqual(Conversation().tituloSugerido, "Conversacion")
     }
+
+    func testDescartarUltimoTurnoSimple() {
+        var conversacion = Conversation(mensajes: [
+            ChatMessage(rol: .usuario, texto: "hola"),
+            ChatMessage(rol: .asistente, texto: "buenas")
+        ])
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertEqual(conversacion.mensajes.map(\.rol), [.usuario])
+        XCTAssertEqual(conversacion.mensajes.first?.texto, "hola")
+        XCTAssertEqual(descartado.map(\.rol), [.asistente])
+        XCTAssertEqual(descartado.first?.texto, "buenas")
+    }
+
+    func testDescartarUltimoTurnoConHerramientas() {
+        var conversacion = Conversation(mensajes: [
+            ChatMessage(rol: .usuario, texto: "busca el precio"),
+            ChatMessage(
+                rol: .asistente,
+                texto: "",
+                toolCalls: [ToolCall(id: "llamada-1", nombre: "red", argumentos: "{}")]
+            ),
+            ChatMessage(rol: .herramienta, texto: "42", toolCallId: "llamada-1"),
+            ChatMessage(rol: .asistente, texto: "Cuesta 42.")
+        ])
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertEqual(conversacion.mensajes.map(\.rol), [.usuario])
+        XCTAssertEqual(descartado.map(\.rol), [.asistente, .herramienta, .asistente])
+    }
+
+    func testDescartarUltimoTurnoSinRespuestaNoCambiaNada() {
+        let mensajes = [ChatMessage(rol: .usuario, texto: "hola")]
+        var conversacion = Conversation(mensajes: mensajes)
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertTrue(descartado.isEmpty)
+        XCTAssertEqual(conversacion.mensajes, mensajes)
+    }
 }
