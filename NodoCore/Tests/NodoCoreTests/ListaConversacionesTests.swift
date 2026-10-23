@@ -329,7 +329,7 @@ final class ListaConversacionesTests: XCTestCase {
         XCTAssertEqual(copia.mensajes.count, 4)
     }
 
-    func testRamificarHeredaProveedorYModosPeroNoResumenNiFijacion() throws {
+    func testRamificarHeredaProveedorModosYResumenCompactado() throws {
         let original = conversacionLarga()
 
         let copia = try XCTUnwrap(
@@ -344,8 +344,9 @@ final class ListaConversacionesTests: XCTestCase {
         XCTAssertEqual(copia.modoTarea, original.modoTarea)
         XCTAssertFalse(copia.fijada)
         XCTAssertFalse(copia.archivada)
-        XCTAssertNil(copia.resumenCompactado)
-        XCTAssertNil(copia.usoTrasCompactar)
+        // COMP.3: la rama no puede olvidar lo que la original ya resumio.
+        XCTAssertEqual(copia.resumenCompactado, original.resumenCompactado)
+        XCTAssertEqual(copia.usoTrasCompactar, original.usoTrasCompactar)
     }
 
     func testElAcumuladoDeLaRamaEsLaSumaDeLosUsosClonados() throws {

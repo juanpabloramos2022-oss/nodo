@@ -146,9 +146,10 @@ extension HistorialConversaciones {
     /// chat fijado ni archivado y nace con el titulo de un chat nuevo
     /// (`tituloSugerido` se deriva del primer usuario, como siempre).
     ///
-    /// NO hereda `resumenCompactado` ni `usoTrasCompactar`: el historial
-    /// clonado ES el contexto completo hasta el corte, y heredar el resumen
-    /// duplicaria contexto. Su acumulado facturable sale de los usos clonados.
+    /// COMP.3: tambien hereda `resumenCompactado` y `usoTrasCompactar`. Si el
+    /// origen ya se compacto, la rama conserva el contexto resumido y el
+    /// consumo sellado de esa compactacion; perderlos al ramificar haria que la
+    /// copia olvidara lo que la original resumio y rebajaria su factura.
     ///
     /// Devuelve nil si el id no pertenece a esta conversacion; no se inventa un
     /// punto de corte.
@@ -189,8 +190,8 @@ extension HistorialConversaciones {
             sinMemoria: conversacion.sinMemoria,
             modoTarea: conversacion.modoTarea,
             topeIgnorado: false,
-            resumenCompactado: nil,
-            usoTrasCompactar: nil,
+            resumenCompactado: conversacion.resumenCompactado,
+            usoTrasCompactar: conversacion.usoTrasCompactar,
             proveedorID: conversacion.proveedorID
         )
     }

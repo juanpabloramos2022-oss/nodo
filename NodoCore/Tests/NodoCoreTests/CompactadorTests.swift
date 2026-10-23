@@ -3,100 +3,94 @@ import XCTest
 @testable import NodoCore
 
 final class CompactadorTests: XCTestCase {
-    /// Historia de 14 mensajes con texto suficiente para que el presupuesto
-    /// importe. Los ultimos 6 son los que deben sobrevivir.
-    private func historia(cantidad: Int = 14) -> [ChatMessage] {
-        (0..<cantidad).map { indice in
+    /// Ocho mensajes con marcas distintas: los dos primeros son el prefijo que
+    /// se resume y los seis ultimos los que deben sobrevivir intactos.
+    private func historiaDeOcho() -> [ChatMessage] {
+        (0..<8).map { indice in
             ChatMessage(
                 rol: indice.isMultiple(of: 2) ? .usuario : .asistente,
-                texto: "mensaje \(indice) " + String(repeating: "x", count: 40)
+                texto: (indice < 2 ? "ANTIGUO \(indice)" : "CONSERVADO \(indice)")
+                    + " " + String(repeating: "x", count: 40)
             )
         }
     }
 
-    func testDosPasadasCuandoLaPrimeraNoBasta() async throws {
-        let mensajes = historia()
-        let ultimos = Array(mensajes.suffix(6))
-        var llamadas: [String] = []
+    func testResumirRecibeSoloElPrefijoAntiguo() async throws {
+        let mensajes = historiaDeOcho()
+        var entradas: [String] = []
 
-        let resultado = try await Compactador.resumirEnCadena(
-            mensajes: mensajes,
-            presupuesto: 100
+        let resultado = try await Compactador.compactar(
+            mensajes: mensajes
         ) { entrada in
-            llamadas.append(entrada)
-            if llamadas.count == 1 {
-                // La primera pasada deja el contexto muy por encima: obliga a
-                // encadenar una segunda.
-                return String(repeating: "a", count: 2_000)
-            }
+            entradas.append(entrada)
             return "resumen corto"
         }
 
-        XCTAssertEqual(llamadas.count, 2)
-        XCTAssertEqual(resultado.pasadas, 2)
+        // Una sola llamada: la compactacion ya no encadena pasadas.
+        XCTAssertEqual(entradas.count, 1)
+        let entrada = try XCTUnwrap(entradas.first)
+        XCTAssertTrue(entrada.contains("ANTIGUO 0"))
+        XCTAssertTrue(entrada.contains("ANTIGUO 1"))
+        for indice in 2..<8 {
+            XCTAssertFalse(
+                entrada.contains("CONSERVADO \(indice)"),
+                "El resumidor no puede recibir el mensaje conservado \(indice)"
+            )
+        }
+
+        XCTAssertTrue(resultado.aplicada)
         XCTAssertEqual(resultado.resumen, "resumen corto")
-        XCTAssertEqual(resultado.mensajes, ultimos)
-        XCTAssertFalse(resultado.conservoUltimos)
-        XCTAssertFalse(resultado.excedePresupuesto)
-        XCTAssertTrue(llamadas[0].contains("mensaje 0"))
-        XCTAssertTrue(
-            llamadas[1].contains(String(repeating: "a", count: 2_000)),
-            "La segunda pasada resume sobre el resultado de la primera"
+        XCTAssertEqual(resultado.mensajes, Array(mensajes.suffix(6)))
+        XCTAssertEqual(
+            resultado.mensajes.map(\.id),
+            Array(mensajes.suffix(6).map(\.id))
         )
     }
 
-    func testTopeDeTresPasadas() async throws {
+    func testNoAplicaLoQueNoReduce() async throws {
+        let mensajes = historiaDeOcho()
+        let contextoOriginal = Compactador.estimarContexto(mensajes: mensajes)
         var llamadas = 0
 
-        let resultado = try await Compactador.resumirEnCadena(
-            mensajes: historia(),
-            presupuesto: 100
+        let resultado = try await Compactador.compactar(
+            mensajes: mensajes
         ) { _ in
             llamadas += 1
-            // Nunca cabe: no importa cuantas veces se resuma.
+            // Un resumen mas largo que todo lo resumido: no comprime nada.
             return String(repeating: "z", count: 4_000)
         }
 
-        XCTAssertEqual(llamadas, Compactador.maxPasadas)
-        XCTAssertEqual(llamadas, 3)
-        XCTAssertEqual(resultado.pasadas, 3)
-        XCTAssertTrue(resultado.conservoUltimos)
+        XCTAssertEqual(llamadas, 1)
+        XCTAssertFalse(resultado.aplicada)
         XCTAssertNil(resultado.resumen)
-        XCTAssertNotNil(resultado.ultimoResumen)
-    }
-
-    func testConservaLosUltimosSeisYLoDeclara() async throws {
-        let mensajes = historia()
-        let ultimos = Array(mensajes.suffix(6))
-
-        let resultado = try await Compactador.resumirEnCadena(
-            mensajes: mensajes,
-            presupuesto: 100
-        ) { _ in String(repeating: "z", count: 4_000) }
-
-        XCTAssertEqual(resultado.mensajes.count, 6)
-        XCTAssertEqual(resultado.mensajes.map(\.id), ultimos.map(\.id))
-        XCTAssertTrue(resultado.conservoUltimos)
+        XCTAssertNotNil(resultado.resumenGenerado)
         XCTAssertEqual(
+            resultado.mensajes,
+            mensajes,
+            "Si no se aplica, se conservan todos los mensajes"
+        )
+        XCTAssertEqual(resultado.contextoOriginal, contextoOriginal)
+        XCTAssertGreaterThanOrEqual(
             resultado.contextoEstimado,
-            Compactador.estimarContexto(mensajes: resultado.mensajes)
+            contextoOriginal,
+            "El resumen propuesto no reduce el contexto"
         )
     }
 
-    func testSinPresupuestoHaceUnaSolaPasada() async throws {
+    func testConSeisMensajesNoLlamaAlResumidor() async throws {
+        let mensajes = Array(historiaDeOcho().suffix(6))
         var llamadas = 0
 
-        let resultado = try await Compactador.resumirEnCadena(
-            mensajes: historia(),
-            presupuesto: nil
+        let resultado = try await Compactador.compactar(
+            mensajes: mensajes
         ) { _ in
             llamadas += 1
-            return "resumen"
+            return "no deberia pedirse"
         }
 
-        XCTAssertEqual(llamadas, 1)
-        XCTAssertEqual(resultado.pasadas, 1)
-        XCTAssertEqual(resultado.resumen, "resumen")
-        XCTAssertFalse(resultado.conservoUltimos)
+        XCTAssertEqual(llamadas, 0)
+        XCTAssertFalse(resultado.aplicada)
+        XCTAssertNil(resultado.resumen)
+        XCTAssertEqual(resultado.mensajes, mensajes)
     }
 }

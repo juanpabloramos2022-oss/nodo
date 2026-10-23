@@ -309,7 +309,105 @@ final class EstadoAppTests: XCTestCase {
         XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 2)
     }
 
-    // MARK: - Compactacion en cadena (COMP.3)
+    /// COMP.1: el resumidor recibe solo los mensajes antiguos. Los seis que se
+    /// conservan no pueden viajar en la peticion de resumen.
+    func testCompactarResumeSoloElPrefijoAntiguo() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        let mensajes = (0..<8).map { indice in
+            ChatMessage(
+                rol: indice.isMultiple(of: 2) ? .usuario : .asistente,
+                texto: (indice < 2 ? "ANTIGUO \(indice)" : "CONSERVADO \(indice)")
+                    + " " + String(repeating: "x", count: 40)
+            )
+        }
+        arnes.estado.conversacion = Conversation(mensajes: mensajes)
+        arnes.transporte.guionar(texto: "Resumen del prefijo.", uso: nil)
+
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        XCTAssertTrue(cuerpo.contains("ANTIGUO 0"), cuerpo)
+        XCTAssertTrue(cuerpo.contains("ANTIGUO 1"), cuerpo)
+        for indice in 2..<8 {
+            XCTAssertFalse(
+                cuerpo.contains("CONSERVADO \(indice)"),
+                "La peticion de resumen no puede llevar el mensaje conservado \(indice)"
+            )
+        }
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 6)
+    }
+
+    /// Con exactamente seis mensajes no hay prefijo que resumir: /compact no
+    /// debe hacer ninguna peticion y tiene que dejar el aviso de conversacion
+    /// corta.
+    func testCompactarConSeisMensajesNoPideResumen() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.estado.conversacion = Conversation(
+            mensajes: (0..<6).map { indice in
+                ChatMessage(
+                    rol: indice.isMultiple(of: 2) ? .usuario : .asistente,
+                    texto: "Mensaje \(indice)"
+                )
+            }
+        )
+        arnes.transporte.guionar(
+            texto: "Resumen que no se deberia pedir.",
+            uso: UsoTokens(entrada: 10, salida: 5)
+        )
+
+        arnes.estado.compactar()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 0)
+        XCTAssertFalse(arnes.estado.compactando)
+        XCTAssertTrue(
+            (arnes.estado.avisoComando ?? "").contains("corta"),
+            "Se esperaba el aviso de conversacion corta, y llego: "
+                + (arnes.estado.avisoComando ?? "nil")
+        )
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 6)
+    }
+
+    /// Guarda de no-reduccion en la app: un resumen que no comprime deja el
+    /// hilo intacto, no guarda resumen y avisa.
+    func testCompactarConResumenQueNoReduceConservaLosMensajes() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.estado.conversacion = historiaLarga(sinMemoria: true)
+        arnes.transporte.guionar(
+            texto: String(repeating: "z", count: 20_000),
+            uso: nil
+        )
+
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 8)
+        XCTAssertNil(arnes.estado.conversacion.resumenCompactado)
+        XCTAssertTrue(
+            (arnes.estado.avisoComando ?? "").contains("no reduc"),
+            "Se esperaba el aviso de resumen que no reduce, y llego: "
+                + (arnes.estado.avisoComando ?? "nil")
+        )
+    }
+
+    // MARK: - Compactacion (COMP.1-COMP.3)
 
     /// El resumen de /compact tiene que llegar al turno siguiente aunque el
     /// chat no tenga Memoria. Sin esto, compactar poda el hilo y el modelo
@@ -384,7 +482,9 @@ final class EstadoAppTests: XCTestCase {
 
     /// Compactar dos veces la misma conversacion no puede apilar dos copias
     /// del resumen: el mismo bloque duplicado gastaria ventana y confundiria
-    /// al modelo. La cabecera debe aparecer exactamente una vez.
+    /// al modelo. La segunda vez ya solo quedan 6 mensajes, asi que /compact
+    /// avisa de conversacion corta, no llama a la API y el resumen vigente
+    /// sigue viajando exactamente una vez en el turno siguiente.
     func testCompactarDosVecesNoDuplicaElResumen() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
@@ -397,12 +497,24 @@ final class EstadoAppTests: XCTestCase {
         arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42", uso: nil)
         arnes.estado.compactar()
         try await arnes.esperarCompactacion()
+        let peticionesTrasLaPrimera = arnes.transporte.cantidadDePeticiones
+        XCTAssertEqual(peticionesTrasLaPrimera, 1)
 
-        // La segunda compactacion reemplaza el resumen; no debe sumarse al
-        // que ya estaba guardado.
-        arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42 (otra vez)", uso: nil)
+        // La segunda compactacion ya tiene 6 mensajes: no debe llamar a la API.
         arnes.estado.compactar()
         try await arnes.esperarCompactacion()
+
+        XCTAssertEqual(
+            arnes.transporte.cantidadDePeticiones,
+            peticionesTrasLaPrimera,
+            "Con 6 mensajes /compact no puede pedir otro resumen"
+        )
+        XCTAssertTrue(
+            (arnes.estado.avisoComando ?? "").contains("corta"),
+            "Se esperaba el aviso de conversacion corta, y llego: "
+                + (arnes.estado.avisoComando ?? "nil")
+        )
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 6)
 
         arnes.transporte.guionar(
             texto: "Respuesta despues de compactar dos veces.",
@@ -412,12 +524,9 @@ final class EstadoAppTests: XCTestCase {
         try await arnes.esperarTurno()
 
         let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
-        // Si la segunda compactacion no hubiera reemplazado el resumen, el
-        // cuerpo seguiria llevando el primero y la cuenta de cabeceras pasaria
-        // en falso: se comprueba que el resumen vigente es el segundo.
         XCTAssertTrue(
-            cuerpo.contains("EL DATO CLAVE ES 42 (otra vez)"),
-            "La segunda compactacion no reemplazo el resumen guardado: \(cuerpo)"
+            cuerpo.contains("EL DATO CLAVE ES 42"),
+            "El resumen vigente no viajo al turno siguiente: \(cuerpo)"
         )
         let cabecera = "[Resumen de la conversacion anterior]"
         let veces = cuerpo.components(separatedBy: cabecera).count - 1
@@ -425,6 +534,68 @@ final class EstadoAppTests: XCTestCase {
             veces,
             1,
             "El resumen viajo \(veces) veces en el mismo payload: \(cuerpo)"
+        )
+    }
+
+    /// COMP.3: ramificar un chat ya compactado hereda el resumen y el balde
+    /// sellado. La rama lo manda en su siguiente payload y su costo acumulado
+    /// no pierde lo que la original ya habia resumido.
+    func testRamificarChatCompactadoHeredaResumenYBalde() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activo = arnes.proveedor
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: activo))
+        var original = historiaSellada(con: activo)
+        // Sin Memoria el unico camino del resumen es el respaldo persistido por
+        // conversacion: si la rama no hereda el mapa, el payload lo delatara.
+        original.sinMemoria = true
+        arnes.estado.conversacion = original
+
+        let usoDelResumen = UsoTokens(entrada: 2_000, salida: 1_000)
+        arnes.transporte.guionar(
+            texto: "RESUMEN",
+            uso: usoDelResumen
+        )
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        let compactada = arnes.estado.conversacion
+        XCTAssertEqual(compactada.mensajes.count, 6)
+        XCTAssertEqual(compactada.resumenCompactado, "RESUMEN")
+        let costoCompactado = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        let ultimo = try XCTUnwrap(compactada.mensajes.last)
+
+        arnes.estado.ramificar(desde: ultimo)
+
+        let rama = arnes.estado.conversacion
+        XCTAssertNotEqual(rama.id, compactada.id)
+        XCTAssertEqual(rama.resumenCompactado, compactada.resumenCompactado)
+        XCTAssertEqual(rama.usoTrasCompactar, compactada.usoTrasCompactar)
+        XCTAssertEqual(rama.mensajes.count, compactada.mensajes.count)
+
+        // El balde de lo resumido (mensajes que salieron + llamada de resumen)
+        // tiene que viajar a la rama: su acumulado es el mismo que el original.
+        let costoRama = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(costoRama, costoCompactado, accuracy: 0.0000001)
+
+        arnes.transporte.guionar(
+            texto: "Respuesta en la rama.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+        arnes.estado.enviar("Nueva pregunta")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        XCTAssertTrue(
+            cuerpo.contains("RESUMEN"),
+            "La rama no mando el resumen heredado: \(cuerpo)"
+        )
+        XCTAssertEqual(
+            cuerpo.components(
+                separatedBy: "[Resumen de la conversacion anterior]"
+            ).count - 1,
+            1
         )
     }
 
