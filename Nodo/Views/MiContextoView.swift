@@ -21,8 +21,11 @@ struct MiContextoView: View {
     @State private var otroTope = ""
     @FocusState private var otroTopeEnfocado: Bool
 
-    /// Escalones rapidos del tope (§3.5). El vigente se marca como seleccionado.
-    private static let escalones: [Double] = [0.10, 0.25, 0.50, 1.00]
+    /// Escalones rapidos del tope (§3.5): la lista vive en `TopesRapidos` para
+    /// que los chips y su prueba compartan los mismos valores.
+    private static var escalones: [Double] {
+        TopesRapidos.valores
+    }
 
     private var memoriaVacia: Bool {
         estado.config.memoria.allSatisfy {
@@ -327,11 +330,14 @@ struct MiContextoView: View {
     }
 
     /// Guarda el valor de un boton rapido y baja el teclado.
+    ///
+    /// Usa la misma puerta del estado que fija el tope y lo persiste, para que
+    /// tocar un chip no dependa de escribir nada en el teclado numerico.
     private func fijarTope(_ valor: Double) {
         bajarTeclado()
         otroTopeEnfocado = false
         mostrandoOtroTope = false
-        estado.config.topeAvisoCosto = valor
+        estado.fijarTopeAviso(valor)
     }
 
     /// "Otro…" abre el campo numerico con el valor vigente ya escrito.

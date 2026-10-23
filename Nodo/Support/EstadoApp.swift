@@ -133,6 +133,16 @@ struct SolicitudAprobacion: Identifiable, Equatable {
     }
 }
 
+/// Escalones rapidos del tope de aviso por chat (§3.5).
+///
+/// POR QUE un tipo aparte y no una constante de la vista: los chips de Mi
+/// Contexto y su prueba tienen que compartir la MISMA lista sin depender de
+/// SwiftUI. Todos son positivos porque `fijarTopeAviso` rechaza el cero (0 =
+/// aviso desactivado).
+enum TopesRapidos {
+    static let valores: [Double] = [0.10, 0.25, 0.50, 1.00]
+}
+
 /// Estado central de la app.
 ///
 /// Aqui vive todo lo que cambia: la configuracion, las conversaciones y el texto
@@ -1094,13 +1104,12 @@ final class EstadoApp: ObservableObject {
 
     // MARK: - Memoria
 
-    /// Texto plano de la Memoria para la hoja rapida del chat (H6.3) y para
-    /// medir su peso.
+    /// Texto plano de la Memoria para medir su peso y su costo estimado.
     ///
-    /// Mi Contexto ya edita por entradas (MEM.4), pero la hoja rapida sigue
-    /// trabajando con el bloque completo: su conversion es H6.3 y no se mezcla
-    /// con esta tarea. El payload NO usa esto: `Historial` manda el bloque con
-    /// las entradas y sus ids.
+    /// Mi Contexto (MEM.4) y la hoja rapida del chat (H6.3) ya editan por
+    /// entradas, una fila por cada una; esto solo une el texto para contar
+    /// caracteres. El payload NO usa esto: `Historial` manda el bloque con las
+    /// entradas y sus ids.
     var textoMemoria: String {
         Memoria.textoPlano(config.memoria)
     }

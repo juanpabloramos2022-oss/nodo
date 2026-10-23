@@ -244,8 +244,8 @@ public enum Memoria {
         return id
     }
 
-    /// Texto plano de la Memoria, solo para la interfaz que todavia edita como
-    /// bloque. El payload NO usa esto: usa `bloqueSistema(entradas:)`.
+    /// Texto plano de la Memoria, solo para medir peso y costo estimado en la
+    /// interfaz. El payload NO usa esto: usa `bloqueSistema(entradas:)`.
     public static func textoPlano(_ entradas: [EntradaMemoria]) -> String {
         entradas.map(\.texto).joined(separator: "\n\n")
     }

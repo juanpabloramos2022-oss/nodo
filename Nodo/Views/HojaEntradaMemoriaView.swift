@@ -5,8 +5,9 @@ import NodoCore
 /// Editor de UNA entrada de la Memoria (MEM.4).
 ///
 /// POR QUE hoja con borrador: Cancelar no puede tocar la configuracion y solo
-/// Guardar escribe la entrada. La hoja rapida del chat sigue editando el bloque
-/// completo: su conversion es H6.3 y no se mezcla con esta pantalla.
+/// Guardar escribe la entrada. Es el editor que abre tanto Mi Contexto (MEM.4)
+/// como la hoja rapida del chat (H6.3): siempre es UNA entrada, nunca el bloque
+/// completo.
 struct HojaEntradaMemoriaView: View {
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss

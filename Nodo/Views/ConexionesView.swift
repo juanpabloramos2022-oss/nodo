@@ -489,7 +489,10 @@ struct ConexionesView: View {
 // MARK: - Agrupacion visual por URL base
 
 /// Un grupo visual de registros que comparten dominio/URL base.
-private struct GrupoProveedores: Identifiable {
+///
+/// No es privado a proposito: la prueba de agrupacion (H6.5) necesita comprobar
+/// que dos proveedores de la misma URL base forman UN solo grupo.
+struct GrupoProveedores: Identifiable {
     let id: String
     let dominio: String
     let nombre: String
@@ -500,7 +503,7 @@ private struct GrupoProveedores: Identifiable {
 ///
 /// No tocan `ProviderConfig`: solo deciden como se reparten los registros que
 /// ya existen y como se pinta cada nombre y cada precio (§2.5/§3.6).
-private enum AgrupacionConexiones {
+enum AgrupacionConexiones {
     /// Agrupa por host y conserva el orden de aparicion de la configuracion.
     static func agrupar(_ proveedores: [ProviderConfig]) -> [GrupoProveedores] {
         var orden: [String] = []

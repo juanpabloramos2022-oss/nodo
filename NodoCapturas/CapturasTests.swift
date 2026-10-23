@@ -251,7 +251,8 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f2-estado-del-chat")
     }
 
-    /// SPEC §5, Fase 2: "hoja Memoria rápida con Cancelar/Guardar".
+    /// SPEC §5, Fase 2 y H6.3: la hoja Memoria rapida lista las entradas de la
+    /// Memoria una por una y tiene una salida explicita de Cerrar.
     func testF2MemoriaRapida() throws {
         lanzar(estado: "chat")
         abrirConversacion("Chat de ejemplo")
@@ -267,8 +268,18 @@ final class CapturasTests: XCTestCase {
             app.navigationBars["Memoria rápida"].waitForExistence(timeout: 60),
             "No se abrio la hoja Memoria rapida"
         )
-        XCTAssertTrue(app.buttons["Cancelar"].exists, "Falta Cancelar")
-        XCTAssertTrue(app.buttons["Guardar"].exists, "Falta Guardar")
+        // H6.3/H6.6: la lista se cierra con Cerrar y cada entrada es una fila
+        // propia; ya no hay un unico editor de bloque con Guardar.
+        XCTAssertTrue(app.buttons["Cerrar"].exists, "Falta Cerrar")
+        // La fila se busca como CUALQUIER tipo de elemento: SwiftUI puede
+        // exponer la fila con su propio rasgo segun la version de iOS.
+        let filaMemoria = app.descendants(matching: .any)
+            .matching(identifier: "memoria-rapida-entrada")
+            .firstMatch
+        XCTAssertTrue(
+            filaMemoria.waitForExistence(timeout: 10),
+            "Falta la fila de la entrada de Memoria"
+        )
         // Margen para que la hoja termine de presentarse.
         Thread.sleep(forTimeInterval: 0.4)
 
