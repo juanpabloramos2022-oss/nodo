@@ -243,6 +243,54 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertTrue(cargada.archivada)
     }
 
+    func testLaCompactacionSobreviveAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Compactada",
+            topeIgnorado: true,
+            resumenCompactado: "Resumen guardado",
+            usoTrasCompactar: UsoTokens(entrada: 30, salida: 12)
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertTrue(cargada.topeIgnorado)
+        XCTAssertEqual(cargada.resumenCompactado, "Resumen guardado")
+        XCTAssertEqual(cargada.usoTrasCompactar, UsoTokens(entrada: 30, salida: 12))
+    }
+
+    func testMensajeSinSkillsAplicadasDecodificaConListaVacia() throws {
+        let original = ChatMessage(rol: .usuario, texto: "hola")
+        let datos = try JSONEncoder().encode(original)
+        var objeto = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: datos) as? [String: Any]
+        )
+        objeto.removeValue(forKey: "skillsAplicadas")
+        let sinCampo = try JSONSerialization.data(withJSONObject: objeto)
+
+        let mensaje = try JSONDecoder().decode(ChatMessage.self, from: sinCampo)
+
+        XCTAssertEqual(mensaje.skillsAplicadas, [])
+    }
+
+    func testLasSkillsAplicadasSobrevivenAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Con skills",
+            mensajes: [
+                ChatMessage(
+                    rol: .usuario,
+                    texto: "hola",
+                    skillsAplicadas: ["Resumen", "Otra"]
+                )
+            ]
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertEqual(cargada.mensajes.first?.skillsAplicadas, ["Resumen", "Otra"])
+    }
+
     func testSeccionesPoneFijadasPrimeroYDejaFueraLasArchivadas() {
         let fijadaVieja = Conversation(
             titulo: "fijada vieja",

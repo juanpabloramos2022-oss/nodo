@@ -181,6 +181,88 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertEqual(resultados.map(\.toolCallId), ["c1", "c2"])
     }
 
+    func testUnaHerramientaRechazadaNoSeEjecutaYElTurnoSigue() async throws {
+        let motor = MotorFalso([
+            RespuestaModelo(
+                texto: "",
+                toolCalls: [ToolCall(id: "c1", nombre: "probar", argumentos: "{\"x\":\"1\"}")]
+            ),
+            RespuestaModelo(texto: "listo")
+        ])
+        let herramienta = HerramientaFalsa(resultado: "no deberia correr")
+        let bucle = ToolLoop(
+            motor: motor,
+            herramientas: [herramienta],
+            aprobador: { _ in false },
+            requiereAprobacion: { _ in true }
+        )
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "usa la herramienta")]
+        )
+
+        XCTAssertTrue(herramienta.argumentosRecibidos.isEmpty)
+        XCTAssertEqual(resultado.iteraciones, 2)
+        XCTAssertEqual(resultado.texto, "listo")
+
+        let mensajeHerramienta = resultado.mensajesNuevos[1]
+        XCTAssertEqual(mensajeHerramienta.rol, .herramienta)
+        XCTAssertEqual(
+            mensajeHerramienta.texto,
+            "El usuario rechazo esta accion antes de que se ejecutara."
+        )
+        XCTAssertEqual(mensajeHerramienta.toolCallId, "c1")
+    }
+
+    func testUnaHerramientaAprobadaSeEjecutaUnaVez() async throws {
+        let motor = MotorFalso([
+            RespuestaModelo(
+                texto: "",
+                toolCalls: [ToolCall(id: "c1", nombre: "probar", argumentos: "{\"x\":\"1\"}")]
+            ),
+            RespuestaModelo(texto: "listo")
+        ])
+        let herramienta = HerramientaFalsa(resultado: "ejecutada")
+        let bucle = ToolLoop(
+            motor: motor,
+            herramientas: [herramienta],
+            aprobador: { _ in true },
+            requiereAprobacion: { _ in true }
+        )
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "usa la herramienta")]
+        )
+
+        XCTAssertEqual(herramienta.argumentosRecibidos, ["{\"x\":\"1\"}"])
+        XCTAssertEqual(resultado.texto, "listo")
+        XCTAssertEqual(resultado.mensajesNuevos[1].texto, "ejecutada")
+    }
+
+    func testLosGanchosRodeanLaEjecucion() async throws {
+        let motor = MotorFalso([
+            RespuestaModelo(
+                texto: "",
+                toolCalls: [ToolCall(id: "c1", nombre: "probar", argumentos: "{}")]
+            ),
+            RespuestaModelo(texto: "fin")
+        ])
+        let herramienta = HerramientaFalsa(resultado: "resultado")
+        var eventos: [String] = []
+        let bucle = ToolLoop(
+            motor: motor,
+            herramientas: [herramienta],
+            alIniciarHerramienta: { eventos.append("inicio-\($0.nombre)") },
+            alTerminarHerramienta: { llamada, resultado in
+                eventos.append("fin-\(llamada.nombre)-\(resultado)")
+            }
+        )
+
+        _ = try await bucle.ejecutar(historial: [ChatMessage(rol: .usuario, texto: "x")])
+
+        XCTAssertEqual(eventos, ["inicio-probar", "fin-probar-resultado"])
+    }
+
     func testErrorDeRedDelMotorSePropaga() async {
         let motor = MotorQueFalla(error: ErrorAPI.red("sin conexion"))
         let bucle = ToolLoop(motor: motor, herramientas: [])

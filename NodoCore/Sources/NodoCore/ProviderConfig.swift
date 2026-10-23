@@ -36,7 +36,7 @@ public enum ProtocoloProveedor: String, Codable, CaseIterable, Identifiable {
 
     public var etiqueta: String {
         switch self {
-        case .chatCompletions: return "Compatible (chat completions)"
+        case .chatCompletions: return "Chat Completions"
         case .anthropic: return "Anthropic"
         }
     }
@@ -135,7 +135,7 @@ public struct ProviderConfig: Codable, Identifiable, Equatable {
 /// Un proveedor de ejemplo para que la app no arranque vacia.
 public enum ProveedoresDeEjemplo {
     public static let chatCompletions = ProviderConfig(
-        nombre: "Compatible",
+        nombre: "DeepSeek",
         protocolo: .chatCompletions,
         baseURL: "https://api.deepseek.com/v1",
         modelo: "deepseek-chat"

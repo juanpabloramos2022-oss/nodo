@@ -40,10 +40,34 @@ public final class ToolLoop {
     private let herramientas: [Herramienta]
     public let maxIteraciones: Int
 
-    public init(motor: ChatEngine, herramientas: [Herramienta], maxIteraciones: Int = 8) {
+    /// Se llama justo antes de ejecutar una herramienta, con la llamada que
+    /// pidio el modelo. Sin gancho no cambia nada.
+    public var alIniciarHerramienta: ((ToolCall) -> Void)?
+    /// Se llama justo despues de ejecutar una herramienta, con el resultado
+    /// que se le devolvera al modelo (tambien si fue un error).
+    public var alTerminarHerramienta: ((ToolCall, String) -> Void)?
+    /// Pregunta al usuario si una herramienta puede ejecutarse. Solo se usa
+    /// cuando `requiereAprobacion` devuelve true.
+    public var aprobador: ((ToolCall) async -> Bool)?
+    /// Clasifica una llamada concreta. Si no hay gancho, nada pide aprobacion.
+    public var requiereAprobacion: ((ToolCall) -> Bool)?
+
+    public init(
+        motor: ChatEngine,
+        herramientas: [Herramienta],
+        maxIteraciones: Int = 8,
+        alIniciarHerramienta: ((ToolCall) -> Void)? = nil,
+        alTerminarHerramienta: ((ToolCall, String) -> Void)? = nil,
+        aprobador: ((ToolCall) async -> Bool)? = nil,
+        requiereAprobacion: ((ToolCall) -> Bool)? = nil
+    ) {
         self.motor = motor
         self.herramientas = herramientas
         self.maxIteraciones = maxIteraciones
+        self.alIniciarHerramienta = alIniciarHerramienta
+        self.alTerminarHerramienta = alTerminarHerramienta
+        self.aprobador = aprobador
+        self.requiereAprobacion = requiereAprobacion
     }
 
     public func ejecutar(
@@ -107,7 +131,7 @@ public final class ToolLoop {
             }
 
             for llamada in respuesta.toolCalls {
-                let resultado = await ejecutar(llamada)
+                let resultado = await ejecutarConAprobacion(llamada)
                 let mensajeHerramienta = ChatMessage(
                     rol: .herramienta,
                     texto: resultado,
@@ -120,6 +144,31 @@ public final class ToolLoop {
         }
 
         return armarResultado(seAgotoElLimite: true)
+    }
+
+    /// Aplica la politica de aprobacion y, si toca, ejecuta la herramienta.
+    ///
+    /// Si el usuario rechaza (o no hay aprobador), la herramienta no corre: el
+    /// modelo recibe el texto del rechazo y decide si sigue o cierra el turno.
+    /// Los ganchos de inicio y fin solo envuelven una ejecucion real.
+    private func ejecutarConAprobacion(_ llamada: ToolCall) async -> String {
+        if requiereAprobacion?(llamada) == true {
+            let aprobada: Bool
+            if let aprobador {
+                aprobada = await aprobador(llamada)
+            } else {
+                aprobada = false
+            }
+
+            guard aprobada else {
+                return "El usuario rechazo esta accion antes de que se ejecutara."
+            }
+        }
+
+        alIniciarHerramienta?(llamada)
+        let resultado = await ejecutar(llamada)
+        alTerminarHerramienta?(llamada, resultado)
+        return resultado
     }
 
     /// Ejecuta una herramienta y devuelve siempre texto.

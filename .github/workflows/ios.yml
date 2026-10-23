@@ -2,12 +2,20 @@ name: ios
 
 # Compila la app y publica un .ipa SIN firmar como artifact descargable.
 # La firma se hace despues, fuera de GitHub, con el certificado de quien instala.
+# El job `capturas` ademas arranca la app en el simulador y publica los PNG de
+# verificacion visual que exige la SPEC (seccion 6, H7).
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/gran-avance]
   pull_request:
   workflow_dispatch:
+    inputs:
+      fase:
+        description: "Fase para nombrar el artefacto de capturas (por defecto: actual)"
+        required: false
+        default: "actual"
+        type: string
 
 jobs:
   compilar:
@@ -51,3 +59,102 @@ jobs:
           name: Nodo-ipa
           path: Nodo.ipa
           retention-days: 30
+
+  # Job independiente: si falla una captura, `compilar` sigue publicando el
+  # .ipa igual que antes. Solo corre el target NodoCapturas, no `swift test`.
+  # Ademas del artefacto, publica los PNG y el log en la rama `capturas`:
+  # la revision visual de la SPEC seccion 6 se hace leyendo esa rama, sin
+  # depender de descargar artefactos con permisos de administrador.
+  capturas:
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar el proyecto Xcode
+        run: xcodegen generate
+
+      - name: Preparar el simulador
+        run: |
+          # En CI no hay teclado fisico: el simulador debe mostrar el teclado
+          # en pantalla para que las capturas de la Fase 1 lo incluyan.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          xcrun simctl bootstatus booted -b || true
+
+      - name: Capturas del simulador
+        run: |
+          rm -rf capturas.xcresult capturas
+          set -o pipefail
+          xcodebuild test \
+            -project Nodo.xcodeproj \
+            -scheme Capturas \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:NodoCapturas \
+            -parallel-testing-enabled NO \
+            -resultBundlePath capturas.xcresult \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" 2>&1 | tee xcodebuild-capturas.log
+
+      - name: Extraer los PNG del .xcresult
+        if: always()
+        run: python3 herramientas/extraer-capturas.py capturas.xcresult capturas
+
+      - name: Publicar las capturas
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: capturas-${{ github.event.inputs.fase || 'actual' }}
+          path: capturas/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publicar capturas y log en la rama capturas
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FASE: ${{ github.event.inputs.fase || 'actual' }}
+        run: |
+          # Rama de solo capturas: cada corrida deja una carpeta
+          # <fase>-<sha corto>/ con los PNG y el log completo de xcodebuild,
+          # para que la revision visual y el diagnostico se hagan con git.
+          # Si dos corridas publican a la vez, el push perdedor se reintenta
+          # clonando de nuevo: publicar nunca debe tumbar el job.
+          publicar() {
+            rm -rf pub
+            if git clone --depth 1 --branch capturas \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+              echo "Rama capturas existente."
+            else
+              mkdir pub && (cd pub && git init -q -b capturas .)
+              echo "Rama capturas creada como huerfana."
+            fi
+            DEST="pub/${FASE}-${GITHUB_SHA::7}"
+            mkdir -p "$DEST"
+            # El log se copia PRIMERO y sin condicion: es la evidencia de
+            # diagnostico cuando los tests fallan y no hay ningun PNG.
+            cp xcodebuild-capturas.log "$DEST/" 2>/dev/null || echo "Sin log en esta corrida."
+            cp capturas/*.png "$DEST/" 2>/dev/null || echo "Sin PNG en esta corrida."
+            # Los adjuntos de texto (jerarquia de accesibilidad de los tests)
+            # viajan con las capturas para diagnosticar sin bajar artefactos.
+            cp capturas/*.txt "$DEST/" 2>/dev/null || echo "Sin TXT en esta corrida."
+            cd pub
+            git config user.name "nodo-ci"
+            git config user.email "ci@localhost"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Nada nuevo que publicar."
+              cd ..
+              return 0
+            fi
+            git commit -q -m "capturas ${FASE} ${GITHUB_SHA::7}"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
+          }
+          publicar || { sleep 10; publicar; } || { sleep 20; publicar; } || echo "Publicacion omitida tras 3 intentos; el artefacto sigue disponible."

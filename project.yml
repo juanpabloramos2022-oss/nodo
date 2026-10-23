@@ -42,18 +42,24 @@ targets:
     # `swift test` es el que se compila dentro de la app, sin copiarlo.
     dependencies:
       - package: NodoCore
+      - sdk: Speech.framework
+      - sdk: AVFoundation.framework
     info:
       path: Nodo/Info.plist
       properties:
         CFBundleDisplayName: Nodo
-        CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "0.3.0"
+        CFBundleVersion: "4"
         CFBundleIconName: AppIcon
         LSRequiresIPhoneOS: true
         UIUserInterfaceStyle: Dark
         UIApplicationSupportsIndirectInputEvents: true
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        # Textos genericos de los permisos del dictado (§4.5). No describen
+        # datos de nadie: solo dicen para que usa Nodo el microfono.
+        NSMicrophoneUsageDescription: "Nodo usa el micrófono para dictar mensajes por voz."
+        NSSpeechRecognitionUsageDescription: "Nodo usa el reconocimiento de voz para convertir tu dictado en texto."
         # Permite hablar con un servidor de modelos en la red local por http.
         # Todo lo que sale a internet sigue exigiendo https.
         NSAppTransportSecurity:
@@ -66,11 +72,32 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios
         PRODUCT_NAME: Nodo
-        MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "4"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+
+  # Target de UI tests que arranca la app en el simulador y adjunta un PNG por
+  # captura. No cambia el bundle id ni la version de la app: es un bundle de
+  # pruebas aparte, con su propio identificador.
+  NodoCapturas:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: NodoCapturas
+    dependencies:
+      - target: Nodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios.capturas
+        PRODUCT_NAME: NodoCapturas
+        TEST_TARGET_NAME: Nodo
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        # Misma version que la app, solo para el Info.plist del bundle de tests.
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "4"
 
 schemes:
   Nodo:
@@ -81,3 +108,17 @@ schemes:
       config: Release
     archive:
       config: Release
+
+  # Esquema propio para que `xcodebuild test` corra SOLO las capturas, sin
+  # mezclarlas con la compilacion de la app que publica el .ipa.
+  Capturas:
+    build:
+      targets:
+        Nodo: all
+        NodoCapturas: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - NodoCapturas

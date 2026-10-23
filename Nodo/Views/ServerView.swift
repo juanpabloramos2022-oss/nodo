@@ -79,6 +79,7 @@ struct ServerView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Tema.fondo.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Servidor")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: cargar)
