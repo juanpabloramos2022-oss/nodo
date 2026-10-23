@@ -3,101 +3,317 @@ import SwiftUI
 
 import NodoCore
 
-/// La pantalla de conversacion.
+/// La pantalla de conversacion, empujada dentro de la pila de Chats.
+///
+/// La cabecera se construye con el `.toolbar` nativo de NavigationStack: el
+/// boton de volver lo pone el sistema y por eso el gesto de borde izquierdo
+/// sigue funcionando (ley n. 1). Solo hay tres elementos: volver, pildora y •••.
 struct ChatView: View {
     @EnvironmentObject private var estado: EstadoApp
+
+    /// Lleva a la pestana Ajustes para gestionar modelos.
+    let alGestionarModelos: () -> Void
+    /// Vuelve a la lista cuando se borra el chat abierto.
+    let alVolverALista: () -> Void
+
     @State private var borrador = ""
     @FocusState private var escribiendo: Bool
+    @State private var mostrarEstadoChat = false
+    @State private var mostrarMemoriaRapida = false
+    @State private var confirmarBorrado = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                contenido
+        VStack(spacing: 0) {
+            contenido
 
-                if let error = estado.error {
-                    AvisoError(texto: error) { estado.error = nil }
-                        .padding(.bottom, 8)
-                }
-
-                resumenDelChat
-
-                barraDeEntrada
+            if let error = estado.error {
+                AvisoError(texto: error) { estado.error = nil }
+                    .padding(.bottom, 8)
             }
-            .background(Tema.fondo.ignoresSafeArea())
-            .navigationTitle(estado.conversacion.titulo)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    selectorDeProveedor
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        estado.nuevaConversacion()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                }
+
+            resumenDelChat
+            tiraFina
+            barraDeEntrada
+        }
+        .background(Tema.fondo.ignoresSafeArea())
+        .navigationTitle(estado.conversacion.titulo)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                pildora
             }
-            // Una sola barra por jerarquia: la caja del chat y cualquier campo
-            // que se abra desde esta pantalla comparten esta raiz.
-            .conBarraTecladoListo()
+            ToolbarItem(placement: .topBarTrailing) {
+                menuAcciones
+            }
+        }
+        // Al entrar en una conversacion las pestanas se ocultan; la cabecera
+        // nativa queda clavada y el gesto de borde sigue disponible.
+        .toolbar(.hidden, for: .tabBar)
+        // Volver (boton o gesto) cierra el teclado en la transicion.
+        .onDisappear { bajarTeclado() }
+        .sheet(isPresented: $mostrarEstadoChat) {
+            HojaEstadoChatView()
+        }
+        .sheet(isPresented: $mostrarMemoriaRapida) {
+            HojaMemoriaRapidaView()
+        }
+        .confirmationDialog(
+            "Borrar esta conversacion?",
+            isPresented: $confirmarBorrado,
+            titleVisibility: .visible
+        ) {
+            Button("Borrar", role: .destructive) { borrar() }
+            Button("Cancelar", role: .cancel) {}
         }
     }
 
-    /// Etiqueta con el proveedor activo.
+    // MARK: - Cabecera: pildora central
+
+    /// Pildora con el modelo activo y su subtitulo.
     ///
-    /// En la barra solo cabe el nombre; el modelo completo se lee al abrir el
-    /// menu. Con un unico proveedor no hay menu: no hay nada que cambiar.
-    @ViewBuilder
-    private var selectorDeProveedor: some View {
-        if let activo = estado.config.proveedorSeleccionado {
-            if estado.config.proveedores.count > 1 {
-                Menu {
-                    ForEach(estado.config.proveedores) { proveedor in
-                        Button {
-                            estado.config.proveedorActivo = proveedor.id
-                        } label: {
-                            if proveedor.id == activo.id {
-                                Label(textoDe(proveedor), systemImage: "checkmark")
-                            } else {
-                                Text(textoDe(proveedor))
-                            }
-                        }
-                    }
+    /// Toque 1 abre el menu nativo; toque 2 elige otro modelo sin salir de la
+    /// conversacion ni perder lo escrito (SPEC §3.2).
+    private var pildora: some View {
+        Menu {
+            ForEach(estado.config.proveedores) { proveedor in
+                Button {
+                    estado.cambiarProveedor(proveedor)
                 } label: {
-                    HStack(spacing: 3) {
-                        Text(nombreDe(activo))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
+                    if esActivo(proveedor) {
+                        Label(nombreDeModelo(proveedor), systemImage: "checkmark")
+                    } else {
+                        Text(nombreDeModelo(proveedor))
                     }
-                    .font(.footnote.weight(.semibold))
                 }
-                .accessibilityLabel("Proveedor \(textoDe(activo))")
-                .accessibilityHint("Cambia el proveedor para el proximo mensaje")
-            } else {
-                Text(nombreDe(activo))
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-                    .accessibilityLabel("Proveedor \(textoDe(activo))")
             }
+
+            Divider()
+
+            Button {
+                alGestionarModelos()
+            } label: {
+                Label("Gestionar modelos…", systemImage: "slider.horizontal.3")
+            }
+        } label: {
+            VStack(spacing: 1) {
+                HStack(spacing: 3) {
+                    Text(modeloLimpio)
+                        .font(.footnote.weight(.bold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                }
+
+                HStack(spacing: 4) {
+                    Text(subtituloPildora)
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .lineLimit(1)
+                    indicadorMemoria
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: 200)
+        }
+        .accessibilityLabel("Modelo \(modeloLimpio). \(proveedorLimpio)")
+        .accessibilityHint("Abre el menu para cambiar de modelo")
+        .accessibilityIdentifier("pildora-modelo")
+    }
+
+    /// 🧠 con punto verde solo cuando la Memoria tiene texto y el chat la usa.
+    ///
+    /// El 🧠 se queda visible tambien en un chat sin memoria; lo que desaparece
+    /// es el punto verde, que es la senal de que la Memoria se esta inyectando
+    /// (§4.6).
+    private var indicadorMemoria: some View {
+        HStack(spacing: 2) {
+            Text("🧠")
+                .font(.caption2)
+            if memoriaActiva {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+            }
+        }
+        .fixedSize()
+        .accessibilityHidden(true)
+    }
+
+    private var modeloLimpio: String {
+        guard let proveedor = estado.config.proveedorSeleccionado else {
+            return "Sin modelo"
+        }
+        let limpio = NombresLimpios.modelo(proveedor.modelo)
+        return limpio.isEmpty ? "Sin modelo" : limpio
+    }
+
+    private var proveedorLimpio: String {
+        guard let proveedor = estado.config.proveedorSeleccionado else {
+            return "Sin proveedor"
+        }
+        return NombresLimpios.proveedor(
+            nombre: proveedor.nombre,
+            baseURL: proveedor.baseURL
+        )
+    }
+
+    /// Subtitulo de la pildora: proveedor · costo acumulado (si hay precios).
+    private var subtituloPildora: String {
+        var partes = [proveedorLimpio]
+        if let costo = costoAcumulado {
+            // En la pildora la cifra va compacta; el detalle con "estimado"
+            // sigue estando en el resumen y en el pie de cada respuesta.
+            partes.append("≈$\(String(format: "%.4f", costo))")
+        }
+        return partes.joined(separator: " · ")
+    }
+
+    private var memoriaActiva: Bool {
+        !estado.conversacion.sinMemoria
+            && !estado.config.systemPrompt
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+    }
+
+    private var costoAcumulado: Double? {
+        guard let proveedor = estado.config.proveedorSeleccionado else { return nil }
+        return CostoEstimado.acumulado(
+            mensajes: estado.conversacion.mensajes,
+            precioEntrada: proveedor.precioEntradaPorMillon,
+            precioSalida: proveedor.precioSalidaPorMillon
+        )
+    }
+
+    private func nombreDeModelo(_ proveedor: ProviderConfig) -> String {
+        let limpio = NombresLimpios.modelo(proveedor.modelo)
+        guard limpio.isEmpty else { return limpio }
+        return NombresLimpios.proveedor(
+            nombre: proveedor.nombre,
+            baseURL: proveedor.baseURL
+        )
+    }
+
+    private func esActivo(_ proveedor: ProviderConfig) -> Bool {
+        estado.config.proveedorSeleccionado?.id == proveedor.id
+    }
+
+    // MARK: - Cabecera: menu •••
+
+    /// Menu de acciones con solo lo que existe en esta fase.
+    private var menuAcciones: some View {
+        Menu {
+            Button {
+                mostrarEstadoChat = true
+            } label: {
+                Label("Estado del chat", systemImage: "chart.bar.xaxis")
+            }
+
+            Button {
+                alternarFijado()
+            } label: {
+                Label(
+                    estado.conversacion.fijada ? "Desfijar" : "Fijar",
+                    systemImage: estado.conversacion.fijada ? "pin.slash" : "pin"
+                )
+            }
+
+            Button {
+                estado.archivar(estado.conversacion)
+            } label: {
+                Label("Archivar", systemImage: "archivebox")
+            }
+
+            Button {
+                estado.alternarSinMemoria()
+            } label: {
+                if estado.conversacion.sinMemoria {
+                    Label("Chat sin memoria", systemImage: "checkmark")
+                } else {
+                    Text("Chat sin memoria")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                confirmarBorrado = true
+            } label: {
+                Label("Borrar", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 17, weight: .semibold))
+        }
+        .accessibilityLabel("Mas acciones del chat")
+        .accessibilityIdentifier("menu-chat")
+    }
+
+    private func alternarFijado() {
+        if estado.conversacion.fijada {
+            estado.desfijar(estado.conversacion)
         } else {
-            Text("Sin proveedor")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            estado.fijar(estado.conversacion)
         }
     }
 
-    /// Nombre del proveedor, con un texto de reserva si esta sin poner.
-    private func nombreDe(_ proveedor: ProviderConfig) -> String {
-        let nombre = proveedor.nombre.trimmingCharacters(in: .whitespacesAndNewlines)
-        return nombre.isEmpty ? "Proveedor" : nombre
+    private func borrar() {
+        // Primero se sale de la pila y despues se borra: la ruta no llega a
+        // apuntar a una conversacion que ya no existe.
+        let conversacion = estado.conversacion
+        alVolverALista()
+        estado.borrar(conversacion)
     }
 
-    /// Nombre y modelo completos, solo para las filas del menu.
-    private func textoDe(_ proveedor: ProviderConfig) -> String {
-        let modelo = proveedor.modelo.trimmingCharacters(in: .whitespacesAndNewlines)
-        return modelo.isEmpty ? nombreDe(proveedor) : "\(nombreDe(proveedor)) · \(modelo)"
+    // MARK: - Hilo
+
+    /// Una fila del hilo: un mensaje real o un evento puramente visual.
+    private enum FilaHilo: Identifiable {
+        case mensaje(ChatMessage)
+        case evento(EventoVisual)
+
+        var id: String {
+            switch self {
+            case .mensaje(let mensaje):
+                return "mensaje-\(mensaje.id.uuidString)"
+            case .evento(let evento):
+                return "evento-\(evento.id.uuidString)"
+            }
+        }
+    }
+
+    /// Mensajes con los divisores intercalados en su punto exacto.
+    ///
+    /// Los eventos se guardan aparte de `mensajes`, asi que esta mezcla es solo
+    /// de pintado: el payload sigue construyendose con `Historial` (SPEC §2.6).
+    private var filas: [FilaHilo] {
+        let mensajes = estado.conversacion.mensajes
+        let ids = Set(mensajes.map(\.id))
+        var resultado: [FilaHilo] = []
+
+        resultado.append(
+            contentsOf: estado.eventosVisuales
+                .filter { $0.trasMensaje == nil }
+                .map(FilaHilo.evento)
+        )
+
+        for mensaje in mensajes {
+            resultado.append(.mensaje(mensaje))
+            resultado.append(
+                contentsOf: estado.eventosVisuales
+                    .filter { $0.trasMensaje == mensaje.id }
+                    .map(FilaHilo.evento)
+            )
+        }
+
+        // Un evento cuyo ancla desaparecio (por ejemplo, al regenerar) no se
+        // pierde: se pinta al final para no ocultar informacion.
+        let huerfanos = estado.eventosVisuales.filter { evento in
+            guard let ancla = evento.trasMensaje else { return false }
+            return !ids.contains(ancla)
+        }
+        resultado.append(contentsOf: huerfanos.map(FilaHilo.evento))
+
+        return resultado
     }
 
     @ViewBuilder
@@ -112,19 +328,9 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(estado.conversacion.mensajes) { mensaje in
-                            VStack(alignment: .leading, spacing: 2) {
-                                BurbujaMensaje(mensaje: mensaje)
-
-                                if mensaje.rol == .asistente,
-                                   let linea = lineaDeConsumo(mensaje) {
-                                    Text(linea)
-                                        .font(.caption2)
-                                        .foregroundStyle(Tema.textoSuave)
-                                        .padding(.leading, 14)
-                                }
-                            }
-                            .id(mensaje.id.uuidString)
+                        ForEach(filas) { fila in
+                            filaDeHilo(fila)
+                                .id(fila.id)
                         }
 
                         if puedeRegenerar {
@@ -144,11 +350,40 @@ struct ChatView: View {
                 .onChange(of: estado.conversacion.mensajes.count) { _, _ in
                     desplazarAlFinal(proxy)
                 }
+                .onChange(of: estado.eventosVisuales.count) { _, _ in
+                    desplazarAlFinal(proxy)
+                }
                 .onChange(of: estado.textoEnCurso) { _, _ in
                     desplazarAlFinal(proxy)
                 }
                 .onAppear { desplazarAlFinal(proxy) }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func filaDeHilo(_ fila: FilaHilo) -> some View {
+        switch fila {
+        case .mensaje(let mensaje):
+            VStack(alignment: .leading, spacing: 2) {
+                BurbujaMensaje(mensaje: mensaje)
+
+                if mensaje.rol == .asistente,
+                   let linea = lineaDeConsumo(mensaje) {
+                    Text(linea)
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .padding(.leading, 14)
+                }
+            }
+
+        case .evento(let evento):
+            Text(evento.texto)
+                .font(.caption2)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 2)
+                .accessibilityLabel(evento.texto)
         }
     }
 
@@ -162,7 +397,7 @@ struct ChatView: View {
         } else if puedeRegenerar {
             destino = Self.marcaRegenerar
         } else {
-            destino = estado.conversacion.mensajes.last?.id.uuidString
+            destino = filas.last?.id
         }
 
         guard let destino else { return }
@@ -193,12 +428,14 @@ struct ChatView: View {
         .accessibilityLabel("Regenerar la ultima respuesta")
     }
 
+    // MARK: - Consumo
+
     /// Consumo acumulado del chat, si algun mensaje trae cifras.
     private var usoDelChat: UsoTokens? {
         CostoEstimado.usoAcumulado(de: estado.conversacion.mensajes)
     }
 
-    /// Fila fina con el acumulado del chat, encima de la barra de entrada.
+    /// Fila fina con el acumulado del chat, encima de la tira y la caja.
     @ViewBuilder
     private var resumenDelChat: some View {
         if let uso = usoDelChat {
@@ -242,6 +479,59 @@ struct ChatView: View {
 
     private func textoCosto(_ costo: Double) -> String {
         "≈$\(String(format: "%.4f", costo)) estimado"
+    }
+
+    // MARK: - Tira fina y caja de texto
+
+    /// Fila fina sobre la caja: modo Chat | Tarea y acceso rapido a la Memoria.
+    private var tiraFina: some View {
+        HStack(spacing: 10) {
+            Picker(
+                "Modo",
+                selection: Binding(
+                    get: { estado.conversacion.modoTarea },
+                    set: { estado.cambiarModoTarea($0) }
+                )
+            ) {
+                Text("Chat").tag(false)
+                Text("Tarea").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .frame(maxWidth: 160)
+            .accessibilityLabel("Modo del chat")
+            .accessibilityIdentifier("modo-chat")
+
+            Spacer(minLength: 0)
+
+            Button {
+                mostrarMemoriaRapida = true
+            } label: {
+                HStack(spacing: 3) {
+                    Text("🧠")
+                    if memoriaActiva {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Tema.superficie)
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                memoriaActiva
+                    ? "Memoria activa en este chat"
+                    : "Memoria apagada en este chat"
+            )
+            .accessibilityHint("Edita la Memoria sin salir de la conversacion")
+            .accessibilityIdentifier("memoria-rapida")
+        }
+        .padding(.horizontal, Tema.margen)
+        .padding(.top, 6)
     }
 
     private var barraDeEntrada: some View {

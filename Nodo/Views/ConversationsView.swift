@@ -1,14 +1,24 @@
+import Foundation
 import SwiftUI
 
 import NodoCore
 
-/// Lista de conversaciones guardadas.
+/// Lista de conversaciones guardadas: raiz de la pestana Chats.
+///
+/// No conoce la pila: abrir una fila o crear un chat se delega en la raiz, que
+/// es quien empuja la conversacion en la misma NavigationStack.
 struct ConversationsView: View {
     @EnvironmentObject private var estado: EstadoApp
+    let alAbrir: (Conversation) -> Void
+    let alNuevo: (Bool) -> Void
+
     @State private var aBorrar: Conversation?
     @State private var aRenombrar: Conversation?
     @State private var tituloEditado = ""
     @State private var busqueda = ""
+    /// Marca temporal del ultimo "mantener pulsado + Nuevo". Evita que el
+    /// toque normal del mismo boton cree ademas un chat con memoria.
+    @State private var ultimaPulsacionLarga: Date?
 
     /// Secciones ya ordenadas y filtradas por las reglas de NodoCore.
     private var secciones: SeccionesHistorial {
@@ -16,72 +26,91 @@ struct ConversationsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if estado.conversaciones.isEmpty {
-                    EstadoVacio(
-                        icono: "clock",
-                        titulo: "Sin historial",
-                        detalle: "Las conversaciones se guardan solas en el telefono."
-                    )
-                } else {
-                    lista
-                }
-            }
-            .background(Tema.fondo.ignoresSafeArea())
-            .navigationTitle("Historial")
-            .searchable(
-                text: $busqueda,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Buscar por titulo o mensaje"
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        estado.nuevaConversacion()
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            // La barra de teclado vive en la raiz de esta jerarquia (tambien
-            // cubre el buscador); no se repite en las pantallas que se abren
-            // desde aqui.
-            .conBarraTecladoListo()
-            .confirmationDialog(
-                "Borrar esta conversacion?",
-                isPresented: Binding(
-                    get: { aBorrar != nil },
-                    set: { if !$0 { aBorrar = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Borrar", role: .destructive) {
-                    if let aBorrar { estado.borrar(aBorrar) }
-                    aBorrar = nil
-                }
-                Button("Cancelar", role: .cancel) { aBorrar = nil }
-            }
-            .alert(
-                "Renombrar conversacion",
-                isPresented: Binding(
-                    get: { aRenombrar != nil },
-                    set: { if !$0 { aRenombrar = nil } }
+        Group {
+            if estado.conversaciones.isEmpty {
+                EstadoVacio(
+                    icono: "bubble.left.and.bubble.right",
+                    titulo: "Sin chats",
+                    detalle: "Las conversaciones se guardan solas en el telefono."
                 )
-            ) {
-                TextField("Titulo", text: $tituloEditado)
-                Button("Guardar") {
-                    if let aRenombrar {
-                        let limpio = tituloEditado.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !limpio.isEmpty {
-                            estado.renombrar(aRenombrar, titulo: limpio)
-                        }
-                    }
-                    aRenombrar = nil
-                }
-                Button("Cancelar", role: .cancel) { aRenombrar = nil }
+            } else {
+                lista
             }
         }
+        .background(Tema.fondo.ignoresSafeArea())
+        .navigationTitle("Chats")
+        .searchable(
+            text: $busqueda,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Buscar en tus conversaciones"
+        )
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                botonNuevo
+            }
+        }
+        .confirmationDialog(
+            "Borrar esta conversacion?",
+            isPresented: Binding(
+                get: { aBorrar != nil },
+                set: { if !$0 { aBorrar = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Borrar", role: .destructive) {
+                if let aBorrar { estado.borrar(aBorrar) }
+                aBorrar = nil
+            }
+            Button("Cancelar", role: .cancel) { aBorrar = nil }
+        }
+        .alert(
+            "Renombrar conversacion",
+            isPresented: Binding(
+                get: { aRenombrar != nil },
+                set: { if !$0 { aRenombrar = nil } }
+            )
+        ) {
+            TextField("Titulo", text: $tituloEditado)
+            Button("Guardar") {
+                if let aRenombrar {
+                    let limpio = tituloEditado.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !limpio.isEmpty {
+                        estado.renombrar(aRenombrar, titulo: limpio)
+                    }
+                }
+                aRenombrar = nil
+            }
+            Button("Cancelar", role: .cancel) { aRenombrar = nil }
+        }
+    }
+
+    /// Boton + Nuevo: un toque crea un chat normal; mantener pulsado lo crea ya
+    /// sin memoria (§4.6). El gesto largo vive en el mismo boton.
+    private var botonNuevo: some View {
+        Button {
+            if let fecha = ultimaPulsacionLarga,
+               Date().timeIntervalSince(fecha) < 0.8 {
+                ultimaPulsacionLarga = nil
+                return
+            }
+            alNuevo(false)
+        } label: {
+            Image(systemName: "plus")
+        }
+        .accessibilityIdentifier("nuevo-chat")
+        .accessibilityLabel("Nuevo chat")
+        .accessibilityHint("Manten pulsado para crear un chat sin memoria")
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                ultimaPulsacionLarga = Date()
+                alNuevo(true)
+                // La marca se limpia sola por si el toque normal del boton no
+                // llega a ejecutarse despues de la pulsacion larga.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    ultimaPulsacionLarga = nil
+                }
+            }
+        )
     }
 
     private var lista: some View {
@@ -127,7 +156,7 @@ struct ConversationsView: View {
     @ViewBuilder
     private func filaConAcciones(_ conversacion: Conversation, archivada: Bool) -> some View {
         Button {
-            estado.abrir(conversacion)
+            alAbrir(conversacion)
         } label: {
             fila(conversacion)
         }

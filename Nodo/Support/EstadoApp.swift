@@ -18,6 +18,12 @@ final class EstadoApp: ObservableObject {
     @Published var conversacion: Conversation
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
+    /// Divisores y avisos del hilo abierto (SPEC §2.6).
+    ///
+    /// Viven fuera de `mensajes` a proposito: son metadatos de interfaz y jamas
+    /// pueden viajar en el payload. Tampoco se persisten: al abrir o crear otra
+    /// conversacion se limpian.
+    @Published private(set) var eventosVisuales: [EventoVisual] = []
     @Published var error: String?
 
     /// Ventana de contexto de cada modelo, en tokens.
@@ -168,9 +174,24 @@ final class EstadoApp: ObservableObject {
                 try llavero.borrar(proveedor.claveKeychain)
             } else {
                 try llavero.guardar(limpia, para: proveedor.claveKeychain)
+                propagarClave(limpia, desde: proveedor)
             }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Propaga una clave recien guardada a los companeros del mismo host.
+    ///
+    /// La regla pura vive en `AppConfig.companerosDeHost` (§3.7). Aqui solo se
+    /// escribe directo en el llavero, sin volver a llamar a `guardarClave`:
+    /// una clave propia distinta ya guardada no se pisa nunca.
+    private func propagarClave(_ clave: String, desde proveedor: ProviderConfig) {
+        for companero in config.companerosDeHost(de: proveedor) {
+            let actual = llavero.leer(companero.claveKeychain) ?? ""
+            let vacia = actual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard vacia else { continue }
+            try? llavero.guardar(clave, para: companero.claveKeychain)
         }
     }
 
@@ -254,22 +275,88 @@ final class EstadoApp: ObservableObject {
         conversaciones = store.listar()
     }
 
-    func nuevaConversacion() {
+    func nuevaConversacion(sinMemoria: Bool = false) {
         cancelar()
-        conversacion = Conversation()
+        limpiarEventosVisuales()
+        conversacion = Conversation(sinMemoria: sinMemoria)
     }
 
     func abrir(_ otra: Conversation) {
         cancelar()
+        limpiarEventosVisuales()
         conversacion = otra
     }
 
     func borrar(_ otra: Conversation) {
+        if conversacion.id == otra.id {
+            cancelar()
+        }
         try? store?.borrar(id: otra.id)
         if conversacion.id == otra.id {
+            limpiarEventosVisuales()
             conversacion = Conversation()
         }
         recargarConversaciones()
+    }
+
+    /// Cambia el proveedor activo y deja el divisor visual del cambio de modelo.
+    ///
+    /// El evento solo se pinta si el chat ya tiene mensajes; el historial no se
+    /// toca y el cambio aplica desde el siguiente turno (SPEC §3.2/§2.6).
+    func cambiarProveedor(_ proveedor: ProviderConfig) {
+        guard config.proveedorActivo != proveedor.id else { return }
+
+        // Si el id guardado no existia, el proveedor ya se estaba mostrando
+        // como seleccionado por el respaldo: se corrige el id sin divisor.
+        let yaSeleccionado = config.proveedorSeleccionado?.id == proveedor.id
+        config.proveedorActivo = proveedor.id
+
+        guard !yaSeleccionado,
+              !conversacion.mensajes.isEmpty,
+              let ultimo = conversacion.mensajes.last?.id
+        else {
+            return
+        }
+
+        let modelo = NombresLimpios.modelo(proveedor.modelo)
+        let nombre = modelo.isEmpty
+            ? NombresLimpios.proveedor(nombre: proveedor.nombre, baseURL: proveedor.baseURL)
+            : modelo
+        registrarEventoVisual("── Ahora responde \(nombre) ──", tras: ultimo)
+    }
+
+    /// Activa o desactiva la Memoria en el chat abierto y lo persiste.
+    ///
+    /// Al apagarla con mensajes ya enviados se deja el divisor del punto exacto
+    /// del cambio; los turnos anteriores ya viajaron con la Memoria (§4.6).
+    func alternarSinMemoria() {
+        let teniaMensajes = !conversacion.mensajes.isEmpty
+        conversacion.sinMemoria.toggle()
+
+        if conversacion.sinMemoria, teniaMensajes,
+           let ultimo = conversacion.mensajes.last?.id {
+            registrarEventoVisual(
+                "── Memoria desactivada desde este mensaje ──",
+                tras: ultimo
+            )
+        }
+
+        guardarActual()
+    }
+
+    /// Cambia el modo Chat/Tarea. En esta fase solo se persiste el flag.
+    func cambiarModoTarea(_ activo: Bool) {
+        guard conversacion.modoTarea != activo else { return }
+        conversacion.modoTarea = activo
+        guardarActual()
+    }
+
+    private func limpiarEventosVisuales() {
+        eventosVisuales = []
+    }
+
+    private func registrarEventoVisual(_ texto: String, tras mensaje: UUID?) {
+        eventosVisuales.append(EventoVisual(trasMensaje: mensaje, texto: texto))
     }
 
     func renombrar(_ otra: Conversation, titulo: String) {
@@ -284,6 +371,9 @@ final class EstadoApp: ObservableObject {
         var copia = otra
         copia.fijada = fijada
         try? store?.guardar(copia)
+        if conversacion.id == copia.id {
+            conversacion.fijada = fijada
+        }
         recargarConversaciones()
     }
 
@@ -296,6 +386,9 @@ final class EstadoApp: ObservableObject {
         var copia = otra
         copia.archivada = archivada
         try? store?.guardar(copia)
+        if conversacion.id == copia.id {
+            conversacion.archivada = archivada
+        }
         recargarConversaciones()
     }
 
@@ -303,10 +396,14 @@ final class EstadoApp: ObservableObject {
         archivar(otra, archivada: false)
     }
 
-    private func persistirActual() {
-        conversacion.actualizada = Date()
+    private func guardarActual() {
         try? store?.guardar(conversacion)
         recargarConversaciones()
+    }
+
+    private func persistirActual() {
+        conversacion.actualizada = Date()
+        guardarActual()
     }
 
     // MARK: - Envio
@@ -483,16 +580,14 @@ final class EstadoApp: ObservableObject {
 
     /// Historial que se manda al modelo: el prompt de sistema primero.
     ///
-    /// No se guarda dentro de la conversacion a proposito, para que cambiarlo en
-    /// ajustes afecte tambien a las conversaciones ya abiertas.
+    /// La regla vive en NodoCore para poder probarla con `swift test`: en un
+    /// chat sin memoria el prompt no se inyecta (§4.6). Los eventos visuales no
+    /// forman parte de `conversacion.mensajes`, asi que jamas entran aqui.
     private func historialParaEnviar() -> [ChatMessage] {
-        var historial: [ChatMessage] = []
-        let prompt = config.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !prompt.isEmpty {
-            historial.append(ChatMessage(rol: .sistema, texto: prompt))
-        }
-        historial.append(contentsOf: conversacion.mensajes)
-        return historial
+        Historial.paraEnviar(
+            conversacion: conversacion,
+            promptSistema: config.systemPrompt
+        )
     }
 
     private func motorPara(proveedor: ProviderConfig, clave: String) -> ChatEngine {

@@ -20,18 +20,29 @@ struct NodoApp: App {
     }
 }
 
-/// Las tres pantallas principales.
+/// Las dos pantallas principales de esta fase.
+///
+/// La lista de chats y la conversacion viven en la MISMA pila (ley n. 1): la
+/// raiz es la lista y la conversacion se empuja encima. La raiz definitiva de
+/// tres pestanas es la Fase 4; aqui no se adelanta.
 struct RaizView: View {
-    var body: some View {
-        TabView {
-            ChatView()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right.fill") }
+    @State private var seleccion: PestanaRaiz = .chats
 
-            ConversationsView()
-                .tabItem { Label("Historial", systemImage: "clock.fill") }
+    var body: some View {
+        TabView(selection: $seleccion) {
+            ChatsRaizView(seleccion: $seleccion)
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right.fill") }
+                .tag(PestanaRaiz.chats)
 
             SettingsView()
                 .tabItem { Label("Ajustes", systemImage: "gearshape.fill") }
+                .tag(PestanaRaiz.ajustes)
         }
     }
+}
+
+/// Pestanas de la raiz mientras dure la Fase 2-B1.
+enum PestanaRaiz: Hashable {
+    case chats
+    case ajustes
 }
