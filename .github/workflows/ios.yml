@@ -7,7 +7,7 @@ name: ios
 
 on:
   push:
-    branches: [main, feat/gran-avance]
+    branches: [main, feat/gran-avance, feat/v031-correccion]
   pull_request:
   workflow_dispatch:
     inputs:
