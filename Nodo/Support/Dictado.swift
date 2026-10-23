@@ -54,16 +54,16 @@ final class DictadoReconocimiento: SpeechRecognizing {
     }
 
     func solicitarPermisos() async -> Bool {
-        let reconocimiento = await conContinuacion { continuacion in
+        let reconocimiento = await conContinuacion { responder in
             SFSpeechRecognizer.requestAuthorization { estado in
-                continuacion.resume(returning: estado == .authorized)
+                responder(estado == .authorized)
             }
         }
         guard reconocimiento else { return false }
 
-        return await conContinuacion { continuacion in
+        return await conContinuacion { responder in
             AVAudioSession.sharedInstance().requestRecordPermission { concedido in
-                continuacion.resume(returning: concedido)
+                responder(concedido)
             }
         }
     }
