@@ -111,6 +111,11 @@ struct ChatView: View {
                                 .id(mensaje.id.uuidString)
                         }
 
+                        if puedeRegenerar {
+                            botonRegenerar
+                                .id(Self.marcaRegenerar)
+                        }
+
                         if estado.enviando {
                             BurbujaEnCurso(texto: estado.textoEnCurso)
                                 .id(Self.marcaEnCurso)
@@ -132,16 +137,44 @@ struct ChatView: View {
     }
 
     private static let marcaEnCurso = "nodo-en-curso"
+    private static let marcaRegenerar = "nodo-regenerar"
 
     private func desplazarAlFinal(_ proxy: ScrollViewProxy) {
-        let destino: String? = estado.enviando
-            ? Self.marcaEnCurso
-            : estado.conversacion.mensajes.last?.id.uuidString
+        let destino: String?
+        if estado.enviando {
+            destino = Self.marcaEnCurso
+        } else if puedeRegenerar {
+            destino = Self.marcaRegenerar
+        } else {
+            destino = estado.conversacion.mensajes.last?.id.uuidString
+        }
 
         guard let destino else { return }
         withAnimation(.easeOut(duration: 0.18)) {
             proxy.scrollTo(destino, anchor: .bottom)
         }
+    }
+
+    /// Solo se puede regenerar la ultima respuesta cuando el turno ya termino.
+    private var puedeRegenerar: Bool {
+        !estado.enviando && estado.conversacion.mensajes.last?.rol == .asistente
+    }
+
+    /// Boton bajo la ultima respuesta para volver a generarla.
+    private var botonRegenerar: some View {
+        Button {
+            estado.regenerar()
+        } label: {
+            Label("Regenerar", systemImage: "arrow.triangle.2.circlepath")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Tema.textoSuave)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Tema.superficie)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Regenerar la ultima respuesta")
     }
 
     private var barraDeEntrada: some View {

@@ -207,39 +207,109 @@ final class EstadoApp: ObservableObject {
         tareaActual = Task { [weak self] in
             guard let self else { return }
 
-            do {
-                let motor = self.motorPara(proveedor: proveedor, clave: clave)
-                let herramientas = await self.herramientasDisponibles()
-                let bucle = ToolLoop(motor: motor, herramientas: herramientas)
-
-                let resultado = try await bucle.ejecutar(
-                    historial: historial,
-                    alRecibirTexto: { fragmento in
-                        Task { @MainActor [weak self] in
-                            if let self { self.textoEnCurso += fragmento }
-                        }
-                    }
-                )
-
-                self.textoEnCurso = ""
-                self.conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
-                self.persistirActual()
-
-                if resultado.seAgotoElLimite {
-                    self.error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
-                }
-            } catch is CancellationError {
-                self.textoEnCurso = ""
-                self.persistirActual()
-            } catch {
-                self.textoEnCurso = ""
-                self.error = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-                self.persistirActual()
-            }
+            await self.ejecutarTurno(
+                proveedor: proveedor,
+                clave: clave,
+                historial: historial,
+                alFracasar: {}
+            )
 
             self.enviando = false
             self.tareaActual = nil
+        }
+    }
+
+    /// Descarta la ultima respuesta y la vuelve a generar con el proveedor y el
+    /// modelo seleccionados ahora mismo.
+    ///
+    /// Si el turno nuevo falla, el anterior vuelve tal cual: un reintento malo
+    /// no puede costar una respuesta buena.
+    func regenerar() {
+        guard !enviando else { return }
+        guard conversacion.mensajes.last?.rol == .asistente else { return }
+
+        if let problema = problemaDeConfiguracion() {
+            error = problema
+            return
+        }
+
+        guard let proveedor = config.proveedorSeleccionado,
+              let clave = clave(para: proveedor)
+        else {
+            error = "Falta la configuracion del proveedor."
+            return
+        }
+
+        let turnoDescartado = conversacion.descartarUltimoTurno()
+        guard !turnoDescartado.isEmpty else { return }
+        persistirActual()
+
+        enviando = true
+        textoEnCurso = ""
+        error = nil
+
+        let historial = historialParaEnviar()
+
+        tareaActual = Task { [weak self] in
+            guard let self else { return }
+
+            await self.ejecutarTurno(
+                proveedor: proveedor,
+                clave: clave,
+                historial: historial,
+                alFracasar: {
+                    self.conversacion.mensajes.append(contentsOf: turnoDescartado)
+                }
+            )
+
+            self.enviando = false
+            self.tareaActual = nil
+        }
+    }
+
+    /// Corre un turno con el historial ya preparado y deja el resultado en la
+    /// conversacion.
+    ///
+    /// Es la maquinaria que comparten enviar y regenerar. Si el turno falla,
+    /// `alFracasar` deshace lo que haya hecho quien llama antes de publicar el
+    /// error.
+    private func ejecutarTurno(
+        proveedor: ProviderConfig,
+        clave: String,
+        historial: [ChatMessage],
+        alFracasar: () -> Void
+    ) async {
+        do {
+            let motor = motorPara(proveedor: proveedor, clave: clave)
+            let herramientas = await herramientasDisponibles()
+            let bucle = ToolLoop(motor: motor, herramientas: herramientas)
+
+            let resultado = try await bucle.ejecutar(
+                historial: historial,
+                alRecibirTexto: { fragmento in
+                    Task { @MainActor [weak self] in
+                        if let self { self.textoEnCurso += fragmento }
+                    }
+                }
+            )
+
+            textoEnCurso = ""
+            conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
+            persistirActual()
+
+            if resultado.seAgotoElLimite {
+                error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
+            }
+        } catch is CancellationError {
+            textoEnCurso = ""
+            alFracasar()
+            persistirActual()
+        } catch {
+            textoEnCurso = ""
+            alFracasar()
+            error = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            persistirActual()
         }
     }
 
