@@ -27,10 +27,19 @@ struct BurbujaMensaje: View {
     /// TODAS las respuestas del asistente que tienen consumo medido; el boton
     /// de regenerar solo se muestra en la ultima (lo decide ChatView).
     var pie: PieRespuesta?
+    /// Accion de "Ramificar chat desde aqui" (§5.4). Se ofrece sobre el
+    /// contenedor de la burbuja, no sobre el texto: la seleccion de texto de
+    /// las respuestas sigue viviendo dentro de `Text`/`ContenidoAsistente`.
+    var alRamificar: (() -> Void)?
 
-    init(mensaje: ChatMessage, pie: PieRespuesta? = nil) {
+    init(
+        mensaje: ChatMessage,
+        pie: PieRespuesta? = nil,
+        alRamificar: (() -> Void)? = nil
+    ) {
         self.mensaje = mensaje
         self.pie = pie
+        self.alRamificar = alRamificar
     }
 
     var esDelUsuario: Bool { mensaje.rol == .usuario }
@@ -40,64 +49,85 @@ struct BurbujaMensaje: View {
         HStack {
             if esDelUsuario { Spacer(minLength: 48) }
 
-            VStack(alignment: .leading, spacing: 6) {
-                if esHerramienta {
-                    etiquetaHerramienta
-                }
-
-                // Skills aplicadas en este envio: la etiqueta visual ⚡ nombre
-                // (§4.4). Las instrucciones viajan solo en el payload del turno.
-                if !mensaje.skillsAplicadas.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(mensaje.skillsAplicadas, id: \.self) { nombre in
-                            Text("⚡ \(nombre)")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Tema.acento)
-                                .lineLimit(1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Tema.acento.opacity(0.15))
-                                .clipShape(Capsule())
-                        }
-                    }
-                    .accessibilityIdentifier("skills-aplicadas")
-                }
-
-                if !mensaje.texto.isEmpty {
-                    if esDelUsuario || esHerramienta {
-                        Text(mensaje.texto)
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        ContenidoAsistente(texto: mensaje.texto)
-                    }
-                }
-
-                if !mensaje.toolCalls.isEmpty {
-                    ForEach(mensaje.toolCalls, id: \.id) { llamada in
-                        HStack(spacing: 6) {
-                            Image(systemName: "wrench.and.screwdriver")
-                                .font(.caption2)
-                            Text(llamada.nombre)
-                                .font(.caption.monospaced())
-                        }
-                        .foregroundStyle(Tema.acento)
-                    }
-                }
-
-                if let pie {
-                    pie
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(fondo)
-            .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+            contenido
 
             if !esDelUsuario { Spacer(minLength: 48) }
         }
+    }
+
+    /// Burbuja con su menu contextual opcional.
+    @ViewBuilder
+    private var contenido: some View {
+        if let alRamificar {
+            burbuja.contextMenu {
+                Button(action: alRamificar) {
+                    Label(
+                        "🔀 Ramificar chat desde aquí",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                }
+            }
+        } else {
+            burbuja
+        }
+    }
+
+    private var burbuja: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if esHerramienta {
+                etiquetaHerramienta
+            }
+
+            // Skills aplicadas en este envio: la etiqueta visual ⚡ nombre
+            // (§4.4). Las instrucciones viajan solo en el payload del turno.
+            if !mensaje.skillsAplicadas.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(mensaje.skillsAplicadas, id: \.self) { nombre in
+                        Text("⚡ \(nombre)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Tema.acento)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Tema.acento.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
+                .accessibilityIdentifier("skills-aplicadas")
+            }
+
+            if !mensaje.texto.isEmpty {
+                if esDelUsuario || esHerramienta {
+                    Text(mensaje.texto)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ContenidoAsistente(texto: mensaje.texto)
+                }
+            }
+
+            if !mensaje.toolCalls.isEmpty {
+                ForEach(mensaje.toolCalls, id: \.id) { llamada in
+                    HStack(spacing: 6) {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .font(.caption2)
+                        Text(llamada.nombre)
+                            .font(.caption.monospaced())
+                    }
+                    .foregroundStyle(Tema.acento)
+                }
+            }
+
+            if let pie {
+                pie
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(fondo)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
     }
 
     private var etiquetaHerramienta: some View {

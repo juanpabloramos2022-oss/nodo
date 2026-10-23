@@ -64,7 +64,8 @@ final class EstadoApp: ObservableObject {
     /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
     /// presenta observando esta bandera.
     @Published var mostrarHojaModelos = false
-    /// Conversacion que /nuevo quiere abrir. ChatsRaizView la empuja a su pila.
+    /// Conversacion que /nuevo o Ramificar quieren abrir. ChatsRaizView la
+    /// empuja a su pila.
     @Published var idParaAbrir: UUID?
     /// Texto que /exportar quiere compartir. ChatView lo recoge y presenta la
     /// hoja del sistema.
@@ -707,12 +708,42 @@ final class EstadoApp: ObservableObject {
         conversacion = otra
     }
 
+    /// Crea una conversacion nueva con el historial clonado hasta `mensaje`
+    /// (inclusive) y entra directamente en ella (§5.4).
+    ///
+    /// El clon y su acumulado salen del nucleo (`ramificar`): la copia hereda
+    /// los usos de los mensajes clonados, asi que su costo sigue siendo honesto
+    /// desde el primer mensaje. La conversacion original no se toca.
+    func ramificar(desde mensaje: ChatMessage) {
+        guard let nueva = conversacion.ramificar(hastaElMensaje: mensaje.id) else {
+            return
+        }
+
+        try? store?.guardar(nueva)
+        if store == nil {
+            // En capturas no hay almacen: se conserva la lista en memoria para
+            // que la copia tambien exista si se vuelve atras.
+            conversaciones.append(nueva)
+        } else {
+            recargarConversaciones()
+        }
+
+        abrir(nueva)
+        // La raiz observa este id y empuja la copia en la misma pila.
+        idParaAbrir = nueva.id
+    }
+
     func borrar(_ otra: Conversation) {
         if conversacion.id == otra.id {
             cancelar()
         }
         try? store?.borrar(id: otra.id)
         usoResumidoPorConversacion.removeValue(forKey: otra.id.uuidString)
+        if store == nil {
+            // En capturas no hay almacen: la lista en memoria tambien refleja
+            // el borrado para que la pantalla no ensene una fila fantasma.
+            conversaciones.removeAll { $0.id == otra.id }
+        }
         if conversacion.id == otra.id {
             limpiarEventosVisuales()
             limpiarErrorDeTurno()
@@ -720,6 +751,17 @@ final class EstadoApp: ObservableObject {
             conversacion = Conversation()
         }
         recargarConversaciones()
+    }
+
+    /// Refleja en la lista en memoria un cambio de una conversacion cuando no
+    /// hay almacen (modo capturas). En produccion manda `recargarConversaciones`.
+    private func reemplazarEnMemoria(_ conversacion: Conversation) {
+        guard store == nil,
+              let indice = conversaciones.firstIndex(where: { $0.id == conversacion.id })
+        else {
+            return
+        }
+        conversaciones[indice] = conversacion
     }
 
     /// Deja limpio todo lo que pertenece a la caja de la conversacion abierta.
@@ -826,6 +868,7 @@ final class EstadoApp: ObservableObject {
         var copia = otra
         copia.titulo = titulo
         try? store?.guardar(copia)
+        reemplazarEnMemoria(copia)
         recargarConversaciones()
     }
 
@@ -837,6 +880,7 @@ final class EstadoApp: ObservableObject {
         if conversacion.id == copia.id {
             conversacion.fijada = fijada
         }
+        reemplazarEnMemoria(copia)
         recargarConversaciones()
     }
 
@@ -852,6 +896,7 @@ final class EstadoApp: ObservableObject {
         if conversacion.id == copia.id {
             conversacion.archivada = archivada
         }
+        reemplazarEnMemoria(copia)
         recargarConversaciones()
     }
 
@@ -1138,6 +1183,10 @@ final class EstadoApp: ObservableObject {
 
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
+        // El chat conserva el proveedor con el que se habla: la fila del
+        // historial saca de ahi su ultimo modelo y sus precios.
+        conversacion.proveedorID = proveedor.id
+
         // La etiqueta ⚡ y las instrucciones viajan juntas: una skill sin
         // instrucciones no se pinta como aplicada ni se inyecta.
         let aplicables = skills.filter { skill in
@@ -1173,6 +1222,8 @@ final class EstadoApp: ObservableObject {
         guard conversacion.mensajes.last?.rol == .asistente else { return }
 
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+
+        conversacion.proveedorID = proveedor.id
 
         let turnoDescartado = conversacion.descartarUltimoTurno()
         guard !turnoDescartado.isEmpty else { return }
@@ -1245,6 +1296,10 @@ final class EstadoApp: ObservableObject {
         instrucciones: [String] = [],
         alFracasar: @escaping () -> Void
     ) {
+        // Cubre tambien los reintentos: el proveedor del chat es el que se
+        // esta usando ahora, no el activo global de otro momento.
+        conversacion.proveedorID = proveedor.id
+
         enviando = true
         textoEnCurso = ""
         herramientaEnCurso = nil

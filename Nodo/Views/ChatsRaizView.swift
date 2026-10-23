@@ -58,8 +58,8 @@ struct ChatsRaizView: View {
                 }
             }
         }
-        // /nuevo crea la conversacion en EstadoApp y deja aqui su id. La raiz
-        // la empuja a la misma pila que usa el boton + Nuevo.
+        // /nuevo y Ramificar dejan aqui el id de la conversacion que hay que
+        // mostrar. La raiz la empuja a la misma pila que usa el boton + Nuevo.
         .onChange(of: estado.idParaAbrir) { _, id in
             guard let id else { return }
             estado.idParaAbrir = nil

@@ -433,7 +433,21 @@ struct ChatView: View {
 
     @ViewBuilder
     private func filaDeMensajeNormal(_ mensaje: ChatMessage) -> some View {
-        BurbujaMensaje(mensaje: mensaje, pie: pieDe(mensaje))
+        BurbujaMensaje(
+            mensaje: mensaje,
+            pie: pieDe(mensaje),
+            alRamificar: accionRamificar(mensaje)
+        )
+    }
+
+    /// La pulsacion larga de una burbuja de usuario o asistente ofrece
+    /// "Ramificar chat desde aqui" (§5.4). Las burbujas internas de
+    /// herramienta no son un punto de corte util.
+    private func accionRamificar(_ mensaje: ChatMessage) -> (() -> Void)? {
+        guard mensaje.rol == .usuario || mensaje.rol == .asistente else {
+            return nil
+        }
+        return { estado.ramificar(desde: mensaje) }
     }
 
     /// En modo Tarea los mensajes internos se leen como pasos plegables.
@@ -459,7 +473,8 @@ struct ChatView: View {
                     // los nombres ya salen en las filas de paso de abajo.
                     BurbujaMensaje(
                         mensaje: mensajeSinLlamadas(mensaje),
-                        pie: pieDe(mensaje)
+                        pie: pieDe(mensaje),
+                        alRamificar: accionRamificar(mensaje)
                     )
                 }
 

@@ -121,6 +121,11 @@ enum EstadosDePrueba {
         precioSalidaPorMillon: 0.20
     )
 
+    /// Proveedor activo del preset de fabrica que usan los estados `chat` y
+    /// `tope`; las filas del historial necesitan el id del chat para resolver
+    /// su modelo y su costo (§3.1).
+    private static let proveedorChatID = id("11111111-1111-4111-8111-111111111111")
+
     private static let conversacionEjemplo: Conversation = Conversation(
         id: id("00000000-0000-0000-0000-000000000002"),
         titulo: "Conversacion de ejemplo",
@@ -141,7 +146,35 @@ enum EstadosDePrueba {
             )
         ],
         creada: fechaFija,
-        actualizada: fechaFija.addingTimeInterval(1)
+        actualizada: fechaFija.addingTimeInterval(1),
+        proveedorID: proveedorEjemplo.id
+    )
+
+    /// Conversacion fijada para la captura del historial: aunque su actividad
+    /// es anterior, el orden del nucleo la deja arriba.
+    private static let conversacionFijada: Conversation = Conversation(
+        id: id("00000000-0000-0000-0000-000000000008"),
+        titulo: "Conversacion fijada de ejemplo",
+        mensajes: [
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000009"),
+                rol: .usuario,
+                texto: "Mensaje de la conversacion fijada.",
+                fecha: fechaFija.addingTimeInterval(-100)
+            ),
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-00000000000A"),
+                rol: .asistente,
+                texto: "Respuesta fijada de ejemplo.",
+                fecha: fechaFija.addingTimeInterval(-99),
+                tokensEntrada: 400,
+                tokensSalida: 100
+            )
+        ],
+        creada: fechaFija.addingTimeInterval(-100),
+        actualizada: fechaFija.addingTimeInterval(-99),
+        fijada: true,
+        proveedorID: proveedorEjemplo.id
     )
 
     private static let conversacionArchivada: Conversation = Conversation(
@@ -157,7 +190,8 @@ enum EstadosDePrueba {
         ],
         creada: fechaFija,
         actualizada: fechaFija,
-        archivada: true
+        archivada: true,
+        proveedorID: proveedorEjemplo.id
     )
 
     /// Conversacion del estado `chat`: dos turnos de ejemplo y consumo medido
@@ -195,7 +229,8 @@ enum EstadosDePrueba {
             )
         ],
         creada: fechaFija,
-        actualizada: fechaFija.addingTimeInterval(3)
+        actualizada: fechaFija.addingTimeInterval(3),
+        proveedorID: proveedorChatID
     )
 
     /// Chat vacio de la Tarjeta de Bienvenida. El titulo coincide con el de los
@@ -231,7 +266,8 @@ enum EstadosDePrueba {
             )
         ],
         creada: fechaFija,
-        actualizada: fechaFija.addingTimeInterval(1)
+        actualizada: fechaFija.addingTimeInterval(1),
+        proveedorID: proveedorChatID
     )
 
     /// Memoria de ejemplo que se inyecta en el estado `chat`.
@@ -325,7 +361,11 @@ enum EstadosDePrueba {
                 nombre: estado.rawValue,
                 config: configuracion(),
                 conversacion: conversacionEjemplo,
-                conversaciones: [conversacionEjemplo, conversacionArchivada]
+                conversaciones: [
+                    conversacionFijada,
+                    conversacionEjemplo,
+                    conversacionArchivada
+                ]
             )
         case .chat:
             return EstadoPrueba(
