@@ -39,7 +39,7 @@ public struct ServerConfig: Codable, Equatable {
 
 /// Configuracion completa de la app, exportable a JSON.
 ///
-/// El JSON exportado **no contiene claves**: solo proveedores, modelo, prompt,
+/// El JSON exportado **no contiene claves**: solo proveedores, modelo, Memoria,
 /// servidor, el tope de aviso, la lista de herramientas exentas, las skills,
 /// los contadores de gasto y el libro de gasto por dia y por mes. Importarlo en
 /// otro telefono deja las credenciales por introducir, que es justo lo que se
@@ -49,7 +49,11 @@ public struct AppConfig: Codable, Equatable {
     public var version: Int
     public var proveedores: [ProviderConfig]
     public var proveedorActivo: UUID?
-    public var systemPrompt: String
+    /// Memoria viva: lista de entradas con id, texto y fecha (decision D5).
+    ///
+    /// POR QUE una lista: cada entrada tiene identidad propia para que el dueno
+    /// pueda pedir que se guarde, actualice o borre una sin reescribir el resto.
+    public var memoria: [EntradaMemoria]
     public var servidor: ServerConfig
     /// Tope de aviso por chat, en dolares estimados. nil usa el valor por
     /// defecto; 0 o negativo desactiva el aviso.
@@ -73,7 +77,7 @@ public struct AppConfig: Codable, Equatable {
         version: Int = 1,
         proveedores: [ProviderConfig] = [],
         proveedorActivo: UUID? = nil,
-        systemPrompt: String = AppConfig.promptPorDefecto,
+        memoria: [EntradaMemoria] = [],
         servidor: ServerConfig = ServerConfig(),
         topeAvisoCosto: Double? = nil,
         herramientasSinAprobacion: [String]? = nil,
@@ -84,7 +88,7 @@ public struct AppConfig: Codable, Equatable {
         self.version = version
         self.proveedores = proveedores
         self.proveedorActivo = proveedorActivo
-        self.systemPrompt = systemPrompt
+        self.memoria = memoria
         self.servidor = servidor
         self.topeAvisoCosto = topeAvisoCosto
         self.herramientasSinAprobacion = herramientasSinAprobacion
@@ -97,7 +101,7 @@ public struct AppConfig: Codable, Equatable {
         case version
         case proveedores
         case proveedorActivo
-        case systemPrompt
+        case memoria
         case servidor
         case topeAvisoCosto
         case herramientasSinAprobacion
@@ -106,17 +110,30 @@ public struct AppConfig: Codable, Equatable {
         case usoApp
     }
 
+    /// Claves que solo existen en configuraciones antiguas.
+    ///
+    /// `systemPrompt` era el texto plano de la Memoria. Se lee aparte para no
+    /// volver a escribirlo: al guardar, la configuracion solo lleva `memoria`.
+    private enum ClavesLegado: String, CodingKey {
+        case systemPrompt
+    }
+
     /// Decodificacion tolerante con las configuraciones anteriores a la Fase 4.
     ///
     /// La v0.2.0 no tenia skills ni contadores de gasto. El Decodable
     /// sintetizado exigiria esas claves y dejaria de abrir la configuracion
     /// entera, asi que se leen como opcionales con su valor por defecto.
+    ///
+    /// MEM.1/D5: si la configuracion trae el texto legado de la Memoria, se
+    /// convierte en UNA sola entrada con el texto completo. Nada se trocea ni se
+    /// pierde: el dueno ya lo tenia escrito y la migracion no puede reescribir
+    /// su contenido.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         version = try contenedor.decode(Int.self, forKey: .version)
         proveedores = try contenedor.decode([ProviderConfig].self, forKey: .proveedores)
         proveedorActivo = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorActivo)
-        systemPrompt = try contenedor.decode(String.self, forKey: .systemPrompt)
+        memoria = try Self.leerMemoria(de: contenedor, decoder: decoder)
         servidor = try contenedor.decode(ServerConfig.self, forKey: .servidor)
         topeAvisoCosto = try contenedor.decodeIfPresent(Double.self, forKey: .topeAvisoCosto)
         herramientasSinAprobacion = try contenedor.decodeIfPresent(
@@ -130,6 +147,33 @@ public struct AppConfig: Codable, Equatable {
             ?? UsoApp()
     }
 
+    /// Lee la Memoria nueva y, si no existe, migra el texto plano legado.
+    ///
+    /// Se acepta tambien un `memoria` con forma de texto por si una version
+    /// intermedia alcanzo a escribirlo: en ese caso se trata igual que el
+    /// `systemPrompt` antiguo, como una sola entrada.
+    private static func leerMemoria(
+        de contenedor: KeyedDecodingContainer<CodingKeys>,
+        decoder: Decoder
+    ) throws -> [EntradaMemoria] {
+        if let entradas = try? contenedor.decode([EntradaMemoria].self, forKey: .memoria),
+           !entradas.isEmpty {
+            return entradas
+        }
+        if let texto = try? contenedor.decode(String.self, forKey: .memoria),
+           !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return Memoria.entradasDesdeTextoLegado(texto)
+        }
+
+        // Si la lista nueva esta vacia, todavia puede quedar el texto legado de
+        // una configuracion a medio migrar. Se recupera para no perderlo.
+        let legado = try decoder.container(keyedBy: ClavesLegado.self)
+        if let texto = try legado.decodeIfPresent(String.self, forKey: .systemPrompt) {
+            return Memoria.entradasDesdeTextoLegado(texto)
+        }
+        return []
+    }
+
     /// Tope que se aplica de verdad: el guardado o un dolar si nunca se fijo.
     public var topeAvisoCostoEfectivo: Double {
         topeAvisoCosto ?? 1.00
@@ -139,6 +183,17 @@ public struct AppConfig: Codable, Equatable {
     Eres un asistente util y directo. Respondes en el idioma en que te hablan. \
     Cuando no sabes algo, lo dices en vez de inventarlo.
     """
+
+    /// Entrada con la que nace una instalacion limpia.
+    ///
+    /// POR QUE id y fecha fijos: el estado inicial tiene que ser determinista en
+    /// tests y capturas, igual que los ids del preset. El texto es el prompt por
+    /// defecto de siempre, ahora guardado como una entrada mas de la Memoria.
+    private static let memoriaPorDefecto = EntradaMemoria(
+        id: UUID(uuidString: "55555555-5555-4555-8555-555555555555")!,
+        texto: promptPorDefecto,
+        fecha: Date(timeIntervalSince1970: 0)
+    )
 
     /// Configuracion inicial: el preset de fabrica de InferHub, sin clave.
     ///
@@ -191,7 +246,8 @@ public struct AppConfig: Codable, Equatable {
 
         return AppConfig(
             proveedores: [deepseek, glm, sol, astra],
-            proveedorActivo: deepseek.id
+            proveedorActivo: deepseek.id,
+            memoria: [memoriaPorDefecto]
         )
     }
 

@@ -801,12 +801,22 @@ final class EstadoApp: ObservableObject {
 
     // MARK: - Memoria
 
+    /// Texto plano de la Memoria para las pantallas que todavia editan un solo
+    /// bloque (MEM.4 las convierte en lista de entradas).
+    ///
+    /// El payload NO usa esto: `Historial` manda el bloque con las entradas y
+    /// sus ids. Se conserva para que el peso, el costo y la vista previa sigan
+    /// midiendo exactamente lo que el dueno ve en Mi Contexto.
+    var textoMemoria: String {
+        Memoria.textoPlano(config.memoria)
+    }
+
     /// Peso estimado de la Memoria: caracteres / 4, minimo 1 (§3.5).
     ///
     /// Es la misma heuristica de la Hoja Memoria rapida; vive aqui para que las
     /// dos caras de la Memoria ensenen siempre la misma cifra.
     var pesoEstimadoMemoria: Int {
-        max(1, config.systemPrompt.count / 4)
+        max(1, textoMemoria.count / 4)
     }
 
     /// Costo estimado de mandar la Memoria en un envio.
@@ -814,7 +824,7 @@ final class EstadoApp: ObservableObject {
     /// Usa solo el precio de entrada del proveedor activo y devuelve tambien su
     /// nombre limpio para rotularlo. Sin precio de entrada no hay cifra.
     var costoEstimadoDeMemoria: (costo: Double, modelo: String)? {
-        let memoria = config.systemPrompt
+        let memoria = textoMemoria
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !memoria.isEmpty,
               let proveedor = config.proveedorSeleccionado,
@@ -1795,6 +1805,11 @@ final class EstadoApp: ObservableObject {
                 instrucciones: instrucciones
             )
         }
+        // La misma foto manda en el historial y en las herramientas: si el chat
+        // usa Memoria, el payload lleva bloque y memoria_chat; si no, ni uno ni
+        // otro. Se captura antes de lanzar la tarea para que un cambio de chat
+        // a mitad de turno no mezcle dos contextos.
+        let usaMemoria = !conversacion.sinMemoria
         tareaActual = Task { [weak self] in
             guard let self else { return }
 
@@ -1802,6 +1817,7 @@ final class EstadoApp: ObservableObject {
                 proveedor: proveedor,
                 clave: clave,
                 historial: historial,
+                usaMemoria: usaMemoria,
                 tipo: tipo,
                 alFracasar: alFracasar
             )
@@ -1821,15 +1837,20 @@ final class EstadoApp: ObservableObject {
         proveedor: ProviderConfig,
         clave: String,
         historial: [ChatMessage],
+        usaMemoria: Bool,
         tipo: TipoTurnoFallido,
         alFracasar: () -> Void
     ) async {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
-            // Un chat normal va SIN herramientas: la demolucion del modo Tarea
-            // quito la unica bandera que las ofrecia. El bucle sigue siendo el
-            // mismo, solo que sin definiciones ni ganchos de aprobacion.
-            let bucle = ToolLoop(motor: motor, herramientas: [])
+            // Un chat normal sigue SIN las herramientas del modo Tarea. La unica
+            // excepcion es la Memoria: si el chat la usa, se ofrece memoria_chat
+            // para que el dueno pueda ordenar guardar, actualizar o borrar
+            // (MEM.2). En un chat sin memoria no se ofrece nada.
+            let herramientas: [Herramienta] = usaMemoria
+                ? [HerramientaMemoriaChat()]
+                : []
+            let bucle = ToolLoop(motor: motor, herramientas: herramientas)
 
             let resultado = try await bucle.ejecutar(
                 historial: historial,
@@ -1895,15 +1916,16 @@ final class EstadoApp: ObservableObject {
         textoEnCurso = ""
     }
 
-    /// Historial que se manda al modelo: el prompt de sistema primero.
+    /// Historial que se manda al modelo: el bloque de Memoria primero.
     ///
     /// La regla vive en NodoCore para poder probarla con `swift test`: en un
-    /// chat sin memoria el prompt no se inyecta (§4.6). Los eventos visuales no
-    /// forman parte de `conversacion.mensajes`, asi que jamas entran aqui.
+    /// chat sin memoria no se inyecta ni el bloque ni las entradas (§4.6). Los
+    /// eventos visuales no forman parte de `conversacion.mensajes`, asi que
+    /// jamas entran aqui.
     private func historialParaEnviar() -> [ChatMessage] {
         Historial.paraEnviar(
             conversacion: conversacion,
-            promptSistema: config.systemPrompt,
+            memoria: config.memoria,
             // Respaldo persistido de COMP.2: Historial solo lo usa cuando la
             // conversacion no aporta el resumen por la via de la Memoria.
             resumenGuardado: resumenesCompactadosPorConversacion[

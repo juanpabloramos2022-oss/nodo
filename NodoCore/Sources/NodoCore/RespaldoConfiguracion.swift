@@ -12,8 +12,11 @@ import Foundation
 /// aparte porque la app las guarda en su propio `UserDefaults`, no en
 /// `AppConfig`.
 public struct RespaldoConfiguracion: Codable, Equatable {
-    /// Texto de la Memoria (`systemPrompt` en la configuracion).
-    public var memoria: String
+    /// Entradas de la Memoria viva (MEM.1/D5).
+    ///
+    /// El respaldo viaja con la lista completa, no con un texto unico: los ids
+    /// y las fechas tambien forman parte de lo que el dueno guardo.
+    public var memoria: [EntradaMemoria]
     /// Biblioteca de skills locales.
     public var skills: [SkillLocal]
     /// Ventana de contexto por modelo, en tokens.
@@ -23,15 +26,17 @@ public struct RespaldoConfiguracion: Codable, Equatable {
     /// Tope global de aviso, en dolares.
     public var topeGlobalUSD: Double
     /// Version de este formato de respaldo, para poder migrarlo despues.
+    ///
+    /// La 2 guarda la Memoria como entradas; la 1 la guardaba como texto plano.
     public var versionFormato: Int
 
     public init(
-        memoria: String,
+        memoria: [EntradaMemoria] = [],
         skills: [SkillLocal] = [],
         ventanas: [String: Int] = [:],
         proveedores: [ProviderConfig] = [],
         topeGlobalUSD: Double,
-        versionFormato: Int = 1
+        versionFormato: Int = 2
     ) {
         self.memoria = memoria
         self.skills = skills
@@ -50,11 +55,21 @@ public struct RespaldoConfiguracion: Codable, Equatable {
         case versionFormato
     }
 
-    /// Decodificacion tolerante: un respaldo de la primera version del formato
-    /// puede no traer `versionFormato`, y se asume la 1.
+    /// Decodificacion tolerante con los respaldos anteriores a MEM.1.
+    ///
+    /// Un respaldo viejo guardaba `memoria` como texto plano. Al importarlo se
+    /// convierte en UNA sola entrada con el texto completo, igual que la
+    /// migracion de la configuracion: un respaldo no puede perder lo que el
+    /// dueno tenia escrito. Un respaldo sin `versionFormato` se asume de la 1.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
-        memoria = try contenedor.decode(String.self, forKey: .memoria)
+        if let entradas = try? contenedor.decode([EntradaMemoria].self, forKey: .memoria) {
+            memoria = entradas
+        } else if let texto = try? contenedor.decode(String.self, forKey: .memoria) {
+            memoria = Memoria.entradasDesdeTextoLegado(texto)
+        } else {
+            memoria = []
+        }
         skills = try contenedor.decode([SkillLocal].self, forKey: .skills)
         ventanas = try contenedor.decode([String: Int].self, forKey: .ventanas)
         proveedores = try contenedor.decode([ProviderConfig].self, forKey: .proveedores)
@@ -71,7 +86,7 @@ public struct RespaldoConfiguracion: Codable, Equatable {
         ventanas: [String: Int]
     ) -> RespaldoConfiguracion {
         RespaldoConfiguracion(
-            memoria: config.systemPrompt,
+            memoria: config.memoria,
             skills: config.skills,
             ventanas: ventanas,
             proveedores: config.proveedores,
@@ -94,7 +109,7 @@ public struct RespaldoConfiguracion: Codable, Equatable {
         sobre config: AppConfig
     ) -> AppConfig {
         var nueva = config
-        nueva.systemPrompt = respaldo.memoria
+        nueva.memoria = respaldo.memoria
         nueva.skills = respaldo.skills
         nueva.proveedores = respaldo.proveedores
         nueva.topeAvisoCosto = respaldo.topeGlobalUSD

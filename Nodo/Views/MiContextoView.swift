@@ -20,9 +20,9 @@ struct MiContextoView: View {
     private static let escalones: [Double] = [0.10, 0.25, 0.50, 1.00]
 
     private var memoriaVacia: Bool {
-        estado.config.systemPrompt
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty
+        estado.config.memoria.allSatisfy {
+            $0.texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     /// Tope que se aplica de verdad: nil equivale al dolar por defecto.
@@ -76,7 +76,7 @@ struct MiContextoView: View {
                     .foregroundStyle(Tema.textoSuave)
                     .accessibilityIdentifier("memoria-vacia")
             } else {
-                Text(estado.config.systemPrompt)
+                Text(estado.textoMemoria)
                     .font(.body)
                     .foregroundStyle(.white)
                     .lineLimit(4)

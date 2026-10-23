@@ -5,8 +5,12 @@ import NodoCore
 /// Edicion rapida de la Memoria sin salir de la conversacion.
 ///
 /// POR QUE un borrador local: Cancelar debe descartar sin tocar la
-/// configuracion. Solo Guardar escribe `config.systemPrompt` y cierra la hoja
+/// configuracion. Solo Guardar escribe `config.memoria` y cierra la hoja
 /// (leyes n. 2 y n. 3).
+///
+/// Esta hoja todavia edita la Memoria como un bloque unico. Al guardar, el
+/// texto completo se conserva en UNA entrada; MEM.4 es la tarea que convierte
+/// esta pantalla en editor de entradas sueltas.
 struct HojaMemoriaRapidaView: View {
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss
@@ -111,8 +115,8 @@ struct HojaMemoriaRapidaView: View {
 
     private func cargarSiHaceFalta() {
         guard !cargada else { return }
-        borrador = estado.config.systemPrompt
-        original = estado.config.systemPrompt
+        borrador = estado.textoMemoria
+        original = estado.textoMemoria
         cargada = true
     }
 
@@ -125,8 +129,12 @@ struct HojaMemoriaRapidaView: View {
     }
 
     /// Guardar escribe la Memoria real y da el cierre normal de hoja.
+    ///
+    /// Mientras MEM.4 no separe la edicion por entradas, el bloque editado se
+    /// guarda como una sola entrada: se conserva el texto completo y no se
+    /// inventa un troceo que el dueno no pidio.
     private func guardar() {
-        estado.config.systemPrompt = borrador
+        estado.config.memoria = Memoria.entradasDesdeTextoLegado(borrador)
         original = borrador
         cargada = false
         bajarTeclado()

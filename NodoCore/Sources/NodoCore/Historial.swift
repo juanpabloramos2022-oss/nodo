@@ -13,33 +13,39 @@ public enum Historial {
     /// que una copia se pinte con un rotulo distinto y se duplique el contexto.
     public static let cabeceraResumen = "[Resumen de la conversacion anterior]"
 
-    /// Prompt de sistema primero (solo si tiene texto), despues el resumen de
-    /// /compact (si lo hay) y despues todos los mensajes de la conversacion,
+    /// Bloque de Memoria primero (solo en chats con memoria), despues el resumen
+    /// de /compact (si lo hay) y despues todos los mensajes de la conversacion,
     /// completos y en orden.
     ///
-    /// El prompt no se guarda dentro de la conversacion a proposito, para que
-    /// cambiarlo en Mi Contexto afecte tambien a los chats ya abiertos.
+    /// La Memoria no se guarda dentro de la conversacion a proposito, para que
+    /// cambiarla en Mi Contexto afecte tambien a los chats ya abiertos.
+    ///
+    /// MEM.2: el bloque de sistema declara la capacidad y lista las entradas con
+    /// sus ids; sustituye al viejo texto plano de la Memoria. En un chat sin
+    /// memoria no viaja ningun bloque de Memoria.
     ///
     /// COMP.2: en un chat SIN memoria la Memoria no viaja, pero el resumen de
     /// la ultima compactacion si debe viajar. Si no, /compact resume y poda
     /// para siempre: el modelo olvida justo lo que el resumen conservaba. Por
     /// eso `resumenGuardado` es el respaldo que EstadoApp persiste junto a los
     /// usos resumidos. Cuando la conversacion ya aporta su resumen por la via
-    /// de la Memoria (o el prompt ya lo trae), el respaldo no se anade: el
+    /// de la Memoria (o el bloque ya lo trae), el respaldo no se anade: el
     /// mismo bloque nunca viaja dos veces.
     public static func paraEnviar(
         conversacion: Conversation,
-        promptSistema: String,
+        memoria: [EntradaMemoria],
         resumenGuardado: String? = nil
     ) -> [ChatMessage] {
         var historial: [ChatMessage] = []
-        let prompt = promptSistema.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // En un chat con Memoria el prompt viaja primero. En uno sin Memoria no
+        // En un chat con Memoria el bloque viaja primero. En uno sin Memoria no
         // viaja nada de la Memoria; solo el resumen de compactacion, que es
         // contexto de la propia conversacion y no de la bandeja.
-        if !conversacion.sinMemoria, !prompt.isEmpty {
-            historial.append(ChatMessage(rol: .sistema, texto: prompt))
+        let bloqueMemoria = conversacion.sinMemoria
+            ? nil
+            : Memoria.bloqueSistema(entradas: memoria)
+        if let bloqueMemoria {
+            historial.append(ChatMessage(rol: .sistema, texto: bloqueMemoria))
         }
 
         // La via de la Memoria manda: es el resumen que la conversacion ya
@@ -53,7 +59,7 @@ public enum Historial {
         let resumen = deMemoria ?? respaldo
 
         if let resumen,
-           !yaEstaEnElPrompt(resumen, prompt: prompt, sinMemoria: conversacion.sinMemoria) {
+           !yaEstaEnElBloque(resumen, bloque: bloqueMemoria) {
             historial.append(mensajeDeResumen(resumen))
         }
 
@@ -75,20 +81,19 @@ public enum Historial {
         return limpio.isEmpty ? nil : limpio
     }
 
-    /// True si el prompt de la Memoria ya contiene este resumen (o al menos su
-    /// cabecera). En un chat sin Memoria el prompt no se envia, asi que no
-    /// puede suprimir el respaldo.
-    private static func yaEstaEnElPrompt(
+    /// True si el bloque de Memoria ya contiene este resumen (o al menos su
+    /// cabecera). En un chat sin Memoria no hay bloque, asi que no puede
+    /// suprimir el respaldo.
+    private static func yaEstaEnElBloque(
         _ resumen: String,
-        prompt: String,
-        sinMemoria: Bool
+        bloque: String?
     ) -> Bool {
-        guard !sinMemoria, !prompt.isEmpty else { return false }
+        guard let bloque, !bloque.isEmpty else { return false }
         let opciones: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
-        if prompt.range(of: resumen, options: opciones) != nil {
+        if bloque.range(of: resumen, options: opciones) != nil {
             return true
         }
-        return prompt.range(of: cabeceraResumen, options: opciones) != nil
+        return bloque.range(of: cabeceraResumen, options: opciones) != nil
     }
 
     /// Inserta las instrucciones de las skills como mensajes de sistema justo

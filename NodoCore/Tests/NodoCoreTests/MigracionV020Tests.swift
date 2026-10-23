@@ -43,8 +43,8 @@ final class MigracionV020Tests: XCTestCase {
         // Lo que ya existia se conserva EXACTO.
         XCTAssertEqual(config.version, 1)
         XCTAssertEqual(
-            config.systemPrompt,
-            "Memoria de prueba de la v0.2.0 con datos genericos."
+            config.memoria.map(\.texto),
+            ["Memoria de prueba de la v0.2.0 con datos genericos."]
         )
         XCTAssertEqual(config.topeAvisoCosto, 0.25)
         XCTAssertEqual(config.topeAvisoCostoEfectivo, 0.25, accuracy: 0.0001)

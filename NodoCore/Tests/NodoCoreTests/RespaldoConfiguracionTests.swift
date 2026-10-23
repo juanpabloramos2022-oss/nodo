@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import NodoCore
@@ -18,7 +19,12 @@ final class RespaldoConfiguracionTests: XCTestCase {
         let config = AppConfig(
             proveedores: [proveedorUno, proveedorDos],
             proveedorActivo: proveedorDos.id,
-            systemPrompt: "Memoria de prueba con datos genericos.",
+            memoria: [
+                EntradaMemoria(
+                    texto: "Memoria de prueba con datos genericos.",
+                    fecha: Date(timeIntervalSince1970: 100)
+                )
+            ],
             topeAvisoCosto: 0.25,
             skills: [skill]
         )
@@ -33,7 +39,7 @@ final class RespaldoConfiguracionTests: XCTestCase {
         let vacia = AppConfig()
         let restaurada = RespaldoConfiguracion.aplicar(leido, sobre: vacia)
 
-        XCTAssertEqual(restaurada.systemPrompt, config.systemPrompt)
+        XCTAssertEqual(restaurada.memoria, config.memoria)
         XCTAssertEqual(restaurada.skills, config.skills)
         XCTAssertEqual(restaurada.proveedores, config.proveedores)
         XCTAssertEqual(restaurada.topeAvisoCosto, 0.25)
@@ -42,7 +48,7 @@ final class RespaldoConfiguracionTests: XCTestCase {
 
     func testLasVentanasSeDevuelvenAparteDeLaConfiguracion() throws {
         let respaldo = RespaldoConfiguracion(
-            memoria: "memoria",
+            memoria: [EntradaMemoria(texto: "memoria")],
             ventanas: ["modelo-x": 64_000],
             proveedores: [Ayudas.proveedor()],
             topeGlobalUSD: 0.50
@@ -71,7 +77,7 @@ final class RespaldoConfiguracionTests: XCTestCase {
 
         let config = AppConfig(
             proveedores: [proveedor],
-            systemPrompt: "Memoria de prueba sin credenciales",
+            memoria: [EntradaMemoria(texto: "Memoria de prueba sin credenciales")],
             topeAvisoCosto: 1.00,
             skills: [
                 SkillLocal(
@@ -126,7 +132,7 @@ final class RespaldoConfiguracionTests: XCTestCase {
             servidor: servidor
         )
         let respaldo = RespaldoConfiguracion(
-            memoria: "nueva memoria",
+            memoria: [EntradaMemoria(texto: "nueva memoria")],
             proveedores: [proveedor],
             topeGlobalUSD: 0.10
         )
@@ -135,6 +141,6 @@ final class RespaldoConfiguracionTests: XCTestCase {
 
         XCTAssertEqual(restaurada.servidor, servidor)
         XCTAssertEqual(restaurada.proveedorActivo, proveedor.id)
-        XCTAssertEqual(restaurada.systemPrompt, "nueva memoria")
+        XCTAssertEqual(restaurada.memoria.map(\.texto), ["nueva memoria"])
     }
 }

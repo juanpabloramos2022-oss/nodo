@@ -186,7 +186,7 @@ struct ChatView: View {
 
     private var memoriaActiva: Bool {
         !estado.conversacion.sinMemoria
-            && !estado.config.systemPrompt
+            && !estado.textoMemoria
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
     }

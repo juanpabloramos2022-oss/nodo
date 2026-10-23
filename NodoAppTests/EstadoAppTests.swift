@@ -72,11 +72,118 @@ final class EstadoAppTests: XCTestCase {
         )
     }
 
+    // MARK: - Memoria en el payload (MEM.2)
+
+    /// En un chat con Memoria el payload lleva las tres piezas juntas: bloque
+    /// de capacidad, entradas sembradas con sus ids y la herramienta
+    /// `memoria_chat`. Se mira el cuerpo grabado por el transporte, no solo el
+    /// estado interno, porque lo que importa es lo que sale a la red.
+    func testPayloadDeChatConMemoriaLlevaBloqueEntradasYHerramienta() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let entrada = EntradaMemoria(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!,
+            texto: "Vive en Madrid y prefiere respuestas breves.",
+            fecha: Date(timeIntervalSince1970: 100)
+        )
+        arnes.estado.config.memoria = [entrada]
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta con memoria.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+
+        arnes.estado.enviar("Hola")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        XCTAssertTrue(cuerpo.contains(Memoria.cabeceraBloque), cuerpo)
+        XCTAssertTrue(cuerpo.contains(entrada.texto), cuerpo)
+        XCTAssertTrue(cuerpo.contains(entrada.id.uuidString), cuerpo)
+        XCTAssertTrue(cuerpo.contains(Memoria.nombreHerramientaChat), cuerpo)
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(cuerpo.utf8)) as? [String: Any]
+        )
+        let mensajes = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        let sistema = try XCTUnwrap(
+            mensajes.first { $0["role"] as? String == "system" }
+        )
+        XCTAssertEqual(
+            sistema["content"] as? String,
+            Memoria.bloqueSistema(entradas: [entrada])
+        )
+
+        let herramientas = try XCTUnwrap(json["tools"] as? [[String: Any]])
+        let funciones = herramientas.compactMap {
+            $0["function"] as? [String: Any]
+        }
+        XCTAssertEqual(funciones.count, 1)
+        XCTAssertEqual(
+            funciones.first?["name"] as? String,
+            Memoria.nombreHerramientaChat
+        )
+        let parametros = try XCTUnwrap(
+            funciones.first?["parameters"] as? [String: Any]
+        )
+        let propiedades = try XCTUnwrap(
+            parametros["properties"] as? [String: Any]
+        )
+        XCTAssertNotNil(propiedades["accion"])
+        XCTAssertNotNil(propiedades["texto"])
+        XCTAssertNotNil(propiedades["id"])
+    }
+
+    /// En un chat sin memoria no viaja NINGUNA de las tres piezas, aunque la
+    /// configuracion tenga entradas sembradas: la frontera no es que la lista
+    /// este vacia, es que el chat no usa la Memoria.
+    func testPayloadDeChatSinMemoriaNoLlevaBloqueEntradasNiHerramienta() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let entrada = EntradaMemoria(
+            id: UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB")!,
+            texto: "Dato que no debe viajar en un chat sin memoria.",
+            fecha: Date(timeIntervalSince1970: 200)
+        )
+        arnes.estado.config.memoria = [entrada]
+        arnes.estado.conversacion = Conversation(sinMemoria: true)
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta sin memoria.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+
+        arnes.estado.enviar("Hola")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        XCTAssertFalse(cuerpo.contains(Memoria.cabeceraBloque), cuerpo)
+        XCTAssertFalse(cuerpo.contains(entrada.texto), cuerpo)
+        XCTAssertFalse(cuerpo.contains(entrada.id.uuidString), cuerpo)
+        XCTAssertFalse(cuerpo.contains(Memoria.nombreHerramientaChat), cuerpo)
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(cuerpo.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(json["tools"])
+        let mensajes = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        XCTAssertFalse(
+            mensajes.contains { $0["role"] as? String == "system" }
+        )
+    }
+
     // MARK: - Demolicion del modo Tarea
 
-    /// Un chat normal va SIN herramientas, aunque una conversacion guardada
-    /// conserve la vieja bandera `modoTarea` en su modelo Codable.
-    func testPayloadDeChatNormalNoOfreceHerramientas() async throws {
+    /// Un chat normal solo ofrece la herramienta de Memoria, aunque una
+    /// conversacion guardada conserve la vieja bandera `modoTarea`. Ninguna otra
+    /// herramienta vuelve a los chats normales.
+    func testPayloadDeChatNormalSoloOfreceLaHerramientaDeMemoria() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -85,7 +192,7 @@ final class EstadoAppTests: XCTestCase {
             arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
         )
         arnes.transporte.guionar(
-            texto: "Respuesta sin herramientas.",
+            texto: "Respuesta con la herramienta de memoria.",
             uso: UsoTokens(entrada: 40, salida: 8)
         )
 
@@ -98,9 +205,14 @@ final class EstadoAppTests: XCTestCase {
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: cuerpo) as? [String: Any]
         )
-        XCTAssertNil(
-            json["tools"],
-            "Un chat normal no debe ofrecer herramientas por la bandera modoTarea"
+        let herramientas = try XCTUnwrap(json["tools"] as? [[String: Any]])
+        let nombres = herramientas.compactMap {
+            ($0["function"] as? [String: Any])?["name"] as? String
+        }
+        XCTAssertEqual(
+            nombres,
+            [Memoria.nombreHerramientaChat],
+            "Un chat normal no debe ofrecer herramientas de Tarea"
         )
     }
 
@@ -242,8 +354,14 @@ final class EstadoAppTests: XCTestCase {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
-        let memoria = "Memoria de prueba que no se puede perder."
-        arnes.estado.config.systemPrompt = memoria
+        let memoria = [
+            EntradaMemoria(
+                id: UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC")!,
+                texto: "Memoria de prueba que no se puede perder.",
+                fecha: Date(timeIntervalSince1970: 300)
+            )
+        ]
+        arnes.estado.config.memoria = memoria
         arnes.estado.ventanasPorModelo = ["modelo/de-prueba": 128_000]
 
         // La exportacion real de la app: mismo constructor y mismo JSON que usa
@@ -256,12 +374,14 @@ final class EstadoAppTests: XCTestCase {
 
         // Se ensucia el estado antes de importar: si la Memoria no viajara en
         // el respaldo, la prueba lo detectaria aqui.
-        arnes.estado.config.systemPrompt = "Memoria borrada antes de importar."
+        arnes.estado.config.memoria = [
+            EntradaMemoria(texto: "Memoria borrada antes de importar.")
+        ]
         arnes.estado.ventanasPorModelo = [:]
 
         arnes.estado.importarRespaldo(leido)
 
-        XCTAssertEqual(arnes.estado.config.systemPrompt, memoria)
+        XCTAssertEqual(arnes.estado.config.memoria, memoria)
         XCTAssertEqual(
             arnes.estado.ventanasPorModelo["modelo/de-prueba"],
             128_000
@@ -766,7 +886,7 @@ final class EstadoAppTests: XCTestCase {
         let config = AppConfig(
             proveedores: [caro, barato],
             proveedorActivo: caro.id,
-            systemPrompt: "Memoria de prueba"
+            memoria: [EntradaMemoria(texto: "Memoria de prueba")]
         )
         defaults.set(try config.json(), forKey: "nodo.config.v1")
 

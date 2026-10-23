@@ -282,7 +282,7 @@ enum EstadosDePrueba {
     /// bajar para el estado de la franja ambar.
     private static func configuracionChat(tope: Double = 1.00) -> AppConfig {
         var config = AppConfig.inicial()
-        config.systemPrompt = memoriaDeEjemplo
+        config.memoria = Memoria.entradasDesdeTextoLegado(memoriaDeEjemplo)
         config.topeAvisoCosto = tope
         return config
     }
@@ -325,7 +325,9 @@ enum EstadosDePrueba {
         AppConfig(
             proveedores: [proveedorEjemplo],
             proveedorActivo: proveedorEjemplo.id,
-            systemPrompt: "Memoria de ejemplo para las capturas.",
+            memoria: Memoria.entradasDesdeTextoLegado(
+                "Memoria de ejemplo para las capturas."
+            ),
             servidor: ServerConfig(
                 nombre: "Servidor de ejemplo",
                 url: "",
