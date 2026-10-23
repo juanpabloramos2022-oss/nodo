@@ -309,6 +309,125 @@ final class EstadoAppTests: XCTestCase {
         XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 2)
     }
 
+    // MARK: - Compactacion en cadena (COMP.3)
+
+    /// El resumen de /compact tiene que llegar al turno siguiente aunque el
+    /// chat no tenga Memoria. Sin esto, compactar poda el hilo y el modelo
+    /// pierde justo el contexto que el resumen conservaba; por eso se mira el
+    /// payload real del transporte y no solo el estado interno.
+    func testCompactarSinMemoriaElResumenLlegaAlSiguienteTurno() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        // Sin Memoria el prompt del sistema no viaja: el unico contexto que
+        // puede sobrevivir a la poda es el resumen guardado por /compact.
+        arnes.estado.conversacion = historiaLarga(sinMemoria: true)
+
+        arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42", uso: nil)
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        // Un turno nuevo despues de compactar: es el momento en el que el
+        // resumen tiene que aparecer en el cuerpo de la peticion.
+        arnes.transporte.guionar(
+            texto: "Respuesta al turno nuevo.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+        arnes.estado.enviar("Nueva pregunta")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        XCTAssertTrue(
+            cuerpo.contains("EL DATO CLAVE ES 42"),
+            "El resumen guardado no viajo al turno siguiente: \(cuerpo)"
+        )
+        XCTAssertTrue(
+            cuerpo.contains("[Resumen de la conversacion anterior]"),
+            "Falta la cabecera con la que el modelo reconoce el resumen: \(cuerpo)"
+        )
+    }
+
+    /// Compactar no puede ser solo cosmetico: el contexto estimado que se
+    /// mandaria al modelo tiene que bajar. Se mide con la misma heuristica de
+    /// `Compactador` que usa la app y se incluye el resumen, porque tambien
+    /// ocupa ventana en el payload del turno siguiente.
+    func testCompactarReduceElContextoEstimado() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.estado.conversacion = historiaLarga(sinMemoria: true)
+
+        let antes = Compactador.estimarContexto(
+            mensajes: arnes.estado.conversacion.mensajes
+        )
+
+        arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42", uso: nil)
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        let despues = Compactador.estimarContexto(
+            mensajes: arnes.estado.conversacion.mensajes,
+            resumen: arnes.estado.conversacion.resumenCompactado
+        )
+        XCTAssertLessThan(
+            despues,
+            antes,
+            "Compactar tiene que reducir el contexto estimado, no dejarlo igual"
+        )
+    }
+
+    /// Compactar dos veces la misma conversacion no puede apilar dos copias
+    /// del resumen: el mismo bloque duplicado gastaria ventana y confundiria
+    /// al modelo. La cabecera debe aparecer exactamente una vez.
+    func testCompactarDosVecesNoDuplicaElResumen() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.estado.conversacion = historiaLarga(sinMemoria: true)
+
+        arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42", uso: nil)
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        // La segunda compactacion reemplaza el resumen; no debe sumarse al
+        // que ya estaba guardado.
+        arnes.transporte.guionar(texto: "EL DATO CLAVE ES 42 (otra vez)", uso: nil)
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        arnes.transporte.guionar(
+            texto: "Respuesta despues de compactar dos veces.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+        arnes.estado.enviar("Nueva pregunta")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try cuerpoDeLaUltimaPeticion(arnes)
+        // Si la segunda compactacion no hubiera reemplazado el resumen, el
+        // cuerpo seguiria llevando el primero y la cuenta de cabeceras pasaria
+        // en falso: se comprueba que el resumen vigente es el segundo.
+        XCTAssertTrue(
+            cuerpo.contains("EL DATO CLAVE ES 42 (otra vez)"),
+            "La segunda compactacion no reemplazo el resumen guardado: \(cuerpo)"
+        )
+        let cabecera = "[Resumen de la conversacion anterior]"
+        let veces = cuerpo.components(separatedBy: cabecera).count - 1
+        XCTAssertEqual(
+            veces,
+            1,
+            "El resumen viajo \(veces) veces en el mismo payload: \(cuerpo)"
+        )
+    }
+
     // MARK: - Sello de costo (COST.1)
 
     /// Tras un turno el mensaje queda sellado y editar los precios del
@@ -438,6 +557,90 @@ final class EstadoAppTests: XCTestCase {
         XCTAssertEqual(libro.totalDias.uso, UsoTokens(entrada: 120, salida: 30))
     }
 
+    // MARK: - Carga de legados (COST.3)
+
+    /// Al arrancar, un mensaje guardado sin sello se sella con los precios del
+    /// proveedor que lo genero (no con el activo) y el libro migra ese gasto al
+    /// mes en curso sin inventar dias hacia atras.
+    func testAlCargarSellaLosLegadosConSuProveedorYMigraElLibro() throws {
+        let sufijo = UUID().uuidString
+        let nombreSuite = "com.nodo.ios.apptests.\(sufijo)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: nombreSuite))
+        defaults.removePersistentDomain(forName: nombreSuite)
+        defer { defaults.removePersistentDomain(forName: nombreSuite) }
+
+        let directorio = FileManager.default.temporaryDirectory
+            .appendingPathComponent("NodoAppTests-\(sufijo)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directorio,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directorio) }
+
+        let barato = ProviderConfig(
+            nombre: "Barato",
+            baseURL: "https://api.ejemplo.test/v1",
+            modelo: "modelo-barato",
+            precioEntradaPorMillon: 0.10,
+            precioSalidaPorMillon: 0.20
+        )
+        let caro = ProviderConfig(
+            nombre: "Caro",
+            baseURL: "https://api.ejemplo.test/v1",
+            modelo: "modelo-caro",
+            precioEntradaPorMillon: 10,
+            precioSalidaPorMillon: 20
+        )
+        // El caro es el activo, pero el legado lo genero el barato.
+        let config = AppConfig(
+            proveedores: [caro, barato],
+            proveedorActivo: caro.id,
+            systemPrompt: "Memoria de prueba"
+        )
+        defaults.set(try config.json(), forKey: "nodo.config.v1")
+
+        let conversacion = Conversation(
+            mensajes: [
+                ChatMessage(rol: .usuario, texto: "Hola"),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Respuesta vieja",
+                    tokensEntrada: 1_000_000,
+                    tokensSalida: 500_000,
+                    proveedorID: barato.id
+                )
+            ],
+            proveedorID: barato.id
+        )
+        try ConversationStore(directorio: directorio).guardar(conversacion)
+
+        let estado = EstadoApp(
+            llavero: LlaveroFalso(),
+            transporte: TransporteGuionizado(),
+            defaults: defaults,
+            directorioStore: directorio
+        )
+
+        let cargada = try XCTUnwrap(estado.conversaciones.first)
+        let mensaje = try XCTUnwrap(cargada.mensajes.last)
+        let sello = try XCTUnwrap(mensaje.costoSelladoUSD)
+        // 1M x 0.10 + 0.5M x 0.20 = 0.20, no los 20 del proveedor caro.
+        XCTAssertEqual(sello, 0.20, accuracy: 0.0000001)
+        XCTAssertTrue(mensaje.costoEsEstimacion)
+
+        // El libro arranca con ese gasto en el mes en curso; los dias empiezan
+        // hoy y no se rellena ninguno hacia atras.
+        let libro = estado.config.usoApp
+        let hoy = Date()
+        XCTAssertTrue(libro.migrado)
+        XCTAssertEqual(
+            libro.mes(hoy).uso,
+            UsoTokens(entrada: 1_000_000, salida: 500_000)
+        )
+        XCTAssertEqual(libro.mes(hoy).usd, 0.20, accuracy: 0.0000001)
+        XCTAssertEqual(libro.totalDias.uso, UsoTokens())
+    }
+
     // MARK: - Compactacion y sello (HP4)
 
     /// Historia larga ya sellada: al compactar, los sellos de los mensajes que
@@ -505,6 +708,38 @@ final class EstadoAppTests: XCTestCase {
             costoAntes + selloDelResumen,
             accuracy: 0.0000001
         )
+    }
+
+    /// Cuerpo UTF-8 de la ultima peticion grabada por el transporte.
+    ///
+    /// Se lee como texto y no como JSON porque lo que importa es que el
+    /// resumen viaje tal cual en el payload, sin atarse a la forma exacta del
+    /// mensaje de sistema que lo transporta.
+    private func cuerpoDeLaUltimaPeticion(_ arnes: ArnesApp) throws -> String {
+        let datos = try XCTUnwrap(
+            arnes.transporte.peticionesRegistradas.last?.cuerpo
+        )
+        return try XCTUnwrap(String(data: datos, encoding: .utf8))
+    }
+
+    /// Historia larga con el mismo patron de cuatro vueltas que usan los tests
+    /// de /compact, pero con textos de verdad: el contexto estimado solo baja
+    /// de forma medible si lo que sale pesa mas que el resumen que entra.
+    private func historiaLarga(sinMemoria: Bool) -> Conversation {
+        let relleno = String(
+            repeating: "Este mensaje forma parte de una conversacion larga que se va a resumir. ",
+            count: 6
+        )
+        var mensajes: [ChatMessage] = []
+        for vuelta in 0..<4 {
+            mensajes.append(
+                ChatMessage(rol: .usuario, texto: "Pregunta \(vuelta). \(relleno)")
+            )
+            mensajes.append(
+                ChatMessage(rol: .asistente, texto: "Respuesta \(vuelta). \(relleno)")
+            )
+        }
+        return Conversation(mensajes: mensajes, sinMemoria: sinMemoria)
     }
 
     /// Ocho mensajes con cuatro respuestas ya selladas a los precios de su

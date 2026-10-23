@@ -152,7 +152,10 @@ final class HistorialTests: XCTestCase {
         XCTAssertEqual(historial[0].rol, .sistema)
         XCTAssertEqual(historial[0].texto, "Memoria curada")
         XCTAssertEqual(historial[1].rol, .sistema)
-        XCTAssertEqual(historial[1].texto, "Resumen del chat\ncon dos lineas")
+        XCTAssertEqual(
+            historial[1].texto,
+            Historial.cabeceraResumen + "\nResumen del chat\ncon dos lineas"
+        )
         XCTAssertEqual(Array(historial.dropFirst(2)), chat.mensajes)
     }
 
@@ -170,6 +173,49 @@ final class HistorialTests: XCTestCase {
         XCTAssertEqual(historial, chat.mensajes)
         XCTAssertFalse(historial.contains { $0.texto == "Resumen guardado" })
         XCTAssertFalse(historial.contains { $0.rol == .sistema })
+    }
+
+    func testChatSinMemoriaInyectaElResumenGuardado() {
+        // COMP.2: el chat sin memoria no recibe la Memoria, pero si el
+        // respaldo persistido de la ultima compactacion. Sin esto, /compact
+        // resume y poda para siempre.
+        let chat = conversacion(sinMemoria: true)
+
+        let historial = Historial.paraEnviar(
+            conversacion: chat,
+            promptSistema: "Memoria curada",
+            resumenGuardado: "EL DATO CLAVE ES 42"
+        )
+
+        XCTAssertEqual(historial.count, chat.mensajes.count + 1)
+        XCTAssertEqual(historial.first?.rol, .sistema)
+        XCTAssertEqual(
+            historial.first?.texto,
+            Historial.cabeceraResumen + "\nEL DATO CLAVE ES 42"
+        )
+        XCTAssertFalse(historial.contains { $0.texto == "Memoria curada" })
+        XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
+    }
+
+    func testElResumenGuardadoNoSeDuplicaSiLaMemoriaYaLoTrae() {
+        let resumen = "EL DATO CLAVE ES 42"
+        let chat = conversacion(resumenCompactado: resumen)
+        let memoria = "Memoria curada\n" + Historial.cabeceraResumen
+            + "\n" + resumen
+
+        let historial = Historial.paraEnviar(
+            conversacion: chat,
+            promptSistema: memoria,
+            resumenGuardado: resumen
+        )
+
+        XCTAssertEqual(
+            historial.filter { $0.texto.contains(Historial.cabeceraResumen) }.count,
+            1,
+            "La cabecera del resumen no puede viajar dos veces"
+        )
+        XCTAssertEqual(historial.first?.texto, memoria)
+        XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
     }
 
     func testUnResumenVacioNoSeInyecta() {
@@ -193,7 +239,10 @@ final class HistorialTests: XCTestCase {
         )
 
         XCTAssertEqual(historial.first?.rol, .sistema)
-        XCTAssertEqual(historial.first?.texto, "Resumen guardado")
+        XCTAssertEqual(
+            historial.first?.texto,
+            Historial.cabeceraResumen + "\nResumen guardado"
+        )
         XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
     }
 

@@ -40,10 +40,10 @@ public struct ServerConfig: Codable, Equatable {
 /// Configuracion completa de la app, exportable a JSON.
 ///
 /// El JSON exportado **no contiene claves**: solo proveedores, modelo, prompt,
-/// servidor, el tope de aviso, la lista de herramientas exentas, las skills y
-/// los contadores de gasto. Importarlo en otro telefono deja las credenciales
-/// por introducir, que es justo lo que se quiere al mover una configuracion
-/// entre dispositivos.
+/// servidor, el tope de aviso, la lista de herramientas exentas, las skills,
+/// los contadores de gasto y el libro de gasto por dia y por mes. Importarlo en
+/// otro telefono deja las credenciales por introducir, que es justo lo que se
+/// quiere al mover una configuracion entre dispositivos.
 public struct AppConfig: Codable, Equatable {
     /// Version del formato, para poder migrar sin romper.
     public var version: Int

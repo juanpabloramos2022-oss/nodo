@@ -388,6 +388,38 @@ final class ListaConversacionesTests: XCTestCase {
         )
     }
 
+    /// COST.1: la pastilla de la fila lee el SELLO del mensaje. Subir los
+    /// precios del proveedor despues del turno no puede cambiar lo ya pagado.
+    func testLaPastillaLeeElSelloYNoSeRevaluaConLosPreciosNuevos() throws {
+        let proveedor = proveedorConfig(
+            id: proveedorA,
+            modelo: "vendedor/modelo-a",
+            precioEntrada: 2,
+            precioSalida: 8
+        )
+        let conversacion = Conversation(
+            mensajes: [
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "respuesta sellada",
+                    tokensEntrada: 1_000,
+                    tokensSalida: 500,
+                    proveedorID: proveedorA,
+                    costoSelladoUSD: 0.004
+                )
+            ],
+            proveedorID: proveedorA
+        )
+
+        let fila = HistorialConversaciones.datosFila(
+            de: conversacion,
+            proveedores: [proveedor]
+        )
+
+        let costo = try XCTUnwrap(fila.costo)
+        XCTAssertEqual(costo, 0.004, accuracy: 0.0000001)
+    }
+
     // MARK: - Ayudas
 
     private func conversacionLarga() -> Conversation {

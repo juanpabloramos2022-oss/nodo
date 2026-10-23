@@ -95,7 +95,7 @@ final class UsoAppTests: XCTestCase {
 
         // Ni un solo dia anterior inventado: el libro diario empieza hoy.
         XCTAssertEqual(libro.dias.count, 1)
-        XCTAssertEqual(Set(libro.dias.keys), [UsoApp.claveDia(hoy)])
+        XCTAssertEqual(Set(libro.dias.keys), Set([UsoApp.claveDia(hoy)]))
     }
 
     func testMigrarNoSeRepite() {

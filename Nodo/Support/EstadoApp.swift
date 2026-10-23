@@ -22,20 +22,41 @@ private struct UsoResumido: Codable, Equatable {
     /// existir el sello: esos se valoran por proveedor como respaldo
     /// transitorio, igual que los mensajes legados.
     var costoSelladoUSD: Double?
+    /// True si parte del sello del balde es una estimacion de legado. El
+    /// rotulo de la Hoja Estado tiene que seguir avisando despues de compactar.
+    var costoEsEstimacion: Bool
+    /// Marca persistida de que este balde ya paso por la migracion de
+    /// compactados huerfanos de v0.3.0 (COMP.3).
+    ///
+    /// POR QUE hace falta: el balde viejo no tiene sello y la conversacion se
+    /// poda una vez, pero despues el usuario puede volver a llenar el hilo. Sin
+    /// esta marca, el siguiente arranque volveria a ver "balde viejo + muchos
+    /// mensajes" y podaria mensajes nuevos legitimos.
+    var migradoDeV030: Bool
+    /// True si el JSON de origen no traia el campo de sello. Es transitorio:
+    /// se calcula al decodificar y no se guarda, porque describe el archivo
+    /// leido, no el balde en memoria.
+    var sinSelloEnDisco: Bool = false
 
     static let sinProveedor = ""
 
     init(
         porProveedor: [String: UsoTokens] = [:],
-        costoSelladoUSD: Double? = nil
+        costoSelladoUSD: Double? = nil,
+        costoEsEstimacion: Bool = false,
+        migradoDeV030: Bool = false
     ) {
         self.porProveedor = porProveedor
         self.costoSelladoUSD = costoSelladoUSD
+        self.costoEsEstimacion = costoEsEstimacion
+        self.migradoDeV030 = migradoDeV030
     }
 
     private enum CodingKeys: String, CodingKey {
         case porProveedor
         case costoSelladoUSD
+        case costoEsEstimacion
+        case migradoDeV030
     }
 
     /// Decodificacion tolerante con los baldes guardados antes de COST.1.
@@ -49,10 +70,21 @@ private struct UsoResumido: Codable, Equatable {
             [String: UsoTokens].self,
             forKey: .porProveedor
         )
+        // El formato de v0.3.0 no tenia `costoSelladoUSD`: si la clave no esta
+        // en el JSON, el balde es huerfano y hay que evaluar la poda de COMP.3.
+        sinSelloEnDisco = !contenedor.contains(.costoSelladoUSD)
         costoSelladoUSD = try contenedor.decodeIfPresent(
             Double.self,
             forKey: .costoSelladoUSD
         )
+        costoEsEstimacion = try contenedor.decodeIfPresent(
+            Bool.self,
+            forKey: .costoEsEstimacion
+        ) ?? false
+        migradoDeV030 = try contenedor.decodeIfPresent(
+            Bool.self,
+            forKey: .migradoDeV030
+        ) ?? false
     }
 
     var total: UsoTokens {
@@ -65,12 +97,14 @@ private struct UsoResumido: Codable, Equatable {
     }
 
     /// Fusiona usos y sellos. Un costo desconocido (nil) contamina la suma:
-    /// no se rellena con cero porque seria inventar.
+    /// no se rellena con cero porque seria inventar. La marca de estimacion se
+    /// hereda si cualquiera de los dos tramos la tenia.
     mutating func fusionar(_ otro: UsoResumido) {
         for (clave, uso) in otro.porProveedor {
             porProveedor[clave] = porProveedor[clave]?.sumando(uso) ?? uso
         }
         costoSelladoUSD = CostoEstimado.sumar(costoSelladoUSD, otro.costoSelladoUSD)
+        costoEsEstimacion = costoEsEstimacion || otro.costoEsEstimacion
     }
 }
 
@@ -152,6 +186,17 @@ final class EstadoApp: ObservableObject {
         didSet { guardarUsosResumidos() }
     }
 
+    /// Ultimo resumen de /compact por conversacion (COMP.2).
+    ///
+    /// Se guarda aparte de `Conversation` y junto a los usos resumidos porque
+    /// el resumen tiene que sobrevivir a la poda y llegar al modelo tambien en
+    /// un chat SIN memoria. La copia de `Conversation.resumenCompactado` sigue
+    /// siendo la via de la Memoria; esta es el respaldo persistido que Historial
+    /// inyecta cuando esa via no lo aporta.
+    private var resumenesCompactadosPorConversacion: [String: String] = [:] {
+        didSet { guardarResumenesCompactados() }
+    }
+
     private let llavero: AlmacenClaves
     /// Estado sembrado por `-CapturasPrueba`, o nil en un arranque normal.
     /// Ademas de no persistir, activa el motor y la herramienta deterministas.
@@ -195,10 +240,12 @@ final class EstadoApp: ObservableObject {
     /// terminar el init normal y se queda apagada en modo de prueba.
     private var puedeGuardarVentanas = false
     private var puedeGuardarUsosResumidos = false
+    private var puedeGuardarResumenesCompactados = false
 
     private static let claveConfig = "nodo.config.v1"
     private static let claveVentanas = "nodo.ventanas.v1"
     private static let claveUsosResumidos = "nodo.usos-resumidos.v1"
+    private static let claveResumenesCompactados = "nodo.resumenes-compactados.v1"
 
     /// Instrucciones del resumen de /compact (§4.2). Es una llamada aparte,
     /// sin herramientas y sin streaming.
@@ -262,6 +309,8 @@ final class EstadoApp: ObservableObject {
         self.conversacion = Conversation()
         self.ventanasPorModelo = Self.ventanasGuardadas(de: defaults)
         self.usoResumidoPorConversacion = Self.usosResumidosGuardados(de: defaults)
+        self.resumenesCompactadosPorConversacion =
+            Self.resumenesCompactadosGuardados(de: defaults)
 
         var almacen: ConversationStore?
         do {
@@ -282,11 +331,15 @@ final class EstadoApp: ObservableObject {
         self.conversaciones = almacen?.listar() ?? []
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
+        self.puedeGuardarResumenesCompactados = true
         sincronizarSkills()
 
+        // COMP.3 va antes de sellar: poda los mensajes que v0.3.0 dejo
+        // duplicados en el hilo y evita que se coticen dos veces. Despues
         // COST.3 y COST.2, en este orden: primero se sellan los mensajes
         // legados con los precios de SU proveedor y despues se migra el libro,
         // para que el USD migrado ya cuente esas estimaciones.
+        migrarCompactadosHuerfanosAlCargar()
         sellarLegadosAlCargar()
         migrarLibroDeGastoAlArrancar()
     }
@@ -434,7 +487,89 @@ final class EstadoApp: ObservableObject {
         return viejos.mapValues { uso in
             var atribuido = UsoResumido()
             atribuido.sumar(uso, proveedorID: nil)
+            // El formato solo-tokens es aun mas viejo que el de v0.3.0 y
+            // tampoco trae sello: cuenta como huerfano para COMP.3.
+            atribuido.sinSelloEnDisco = true
             return atribuido
+        }
+    }
+
+    /// Guarda el ultimo resumen de compactacion por conversacion (COMP.2).
+    private func guardarResumenesCompactados() {
+        guard persistir, puedeGuardarResumenesCompactados,
+              let datos = try? JSONEncoder().encode(resumenesCompactadosPorConversacion)
+        else {
+            return
+        }
+        defaults.set(datos, forKey: Self.claveResumenesCompactados)
+    }
+
+    private static func resumenesCompactadosGuardados(
+        de defaults: UserDefaults
+    ) -> [String: String] {
+        guard let datos = defaults.data(forKey: claveResumenesCompactados),
+              let resumenes = try? JSONDecoder().decode([String: String].self, from: datos)
+        else {
+            return [:]
+        }
+        // Un resumen vacio no es un resumen: se descarta al cargar para que
+        // Historial no inyecte una cabecera sin texto.
+        return resumenes.filter {
+            !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    // MARK: - Migracion de compactados huerfanos (COMP.3)
+
+    /// Poda los chats que v0.3.0 compacto sin quitar los mensajes resumidos.
+    ///
+    /// Criterio exacto y POR QUE es seguro:
+    /// - El balde se decodifico del formato viejo: su JSON no traia la clave
+    ///   `costoSelladoUSD` (o venia del formato aun mas viejo, solo tokens).
+    ///   Los baldes nuevos siempre se escriben con sello, aunque sea 0.
+    /// - La conversacion conserva mas de `mensajesConservados +
+    ///   minimoParaResumir` (6 + 6 = 12) mensajes. En v0.3.0 /compact guardaba
+    ///   el balde pero no podaba, asi que el hilo se quedaba con todo; una
+    ///   compactacion nueva deja 6 y, para volver a pasar de 12, el usuario
+    ///   tendria que anadir 7 mensajes, pero entonces el balde ya tendria sello.
+    /// - El balde no se ha migrado antes (`migradoDeV030`): la poda se hace una
+    ///   sola vez y no se come mensajes nuevos en arranques posteriores.
+    ///
+    /// Se ejecuta antes de sellar legados para que los mensajes que salen no
+    /// se coticen dos veces: su consumo ya esta en el balde viejo.
+    private func migrarCompactadosHuerfanosAlCargar() {
+        let maximoSinPodar = Compactador.mensajesConservados
+            + Compactador.minimoParaResumir
+        var cambiadas: [Conversation] = []
+        var baldes = usoResumidoPorConversacion
+        var cambioBaldes = false
+
+        for indice in conversaciones.indices {
+            let clave = conversaciones[indice].id.uuidString
+            guard var balde = baldes[clave],
+                  balde.sinSelloEnDisco,
+                  !balde.migradoDeV030,
+                  conversaciones[indice].mensajes.count > maximoSinPodar
+            else {
+                continue
+            }
+
+            conversaciones[indice].mensajes = Array(
+                conversaciones[indice].mensajes.suffix(
+                    Compactador.mensajesConservados
+                )
+            )
+            balde.migradoDeV030 = true
+            baldes[clave] = balde
+            cambiadas.append(conversaciones[indice])
+            cambioBaldes = true
+        }
+
+        if cambioBaldes {
+            usoResumidoPorConversacion = baldes
+        }
+        for conversacion in cambiadas {
+            try? store?.guardar(conversacion)
         }
     }
 
@@ -503,6 +638,10 @@ final class EstadoApp: ObservableObject {
         }
 
         config.usoApp.migrar(uso: uso, usd: usd, fecha: Date())
+        // Se persiste aqui a proposito: la migracion corre dentro del init,
+        // donde los observadores de `config` pueden no dispararse, y el libro
+        // tiene que quedar guardado con su marca de migrado.
+        guardarConfig()
     }
 
     /// El identificador crudo se recorta, pero no se transforma: la tabla debe
@@ -630,16 +769,28 @@ final class EstadoApp: ObservableObject {
         )
     }
 
-    /// True si algun mensaje del hilo aporta al acumulado con un sello estimado.
+    /// True si el acumulado incluye algun sello estimado.
     ///
     /// Son los legados que se sellaron al cargar con los precios actuales de su
-    /// proveedor (COST.3). El rotulo de /costo y la Hoja Estado lo advierten.
+    /// proveedor (COST.3). Tambien cuenta el balde de /compact: puede llevar
+    /// estimaciones de los mensajes que ya salieron del hilo, o su valoracion
+    /// de respaldo hecha con los precios de hoy. El rotulo de /costo y la Hoja
+    /// Estado lo advierten.
     var hayCostosEstimados: Bool {
-        conversacion.mensajes.contains { mensaje in
+        let enMensajes = conversacion.mensajes.contains { mensaje in
             mensaje.costoEsEstimacion
                 && mensaje.uso != nil
                 && mensaje.costoSelladoUSD != nil
         }
+        if enMensajes { return true }
+
+        guard let resumido = usoResumidoPorConversacion[conversacion.id.uuidString]
+        else {
+            return false
+        }
+        if resumido.costoEsEstimacion { return true }
+        // Un balde sin sello se valora con los precios de hoy: es estimacion.
+        return resumido.costoSelladoUSD == nil && !resumido.porProveedor.isEmpty
     }
 
     /// Costo acumulado del chat abierto: sellos vivos + sello del balde.
@@ -1006,6 +1157,9 @@ final class EstadoApp: ObservableObject {
         }
         try? store?.borrar(id: otra.id)
         usoResumidoPorConversacion.removeValue(forKey: otra.id.uuidString)
+        // COMP.2: el resumen pertenece a esa conversacion; si se borra, no
+        // puede quedar un respaldo huerfano que un id reutilizado pudiera leer.
+        resumenesCompactadosPorConversacion.removeValue(forKey: otra.id.uuidString)
         if store == nil {
             // En capturas no hay almacen: la lista en memoria tambien refleja
             // el borrado para que la pantalla no ensene una fila fantasma.
@@ -1336,7 +1490,7 @@ final class EstadoApp: ObservableObject {
         guard !compactando, !enviando else { return }
 
         let total = conversacion.mensajes.count
-        guard total >= 6 else {
+        guard total >= Compactador.minimoParaResumir else {
             avisoComando = "Todavía no hace falta compactar: la conversación es corta."
             return
         }
@@ -1345,7 +1499,14 @@ final class EstadoApp: ObservableObject {
 
         let idConversacion = conversacion.id
         let mensajes = conversacion.mensajes
-        let resumidos = max(0, total - 6)
+        let resumidos = max(0, total - Compactador.mensajesConservados)
+        // El presupuesto sale de la ventana del modelo del chat abierto. Sin
+        // ventana no se inventa un limite: Compactador hara una sola pasada,
+        // que es el contrato clasico de /compact.
+        let ventana = ventana(paraModelo: proveedor.modelo)
+        let presupuesto = ventana.flatMap {
+            Compactador.presupuesto(ventana: $0)
+        }
 
         avisoComando = nil
         error = nil
@@ -1366,23 +1527,41 @@ final class EstadoApp: ObservableObject {
 
             do {
                 let motor = self.motorPara(proveedor: proveedor, clave: clave)
-                let peticion = [ChatMessage(
-                    rol: .sistema,
-                    texto: Self.instruccionesCompactar
-                )] + mensajes
 
-                // Sin herramientas y sin streaming: es una llamada de resumen,
-                // no un turno de conversacion.
-                let respuesta = try await motor.responder(
-                    mensajes: peticion,
-                    herramientas: [],
-                    alRecibirTexto: nil
-                )
+                // La cadena puede hacer hasta tres llamadas. Se guardan todas
+                // para que el balde conserve el consumo y el sello de cada una,
+                // no solo el de la ultima.
+                var usosDeResumen: [UsoTokens] = []
+                var ultimoUsoResumen: UsoTokens?
+
+                let resultado = try await Compactador.resumirEnCadena(
+                    mensajes: mensajes,
+                    presupuesto: presupuesto
+                ) { texto in
+                    // Sin herramientas y sin streaming: es una llamada de
+                    // resumen, no un turno de conversacion. El texto ya trae
+                    // los roles; las instrucciones van como sistema.
+                    let peticion = [
+                        ChatMessage(rol: .sistema, texto: Self.instruccionesCompactar),
+                        ChatMessage(rol: .usuario, texto: texto)
+                    ]
+                    let respuesta = try await motor.responder(
+                        mensajes: peticion,
+                        herramientas: [],
+                        alRecibirTexto: nil
+                    )
+                    try Task.checkCancellation()
+
+                    // Cada pasada consume y cuenta para el acumulador global,
+                    // aunque luego el rescate descarte el resumen.
+                    self.registrarGasto(uso: respuesta.uso, proveedor: proveedor)
+                    if let uso = respuesta.uso {
+                        usosDeResumen.append(uso)
+                        ultimoUsoResumen = uso
+                    }
+                    return respuesta.texto
+                }
                 try Task.checkCancellation()
-
-                // La llamada de resumen tambien consume: cuenta para el
-                // acumulador global aunque luego se descarte el resumen.
-                self.registrarGasto(uso: respuesta.uso, proveedor: proveedor)
 
                 guard self.conversacion.id == idConversacion,
                       self.generacionCompactado == generacion
@@ -1390,9 +1569,9 @@ final class EstadoApp: ObservableObject {
                     return
                 }
 
-                let resumen = respuesta.texto
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !resumen.isEmpty else {
+                // Un resumen vacio sin rescate es un fallo: no se poda nada.
+                // El rescate si puede devolver `resumen == nil` a proposito.
+                guard resultado.resumen != nil || resultado.conservoUltimos else {
                     self.error = "No se pudo compactar: el modelo devolvió un resumen vacío."
                     return
                 }
@@ -1401,9 +1580,10 @@ final class EstadoApp: ObservableObject {
                     self.conversacion.mensajes.prefix(resumidos)
                 )
                 // La factura conserva el consumo de los mensajes que salen y
-                // tambien el de la propia llamada de resumen.
+                // tambien el de todas las llamadas de resumen de la cadena.
                 var usoHistorico = UsoResumido()
                 var costoHistorico: Double? = 0
+                var esEstimacion = false
                 for mensaje in mensajesResumidos {
                     guard let uso = mensaje.uso else { continue }
                     // El mensaje conserva el proveedor que lo genero; los
@@ -1411,6 +1591,9 @@ final class EstadoApp: ObservableObject {
                     let id = mensaje.proveedorID
                         ?? self.conversacion.proveedorID
                     usoHistorico.sumar(uso, proveedorID: id)
+                    if mensaje.costoEsEstimacion {
+                        esEstimacion = true
+                    }
                     // HP4: el balde absorbe el sello del mensaje. Un legado sin
                     // sello aporta su valoracion por proveedor, igual que el
                     // lector del acumulado.
@@ -1423,9 +1606,9 @@ final class EstadoApp: ObservableObject {
                         )
                     )
                 }
-                if let usoResumen = respuesta.uso {
+                for usoResumen in usosDeResumen {
                     usoHistorico.sumar(usoResumen, proveedorID: proveedor.id)
-                    // La llamada de resumen se sella a los precios del
+                    // Cada llamada de resumen se sella a los precios del
                     // proveedor que la hizo en este momento.
                     costoHistorico = CostoEstimado.sumar(
                         costoHistorico,
@@ -1437,6 +1620,7 @@ final class EstadoApp: ObservableObject {
                     )
                 }
                 usoHistorico.costoSelladoUSD = costoHistorico
+                usoHistorico.costoEsEstimacion = esEstimacion
 
                 if usoHistorico.total.total > 0 {
                     let claveBalde = idConversacion.uuidString
@@ -1444,25 +1628,31 @@ final class EstadoApp: ObservableObject {
                         ?? UsoResumido()
                     // Un balde legado sin sello se valora ahora por proveedor
                     // para que la suma no pierda lo ya compactado; un balde
-                    // vacio vale cero, no "desconocido".
+                    // vacio vale cero, no "desconocido". Esa valoracion usa
+                    // los precios de hoy, asi que se marca como estimacion.
                     if fusionado.costoSelladoUSD == nil {
-                        fusionado.costoSelladoUSD = fusionado.porProveedor.isEmpty
-                            ? 0
-                            : self.costoDeResumido(
+                        if fusionado.porProveedor.isEmpty {
+                            fusionado.costoSelladoUSD = 0
+                        } else {
+                            fusionado.costoSelladoUSD = self.costoDeResumido(
                                 fusionado,
                                 proveedorDelChat: self.conversacion.proveedorID
                             )
+                            fusionado.costoEsEstimacion = true
+                        }
                     }
                     fusionado.fusionar(usoHistorico)
                     self.usoResumidoPorConversacion[claveBalde] = fusionado
                 }
 
                 let idsResumidos = Set(mensajesResumidos.map(\.id))
-                self.conversacion.mensajes = Array(
-                    self.conversacion.mensajes.suffix(6)
+                self.conversacion.mensajes = resultado.mensajes
+                self.conversacion.resumenCompactado = resultado.resumen
+                self.conversacion.usoTrasCompactar = ultimoUsoResumen
+                self.actualizarResumenCompactado(
+                    resultado.resumen,
+                    para: idConversacion
                 )
-                self.conversacion.resumenCompactado = resumen
-                self.conversacion.usoTrasCompactar = respuesta.uso
 
                 // Los divisores anclados a mensajes que se van ya no tienen
                 // sentido; el divisor de compactacion se pinta al principio.
@@ -1470,10 +1660,26 @@ final class EstadoApp: ObservableObject {
                     guard let ancla = evento.trasMensaje else { return false }
                     return idsResumidos.contains(ancla)
                 }
-                self.registrarEventoVisual(
-                    "── Conversación compactada: se resumieron \(resumidos) mensajes ──",
-                    tras: nil
-                )
+                if resultado.conservoUltimos {
+                    // El resultado lo declara: el hilo quedo en los ultimos 6
+                    // y el resumen se descarto porque no cupo ni comprimido.
+                    let texto = "── Conversación compactada: no bajó del presupuesto; "
+                        + "se conservaron los últimos 6 mensajes ──"
+                    self.avisoComando = "No se pudo bajar del presupuesto: "
+                        + "se conservaron los últimos 6 mensajes."
+                    self.registrarEventoVisual(texto, tras: nil)
+                } else if resultado.pasadas > 1 {
+                    self.registrarEventoVisual(
+                        "── Conversación compactada en \(resultado.pasadas) pasadas: "
+                            + "se resumieron \(resumidos) mensajes ──",
+                        tras: nil
+                    )
+                } else {
+                    self.registrarEventoVisual(
+                        "── Conversación compactada: se resumieron \(resumidos) mensajes ──",
+                        tras: nil
+                    )
+                }
 
                 self.persistirActual()
             } catch is CancellationError {
@@ -1489,6 +1695,18 @@ final class EstadoApp: ObservableObject {
                     ?? error.localizedDescription
                 self.error = "No se pudo compactar: \(detalle)"
             }
+        }
+    }
+
+    /// Guarda o borra el respaldo del ultimo resumen de /compact (COMP.2).
+    private func actualizarResumenCompactado(_ resumen: String?, para id: UUID) {
+        let clave = id.uuidString
+        let limpio = (resumen ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if limpio.isEmpty {
+            resumenesCompactadosPorConversacion.removeValue(forKey: clave)
+        } else {
+            resumenesCompactadosPorConversacion[clave] = limpio
         }
     }
 
@@ -1755,7 +1973,12 @@ final class EstadoApp: ObservableObject {
     private func historialParaEnviar() -> [ChatMessage] {
         Historial.paraEnviar(
             conversacion: conversacion,
-            promptSistema: config.systemPrompt
+            promptSistema: config.systemPrompt,
+            // Respaldo persistido de COMP.2: Historial solo lo usa cuando la
+            // conversacion no aporta el resumen por la via de la Memoria.
+            resumenGuardado: resumenesCompactadosPorConversacion[
+                conversacion.id.uuidString
+            ]
         )
     }
 
