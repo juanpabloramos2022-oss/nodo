@@ -65,6 +65,22 @@ final class ProviderConfigTests: XCTestCase {
         )
     }
 
+    func testPreciosDelProveedorSobrevivenAlJSON() throws {
+        let original = ProviderConfig(
+            nombre: "x",
+            baseURL: "https://a.test",
+            modelo: "m",
+            precioEntradaPorMillon: 1.5,
+            precioSalidaPorMillon: 2.5
+        )
+
+        let datos = try JSONEncoder().encode(original)
+        let vuelta = try JSONDecoder().decode(ProviderConfig.self, from: datos)
+
+        XCTAssertEqual(vuelta.precioEntradaPorMillon, 1.5)
+        XCTAssertEqual(vuelta.precioSalidaPorMillon, 2.5)
+    }
+
     func testClaveKeychainEsUnicaPorProveedor() {
         let uno = Ayudas.proveedor()
         let otro = Ayudas.proveedor()
@@ -198,8 +214,27 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config.proveedorActivo, id)
         XCTAssertEqual(config.proveedorSeleccionado?.id, id)
         XCTAssertEqual(config.proveedorSeleccionado?.modelo, "modelo-x")
+        XCTAssertNil(config.proveedorSeleccionado?.precioEntradaPorMillon)
+        XCTAssertNil(config.proveedorSeleccionado?.precioSalidaPorMillon)
         XCTAssertEqual(config.systemPrompt, "se breve")
         XCTAssertEqual(config.servidor.url, "https://servidor.test/mcp")
+        XCTAssertNil(config.topeAvisoCosto)
+        XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)
+    }
+
+    func testTopeDeAvisoPorDefectoEsUnDolar() {
+        let config = AppConfig()
+        XCTAssertNil(config.topeAvisoCosto)
+        XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)
+    }
+
+    func testTopeDeAvisoGuardadoSobreviveAlJSON() throws {
+        let config = AppConfig(topeAvisoCosto: 0)
+
+        let vuelta = try AppConfig.desde(json: try config.json())
+
+        XCTAssertEqual(vuelta.topeAvisoCosto, 0.0)
+        XCTAssertEqual(vuelta.topeAvisoCostoEfectivo, 0, accuracy: 0.0001)
     }
 
     func testJSONCorruptoFalla() {

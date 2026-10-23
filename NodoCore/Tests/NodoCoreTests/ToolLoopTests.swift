@@ -130,6 +130,36 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertEqual(visto, ["en vivo"])
     }
 
+    func testSumaElUsoDeTodasLasLlamadasInternasDelTurno() async throws {
+        let motor = MotorFalso([
+            RespuestaModelo(
+                texto: "",
+                toolCalls: [ToolCall(id: "c1", nombre: "probar", argumentos: "{}")],
+                uso: UsoTokens(entrada: 10, salida: 4)
+            ),
+            RespuestaModelo(
+                texto: "listo",
+                uso: UsoTokens(entrada: 20, salida: 8)
+            )
+        ])
+        let bucle = ToolLoop(motor: motor, herramientas: [HerramientaFalsa()])
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "x")]
+        )
+
+        XCTAssertEqual(resultado.usoTotal, UsoTokens(entrada: 30, salida: 12))
+
+        let ultimo = try XCTUnwrap(resultado.mensajesNuevos.last)
+        XCTAssertEqual(ultimo.rol, .asistente)
+        XCTAssertEqual(ultimo.tokensEntrada, 30)
+        XCTAssertEqual(ultimo.tokensSalida, 12)
+
+        // Solo el ultimo asistente lleva el total: si se repitiera en cada
+        // llamada, el acumulado del chat contaria dos veces.
+        XCTAssertNil(resultado.mensajesNuevos.first?.tokensEntrada)
+    }
+
     func testVariasHerramientasEnUnTurnoSeEjecutanTodas() async throws {
         let motor = MotorFalso([
             RespuestaModelo(texto: "", toolCalls: [

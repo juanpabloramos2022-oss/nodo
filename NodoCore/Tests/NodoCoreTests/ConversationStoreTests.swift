@@ -193,6 +193,40 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertEqual(cargada.mensajes.first?.texto, "hola desde la version anterior")
         XCTAssertFalse(cargada.fijada)
         XCTAssertFalse(cargada.archivada)
+        XCTAssertFalse(cargada.avisoCostoMostrado)
+        XCTAssertNil(cargada.mensajes.first?.tokensEntrada)
+        XCTAssertNil(cargada.mensajes.first?.tokensSalida)
+    }
+
+    func testAvisoCostoMostradoSobreviveAGuardarYCargar() throws {
+        let conversacion = Conversation(titulo: "Con aviso", avisoCostoMostrado: true)
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertTrue(cargada.avisoCostoMostrado)
+    }
+
+    func testTokensDelMensajeSobrevivenAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Con consumo",
+            mensajes: [
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "hola",
+                    tokensEntrada: 12,
+                    tokensSalida: 7
+                )
+            ]
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+        let mensaje = try XCTUnwrap(cargada.mensajes.first)
+
+        XCTAssertEqual(mensaje.tokensEntrada, 12)
+        XCTAssertEqual(mensaje.tokensSalida, 7)
+        XCTAssertEqual(mensaje.uso, UsoTokens(entrada: 12, salida: 7))
     }
 
     func testFijadaYArchivadaSobrevivenAGuardarYCargar() throws {
