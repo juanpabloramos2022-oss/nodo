@@ -23,6 +23,10 @@ import sys
 from typing import Iterable, Optional
 
 EXTENSIONES_IMAGEN = (".png", ".jpg", ".jpeg")
+
+# Volcados automaticos de XCUITest por cada sondeo: no aportan a la revision
+# y ensucian la rama de capturas; las jerarquias utiles van con nombre propio.
+PREFIJOS_EXCLUIDOS = ("Debug-description", "App-UI-hierarchy")
 # Extensiones con las que xcresulttool puede exportar un XCTAttachment de
 # texto. Se normalizan a .txt al copiarlas.
 EXTENSIONES_TEXTO = (".txt", ".text", ".log")
@@ -77,6 +81,8 @@ def _copiar(
     como .txt un adjunto de texto que xcresulttool exporto con otra extension).
     """
     os.makedirs(salida, exist_ok=True)
+    if os.path.basename(origen).startswith(PREFIJOS_EXCLUIDOS):
+        return ""
     extension = (extension or os.path.splitext(origen)[1]).lower()
     texto = sugerido or os.path.splitext(os.path.basename(origen))[0]
     nombre = _nombre_limpio(texto, extension)
