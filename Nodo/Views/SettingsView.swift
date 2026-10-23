@@ -64,13 +64,25 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextEditor(text: $estado.config.systemPrompt)
-                        .frame(minHeight: 110)
-                        .foregroundStyle(.white)
+                    NavigationLink {
+                        MemoriaView()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Memoria")
+                                    .foregroundStyle(.white)
+                                Text(vistaPreviaMemoria)
+                                    .font(.caption)
+                                    .foregroundStyle(Tema.textoSuave)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                    }
                 } header: {
-                    Text("Instrucciones permanentes")
+                    Text("Contexto")
                 } footer: {
-                    Text("Se envia al principio de cada conversacion.")
+                    Text("Esto se incluye en todos tus chats.")
                 }
 
                 Section {
@@ -111,6 +123,13 @@ struct SettingsView: View {
                 Text(aviso ?? "")
             }
         }
+    }
+
+    /// Primera linea de la memoria, para asomarla en la fila de Ajustes.
+    private var vistaPreviaMemoria: String {
+        let limpio = estado.config.systemPrompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return limpio.isEmpty ? "vacia" : limpio
     }
 
     private func copiarConfig() {
