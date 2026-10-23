@@ -46,6 +46,26 @@ final class EstadoApp: ObservableObject {
     @Published var conversacion: Conversation
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
+    /// Texto de la caja de la conversacion abierta.
+    ///
+    /// Vive aqui y no en ChatView para que los comandos, el selector flotante
+    /// y el dictado trabajen sobre un unico borrador: enviar, completar una
+    /// skill o limpiar tras un comando son operaciones de la misma ruta.
+    @Published var borrador = ""
+    /// Aviso pequeno sobre la caja (comando desconocido, skill sin mensaje,
+    /// permisos de dictado o compactacion corta). No es la franja de tope.
+    @Published var avisoComando: String?
+    /// True mientras se esta pidiendo el resumen de /compact. Deshabilita la
+    /// caja para que no se envie un turno a mitad de la compactacion.
+    @Published private(set) var compactando = false
+    /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
+    /// presenta observando esta bandera.
+    @Published var mostrarHojaModelos = false
+    /// Conversacion que /nuevo quiere abrir. ChatsRaizView la empuja a su pila.
+    @Published var idParaAbrir: UUID?
+    /// Texto que /exportar quiere compartir. ChatView lo recoge y presenta la
+    /// hoja del sistema.
+    @Published var textoParaCompartirSolicitado: String?
     /// Aprobacion pendiente del usuario, o nil si no hay ninguna.
     @Published var aprobacionPendiente: AprobacionPendiente?
     /// Nombre de la herramienta que se esta ejecutando ahora mismo. nil fuera
@@ -75,10 +95,25 @@ final class EstadoApp: ObservableObject {
         didSet { guardarVentanas() }
     }
 
+    /// Uso de los mensajes que /compact resumio, por conversacion.
+    ///
+    /// La factura no puede bajar al compactar (§4.1): los mensajes resumidos
+    /// salen del hilo, pero su consumo se conserva aqui y se suma al de los
+    /// mensajes que quedan. Vive fuera de `Conversation` para no tocar el
+    /// modelo de NodoCore.
+    private var usoResumidoPorConversacion: [String: UsoTokens] = [:] {
+        didSet { guardarUsosResumidos() }
+    }
+
     private let llavero: AlmacenClaves
     /// Estado sembrado por `-CapturasPrueba`, o nil en un arranque normal.
     /// Ademas de no persistir, activa el motor y la herramienta deterministas.
     private let estadoDePrueba: EstadoPrueba?
+    /// Servicio de dictado: el real en produccion y el doble de CI en capturas.
+    let dictado: SpeechRecognizing
+    /// Punto UNICO de construccion del puerto de skills de esta fase. La Fase 4
+    /// conectara el almacen persistido aqui, sin tocar el parser ni esta ruta.
+    private let resolvedorSkills: ResolvedorSkills
     /// En modo capturas no se escribe nada en el almacenamiento del telefono:
     /// el estado llega sembrado en memoria y las capturas no deben ensuciar
     /// los datos de quien use la app de verdad.
@@ -86,6 +121,14 @@ final class EstadoApp: ObservableObject {
     private let transporte = TransporteURLSession()
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
+    /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
+    private var tareaCompactado: Task<Void, Never>?
+    /// Identifica la compactacion vigente: una tarea vieja que termina tarde no
+    /// puede reabrir la caja de una compactacion nueva.
+    private var generacionCompactado = UUID()
+    /// Cambia al guardar una clave para que la Tarjeta de Bienvenida vuelva a
+    /// leer el llavero y pase a su estado normal.
+    @Published private(set) var clavesVersion = 0
     /// Que clase de turno fallo, para que `reintentar()` sepa si debe volver a
     /// enviar el historial actual o regenerar la ultima respuesta restaurada.
     private enum TipoTurnoFallido {
@@ -99,14 +142,52 @@ final class EstadoApp: ObservableObject {
     /// La carga inicial del diccionario no debe escribir nada: se activa al
     /// terminar el init normal y se queda apagada en modo de prueba.
     private var puedeGuardarVentanas = false
+    private var puedeGuardarUsosResumidos = false
 
     private static let claveConfig = "nodo.config.v1"
     private static let claveVentanas = "nodo.ventanas.v1"
+    private static let claveUsosResumidos = "nodo.usos-resumidos.v1"
+
+    /// Instrucciones del resumen de /compact (§4.2). Es una llamada aparte,
+    /// sin herramientas y sin streaming.
+    private static let instruccionesCompactar = """
+    Resume esta conversación en un solo bloque, en español, conservando los datos, las decisiones y los pendientes importantes. No inventes nada que no se haya dicho y no añadas opiniones. Devuelve solo el resumen.
+    """
+
+    /// Miles con punto y sin decimales, como en el texto de §2.4.
+    private static func tokensTexto(_ valor: Int) -> String {
+        let formateador = NumberFormatter()
+        formateador.locale = Locale(identifier: "es_ES")
+        formateador.numberStyle = .decimal
+        formateador.minimumFractionDigits = 0
+        formateador.maximumFractionDigits = 0
+        return formateador.string(from: NSNumber(value: valor)) ?? "\(valor)"
+    }
+
+    /// Costo con coma decimal y tres decimales ("0,004").
+    private static func costoTexto(_ valor: Double) -> String {
+        let formateador = NumberFormatter()
+        formateador.locale = Locale(identifier: "es_ES")
+        formateador.numberStyle = .decimal
+        formateador.minimumFractionDigits = 3
+        formateador.maximumFractionDigits = 3
+        return formateador.string(from: NSNumber(value: valor))
+            ?? String(format: "%.3f", valor)
+    }
 
     init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
         self.persistir = estadoDePrueba == nil
+        // En capturas el dictado es un doble que inyecta una transcripcion fija
+        // sin pedir permisos ni tocar el microfono. El resto del flujo es el
+        // mismo que en el iPhone real.
+        if estadoDePrueba == nil {
+            self.dictado = DictadoReconocimiento()
+        } else {
+            self.dictado = DictadoDePrueba()
+        }
+        self.resolvedorSkills = ResolvedorSkillsEnMemoria()
 
         // Gancho de capturas (SPEC §6/H7): estado de PRUEBA en memoria, sin
         // leer ni escribir la configuracion, las conversaciones o el llavero
@@ -131,6 +212,7 @@ final class EstadoApp: ObservableObject {
 
         self.conversacion = Conversation()
         self.ventanasPorModelo = Self.ventanasGuardadas()
+        self.usoResumidoPorConversacion = Self.usosResumidosGuardados()
 
         var almacen: ConversationStore?
         do {
@@ -142,6 +224,7 @@ final class EstadoApp: ObservableObject {
         self.store = almacen
         self.conversaciones = almacen?.listar() ?? []
         self.puedeGuardarVentanas = true
+        self.puedeGuardarUsosResumidos = true
     }
 
     // MARK: - Configuracion
@@ -208,6 +291,25 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    /// Guarda el consumo de los mensajes resumidos, fuera de `Conversation`.
+    private func guardarUsosResumidos() {
+        guard persistir, puedeGuardarUsosResumidos,
+              let datos = try? JSONEncoder().encode(usoResumidoPorConversacion)
+        else {
+            return
+        }
+        UserDefaults.standard.set(datos, forKey: Self.claveUsosResumidos)
+    }
+
+    private static func usosResumidosGuardados() -> [String: UsoTokens] {
+        guard let datos = UserDefaults.standard.data(forKey: claveUsosResumidos),
+              let usos = try? JSONDecoder().decode([String: UsoTokens].self, from: datos)
+        else {
+            return [:]
+        }
+        return usos
+    }
+
     /// El identificador crudo se recorta, pero no se transforma: la tabla debe
     /// seguir apuntando al mismo modelo que envia el proveedor.
     private static func claveDeModelo(_ modelo: String) -> String {
@@ -219,8 +321,13 @@ final class EstadoApp: ObservableObject {
         return llavero.leer(proveedor.claveKeychain)
     }
 
-    func guardarClave(_ clave: String, para proveedor: ProviderConfig) {
-        guard persistir else { return }
+    /// Guarda o borra la clave del proveedor y la propaga a sus companeros.
+    ///
+    /// Devuelve true si el llavero quedo escrito. La Tarjeta de Bienvenida usa
+    /// ese resultado para no cambiar de estado si el guardado fallo.
+    @discardableResult
+    func guardarClave(_ clave: String, para proveedor: ProviderConfig) -> Bool {
+        guard persistir else { return false }
         let limpia = clave.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             if limpia.isEmpty {
@@ -229,8 +336,11 @@ final class EstadoApp: ObservableObject {
                 try llavero.guardar(limpia, para: proveedor.claveKeychain)
                 propagarClave(limpia, desde: proveedor)
             }
+            clavesVersion += 1
+            return true
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 
@@ -283,16 +393,45 @@ final class EstadoApp: ObservableObject {
         return nil
     }
 
+    /// Consumo acumulado del chat abierto: mensajes vivos + resumidos.
+    ///
+    /// Al compactar, los mensajes resumidos salen del hilo pero su consumo se
+    /// conserva aparte para que la factura nunca baje (§4.1).
+    var usoAcumuladoDelChat: UsoTokens? {
+        var total = CostoEstimado.usoAcumulado(de: conversacion.mensajes)
+        if let resumido = usoResumidoPorConversacion[conversacion.id.uuidString] {
+            total = total?.sumando(resumido) ?? resumido
+        }
+        return total
+    }
+
     /// Costo acumulado del chat abierto, con los precios del proveedor activo.
     ///
     /// Sin precios configurados no hay cifra: no se inventa un costo.
     var costoAcumuladoDelChat: Double? {
-        guard let proveedor = config.proveedorSeleccionado else { return nil }
-        return CostoEstimado.acumulado(
-            mensajes: conversacion.mensajes,
+        guard let proveedor = config.proveedorSeleccionado,
+              let uso = usoAcumuladoDelChat
+        else {
+            return nil
+        }
+        return CostoEstimado.costo(
+            uso: uso,
             precioEntrada: proveedor.precioEntradaPorMillon,
             precioSalida: proveedor.precioSalidaPorMillon
         )
+    }
+
+    /// Ocupacion de la ventana del chat abierto (§4.1).
+    ///
+    /// Mientras la ultima operacion sea una compactacion, manda el uso de esa
+    /// llamada de resumen: es lo que hace bajar el medidor sin tocar la
+    /// factura. El siguiente turno normal limpia ese respaldo y vuelve a mandar
+    /// el uso de la ultima respuesta.
+    var ocupacionDelChat: UsoTokens? {
+        if let trasCompactar = conversacion.usoTrasCompactar {
+            return trasCompactar
+        }
+        return MetricasChat.ocupacionVentana(de: conversacion.mensajes)
     }
 
     /// True cuando el acumulado del chat abierto alcanzo el tope vigente.
@@ -396,6 +535,7 @@ final class EstadoApp: ObservableObject {
         cancelar()
         limpiarEventosVisuales()
         limpiarErrorDeTurno()
+        limpiarEstadoDeCaja()
         conversacion = Conversation(sinMemoria: sinMemoria)
     }
 
@@ -403,6 +543,7 @@ final class EstadoApp: ObservableObject {
         cancelar()
         limpiarEventosVisuales()
         limpiarErrorDeTurno()
+        limpiarEstadoDeCaja()
         conversacion = otra
     }
 
@@ -411,12 +552,23 @@ final class EstadoApp: ObservableObject {
             cancelar()
         }
         try? store?.borrar(id: otra.id)
+        usoResumidoPorConversacion.removeValue(forKey: otra.id.uuidString)
         if conversacion.id == otra.id {
             limpiarEventosVisuales()
             limpiarErrorDeTurno()
+            limpiarEstadoDeCaja()
             conversacion = Conversation()
         }
         recargarConversaciones()
+    }
+
+    /// Deja limpio todo lo que pertenece a la caja de la conversacion abierta.
+    private func limpiarEstadoDeCaja() {
+        borrador = ""
+        avisoComando = nil
+        mostrarHojaModelos = false
+        textoParaCompartirSolicitado = nil
+        idParaAbrir = nil
     }
 
     /// Cambia el proveedor activo y deja el divisor visual del cambio de modelo.
@@ -559,8 +711,260 @@ final class EstadoApp: ObservableObject {
 
     // MARK: - Envio
 
+    /// Ruta unica de la caja: analiza el borrador y despacha comandos, skills
+    /// o el mensaje normal (§4.2).
+    ///
+    /// ChatView ya no llama a `enviar()` directamente. Los comandos locales
+    /// limpian el borrador; un token desconocido o una skill sin mensaje lo
+    /// dejan intacto y publican `avisoComando`.
+    func enviarTextoActual() {
+        guard !enviando, !compactando else { return }
+
+        let texto = borrador
+        guard !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        avisoComando = nil
+
+        switch AnalizadorComandos.analizar(texto, resolvedor: resolvedorSkills) {
+        case .mensajeNormal(let limpio):
+            borrador = limpio
+            enviar(limpio)
+            borrador = ""
+
+        case .comando(let comando):
+            borrador = ""
+            ejecutar(comando)
+
+        case .conSkills(let skills, let mensaje):
+            borrador = mensaje
+            enviar(mensaje, skills: skills)
+            borrador = ""
+
+        case .tokensDesconocidos(let slugs):
+            let lista = slugs.map { "/\($0)" }.joined(separator: ", ")
+            avisoComando = "No reconozco: \(lista). Revisa el comando o quítalo para enviar como mensaje normal."
+
+        case .skillSinMensaje(let skill):
+            avisoComando = "La skill \(skill.nombre) necesita un mensaje detrás."
+        }
+    }
+
+    /// Skills que encajan con lo tecleado en el selector flotante.
+    ///
+    /// El parser y esta ruta comparten el mismo puerto: la Fase 4 solo cambia
+    /// la fuente de datos, no la gramatica.
+    func skillsParaSelector(_ consulta: String) -> [SkillResuelta] {
+        let buscado = AnalizadorComandos.normalizarSlug(consulta)
+        let todas = resolvedorSkills.todas()
+        guard !buscado.isEmpty else { return todas }
+
+        return todas.filter { skill in
+            let slug = AnalizadorComandos.normalizarSlug(skill.slug)
+            let nombre = AnalizadorComandos.normalizarSlug(skill.nombre)
+            return slug.hasPrefix(buscado) || nombre.contains(buscado)
+        }
+    }
+
+    /// Ejecuta un comando integrado sin enviar nada al modelo.
+    private func ejecutar(_ comando: ComandoIntegrado) {
+        switch comando {
+        case .costo:
+            registrarEventoVisual(
+                textoDeCosto(),
+                tras: conversacion.mensajes.last?.id
+            )
+
+        case .modelos:
+            mostrarHojaModelos = true
+
+        case .nuevo:
+            nuevaConversacion()
+            // La raiz observa este id y empuja la conversacion recien creada.
+            idParaAbrir = conversacion.id
+
+        case .exportar:
+            textoParaCompartirSolicitado = exportarConversacion()
+
+        case .compact:
+            compactar()
+        }
+    }
+
+    /// Texto de /costo con el consumo real y el tope vigente (§2.4).
+    ///
+    /// Si no hay precios configurados no se inventa un costo; si el tope es 0
+    /// (aviso desactivado) se omite la frase del tope.
+    private func textoDeCosto() -> String {
+        let proveedor = config.proveedorSeleccionado
+        let usoReal = usoAcumuladoDelChat
+        let uso = usoReal ?? UsoTokens()
+
+        let modelo: String
+        if let proveedor {
+            let limpio = NombresLimpios.modelo(proveedor.modelo)
+            modelo = limpio.isEmpty
+                ? NombresLimpios.proveedor(
+                    nombre: proveedor.nombre,
+                    baseURL: proveedor.baseURL
+                )
+                : limpio
+        } else {
+            modelo = "Sin modelo"
+        }
+
+        var texto = "En este chat van \(Self.tokensTexto(uso.total)) tokens "
+            + "(\(Self.tokensTexto(uso.entrada)) de entrada + "
+            + "\(Self.tokensTexto(uso.salida)) de salida)"
+
+        if let usoReal,
+           let costo = CostoEstimado.costo(
+               uso: usoReal,
+               precioEntrada: proveedor?.precioEntradaPorMillon,
+               precioSalida: proveedor?.precioSalidaPorMillon
+           ) {
+            texto += " · ≈ $\(Self.costoTexto(costo)) con \(modelo)"
+        } else {
+            texto += " con \(modelo)"
+        }
+
+        let tope = config.topeAvisoCostoEfectivo
+        if tope > 0 {
+            texto += ". El tope de aviso está en $\(String(format: "%.2f", tope))."
+        } else {
+            texto += "."
+        }
+        return texto
+    }
+
+    /// Compacta el historial conservando los ultimos 6 mensajes (§4.2).
+    ///
+    /// La conversacion solo se toca cuando el resumen llega bien: si la llamada
+    /// falla, el hilo queda intacto y el error se publica en `error`.
+    func compactar() {
+        guard !compactando, !enviando else { return }
+
+        let total = conversacion.mensajes.count
+        guard total >= 6 else {
+            avisoComando = "Todavía no hace falta compactar: la conversación es corta."
+            return
+        }
+
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+
+        let idConversacion = conversacion.id
+        let mensajes = conversacion.mensajes
+        let resumidos = max(0, total - 6)
+
+        avisoComando = nil
+        error = nil
+        compactando = true
+        let generacion = UUID()
+        generacionCompactado = generacion
+
+        tareaCompactado = Task { [weak self] in
+            guard let self else { return }
+
+            defer {
+                // Solo la compactacion vigente reabre la caja.
+                if self.generacionCompactado == generacion {
+                    self.compactando = false
+                    self.tareaCompactado = nil
+                }
+            }
+
+            do {
+                let motor = self.motorPara(proveedor: proveedor, clave: clave)
+                let peticion = [ChatMessage(
+                    rol: .sistema,
+                    texto: Self.instruccionesCompactar
+                )] + mensajes
+
+                // Sin herramientas y sin streaming: es una llamada de resumen,
+                // no un turno de conversacion.
+                let respuesta = try await motor.responder(
+                    mensajes: peticion,
+                    herramientas: [],
+                    alRecibirTexto: nil
+                )
+                try Task.checkCancellation()
+
+                guard self.conversacion.id == idConversacion,
+                      self.generacionCompactado == generacion
+                else {
+                    return
+                }
+
+                let resumen = respuesta.texto
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !resumen.isEmpty else {
+                    self.error = "No se pudo compactar: el modelo devolvió un resumen vacío."
+                    return
+                }
+
+                let mensajesResumidos = Array(
+                    self.conversacion.mensajes.prefix(resumidos)
+                )
+                // La factura conserva el consumo de los mensajes que salen y
+                // tambien el de la propia llamada de resumen.
+                var usoHistorico = CostoEstimado.usoAcumulado(
+                    de: mensajesResumidos
+                ) ?? UsoTokens()
+                if let usoResumen = respuesta.uso {
+                    usoHistorico = usoHistorico.sumando(usoResumen)
+                }
+                if usoHistorico.total > 0 {
+                    let acumulado = self.usoResumidoPorConversacion[
+                        idConversacion.uuidString
+                    ] ?? UsoTokens()
+                    self.usoResumidoPorConversacion[idConversacion.uuidString] =
+                        acumulado.sumando(usoHistorico)
+                }
+
+                let idsResumidos = Set(mensajesResumidos.map(\.id))
+                self.conversacion.mensajes = Array(
+                    self.conversacion.mensajes.suffix(6)
+                )
+                self.conversacion.resumenCompactado = resumen
+                self.conversacion.usoTrasCompactar = respuesta.uso
+
+                // Los divisores anclados a mensajes que se van ya no tienen
+                // sentido; el divisor de compactacion se pinta al principio.
+                self.eventosVisuales.removeAll { evento in
+                    guard let ancla = evento.trasMensaje else { return false }
+                    return idsResumidos.contains(ancla)
+                }
+                self.registrarEventoVisual(
+                    "── Conversación compactada: se resumieron \(resumidos) mensajes ──",
+                    tras: nil
+                )
+
+                self.persistirActual()
+            } catch is CancellationError {
+                // Cambiar de chat o pulsar Detener no toca la conversacion.
+            } catch {
+                guard !Task.isCancelled,
+                      self.conversacion.id == idConversacion,
+                      self.generacionCompactado == generacion
+                else {
+                    return
+                }
+                let detalle = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.error = "No se pudo compactar: \(detalle)"
+            }
+        }
+    }
+
     /// Manda el mensaje y va pintando la respuesta segun llega.
     func enviar(_ texto: String) {
+        enviar(texto, skills: [])
+    }
+
+    /// Envio con las skills resueltas de este turno.
+    ///
+    /// Los nombres visibles se guardan en el mensaje del usuario; las
+    /// instrucciones solo viajan en el payload de ESTE turno, insertadas por
+    /// `Historial.insertarInstrucciones` antes de llamar al motor.
+    private func enviar(_ texto: String, skills: [SkillResuelta]) {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty, !enviando else { return }
 
@@ -569,7 +973,9 @@ final class EstadoApp: ObservableObject {
 
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
-        conversacion.mensajes.append(ChatMessage(rol: .usuario, texto: limpio))
+        var mensaje = ChatMessage(rol: .usuario, texto: limpio)
+        mensaje.skillsAplicadas = skills.map(\.nombre)
+        conversacion.mensajes.append(mensaje)
         if conversacion.titulo == "Conversacion" {
             conversacion.titulo = conversacion.tituloSugerido
         }
@@ -579,6 +985,7 @@ final class EstadoApp: ObservableObject {
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
+            instrucciones: skills.map(\.instrucciones),
             alFracasar: {}
         )
     }
@@ -662,6 +1069,7 @@ final class EstadoApp: ObservableObject {
         tipo: TipoTurnoFallido,
         proveedor: ProviderConfig,
         clave: String,
+        instrucciones: [String] = [],
         alFracasar: @escaping () -> Void
     ) {
         enviando = true
@@ -670,7 +1078,13 @@ final class EstadoApp: ObservableObject {
         aprobacionPendiente = nil
         error = nil
 
-        let historial = historialParaEnviar()
+        var historial = historialParaEnviar()
+        if !instrucciones.isEmpty {
+            historial = Historial.insertarInstrucciones(
+                historial,
+                instrucciones: instrucciones
+            )
+        }
         let modoTarea = conversacion.modoTarea
 
         tareaActual = Task { [weak self] in
@@ -734,6 +1148,9 @@ final class EstadoApp: ObservableObject {
 
             textoEnCurso = ""
             conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
+            // La respuesta nueva pasa a ser la medida de la ventana; el uso de
+            // la compactacion deja de ser el numerador.
+            conversacion.usoTrasCompactar = nil
             limpiarErrorDeTurno()
 
             if resultado.seAgotoElLimite {
@@ -843,6 +1260,10 @@ final class EstadoApp: ObservableObject {
     func cancelar() {
         tareaActual?.cancel()
         tareaActual = nil
+        tareaCompactado?.cancel()
+        tareaCompactado = nil
+        generacionCompactado = UUID()
+        compactando = false
         if continuacionAprobacion != nil {
             resolverAprobacion(false)
         }
@@ -944,6 +1365,44 @@ final class EstadoApp: ObservableObject {
     }
 
     // MARK: - Exportar e importar
+
+    /// Texto legible de la conversacion abierta para /exportar (§4.2).
+    ///
+    /// No incluye eventos visuales (nunca fueron mensajes) ni instrucciones de
+    /// skills (solo viajan en el payload de su turno). El resumen de una
+    /// compactacion si se incluye, porque forma parte del contexto guardado.
+    func exportarConversacion() -> String {
+        var lineas: [String] = ["Conversación: \(conversacion.titulo)", ""]
+
+        let resumenGuardado = (conversacion.resumenCompactado ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !resumenGuardado.isEmpty {
+            lineas.append("Resumen de la conversación:")
+            lineas.append(resumenGuardado)
+            lineas.append("")
+        }
+
+        if conversacion.mensajes.isEmpty {
+            lineas.append("Sin mensajes.")
+            return lineas.joined(separator: "\n")
+        }
+
+        for mensaje in conversacion.mensajes {
+            lineas.append("## \(nombreDeRol(mensaje.rol))")
+            lineas.append(mensaje.texto)
+            lineas.append("")
+        }
+        return lineas.joined(separator: "\n")
+    }
+
+    private func nombreDeRol(_ rol: ChatMessage.Rol) -> String {
+        switch rol {
+        case .usuario: return "Usuario"
+        case .asistente: return "Asistente"
+        case .sistema: return "Sistema"
+        case .herramienta: return "Herramienta"
+        }
+    }
 
     func exportarConfig() -> String? {
         guard let datos = try? config.json() else { return nil }

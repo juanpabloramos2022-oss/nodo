@@ -42,6 +42,8 @@ targets:
     # `swift test` es el que se compila dentro de la app, sin copiarlo.
     dependencies:
       - package: NodoCore
+      - sdk: Speech.framework
+      - sdk: AVFoundation.framework
     info:
       path: Nodo/Info.plist
       properties:
@@ -54,6 +56,10 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        # Textos genericos de los permisos del dictado (§4.5). No describen
+        # datos de nadie: solo dicen para que usa Nodo el microfono.
+        NSMicrophoneUsageDescription: "Nodo usa el micrófono para dictar mensajes por voz."
+        NSSpeechRecognitionUsageDescription: "Nodo usa el reconocimiento de voz para convertir tu dictado en texto."
         # Permite hablar con un servidor de modelos en la red local por http.
         # Todo lo que sale a internet sigue exigiendo https.
         NSAppTransportSecurity:

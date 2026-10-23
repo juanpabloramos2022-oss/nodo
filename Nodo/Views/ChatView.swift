@@ -16,7 +16,9 @@ struct ChatView: View {
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void
 
-    @State private var borrador = ""
+    @State private var dictando = false
+    @State private var textoAntesDeDictar = ""
+    @State private var textoParaCompartir: String?
     @FocusState private var escribiendo: Bool
     @State private var mostrarEstadoChat = false
     @State private var mostrarMemoriaRapida = false
@@ -33,7 +35,10 @@ struct ChatView: View {
 
             franjaTope
             tiraFina
+            filaCompactando
             filaHerramientaEnCurso
+            franjaAvisoComando
+            selectorSugerencias
             barraDeEntrada
         }
         .background(Tema.fondo.ignoresSafeArea())
@@ -53,13 +58,34 @@ struct ChatView: View {
         // La barra Listo no se hereda de la raiz de la pila: cada pantalla
         // activa declara la suya. Aqui cubre la caja de texto del chat.
         .conBarraTecladoListo()
-        // Volver (boton o gesto) cierra el teclado en la transicion.
-        .onDisappear { bajarTeclado() }
+        // Volver (boton o gesto) cierra el teclado y corta el dictado.
+        .onDisappear {
+            detenerDictado()
+            bajarTeclado()
+        }
+        .onChange(of: estado.textoParaCompartirSolicitado) { _, nuevo in
+            guard let nuevo else { return }
+            textoParaCompartir = nuevo
+        }
         .sheet(isPresented: $mostrarEstadoChat) {
             HojaEstadoChatView()
         }
         .sheet(isPresented: $mostrarMemoriaRapida) {
             HojaMemoriaRapidaView()
+        }
+        .sheet(isPresented: $estado.mostrarHojaModelos) {
+            HojaModelosView(alGestionarModelos: alGestionarModelos)
+        }
+        .sheet(isPresented: Binding(
+            get: { textoParaCompartir != nil },
+            set: { presentado in
+                if !presentado {
+                    textoParaCompartir = nil
+                    estado.textoParaCompartirSolicitado = nil
+                }
+            }
+        )) {
+            HojaCompartir(texto: textoParaCompartir ?? "")
         }
         .sheet(item: $estado.aprobacionPendiente) { aprobacion in
             HojaAprobacionView(aprobacion: aprobacion) { aprobada in
@@ -85,25 +111,12 @@ struct ChatView: View {
     /// conversacion ni perder lo escrito (SPEC §3.2).
     private var pildora: some View {
         Menu {
-            ForEach(estado.config.proveedores) { proveedor in
-                Button {
-                    estado.cambiarProveedor(proveedor)
-                } label: {
-                    if esActivo(proveedor) {
-                        Label(nombreDeModelo(proveedor), systemImage: "checkmark")
-                    } else {
-                        Text(nombreDeModelo(proveedor))
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                alGestionarModelos()
-            } label: {
-                Label("Gestionar modelos…", systemImage: "slider.horizontal.3")
-            }
+            listaModelos(
+                proveedores: estado.config.proveedores,
+                activo: estado.config.proveedorSeleccionado?.id,
+                alElegir: { estado.cambiarProveedor($0) },
+                alGestionar: alGestionarModelos
+            )
         } label: {
             VStack(spacing: 1) {
                 HStack(spacing: 3) {
@@ -238,6 +251,19 @@ struct ChatView: View {
                 }
             }
 
+            Button {
+                estado.compactar()
+            } label: {
+                Label("Compactar", systemImage: "rectangle.compress.vertical")
+            }
+            // Compactar entra al menu en esta fase, pero solo cuando el hilo
+            // ya tiene suficiente historial (§4.2).
+            .disabled(
+                estado.conversacion.mensajes.count < 6
+                    || estado.compactando
+                    || estado.enviando
+            )
+
             Divider()
 
             Button(role: .destructive) {
@@ -323,11 +349,15 @@ struct ChatView: View {
 
     @ViewBuilder
     private var contenido: some View {
-        if estado.conversacion.mensajes.isEmpty && !estado.enviando {
-            EstadoVacio(
-                icono: "bubble.left.and.bubble.right",
-                titulo: "Nodo",
-                detalle: "Escribe abajo para empezar. Tus claves se quedan en este telefono."
+        if estado.conversacion.mensajes.isEmpty
+            && estado.eventosVisuales.isEmpty
+            && !estado.enviando {
+            // La Tarjeta de Bienvenida sustituye al estado vacio generico y se
+            // alimenta solo de la configuracion real (§3.2).
+            TarjetaBienvenidaView(
+                alEmpezar: { escribiendo = true },
+                alEditarMemoria: { mostrarMemoriaRapida = true },
+                alGestionarModelos: alGestionarModelos
             )
         } else {
             ScrollViewReader { proxy in
@@ -677,17 +707,225 @@ struct ChatView: View {
         }
     }
 
+    /// Mientras /compact pide el resumen, la caja queda bloqueada y se dice.
+    @ViewBuilder
+    private var filaCompactando: some View {
+        if estado.compactando {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Compactando…")
+                    .font(.caption)
+                    .foregroundStyle(Tema.textoSuave)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Tema.margen)
+            .padding(.top, 6)
+            .accessibilityIdentifier("compactando")
+        }
+    }
+
+    /// Aviso pequeno del parser: superficie alta y sin botones, distinto de la
+    /// franja ambar de tope. Se limpia al editar o al enviar con exito.
+    @ViewBuilder
+    private var franjaAvisoComando: some View {
+        if let aviso = estado.avisoComando {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle")
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+
+                Text(aviso)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Tema.superficieAlta)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, Tema.margen)
+            .padding(.top, 6)
+            .accessibilityIdentifier("aviso-comando")
+        }
+    }
+
+    // MARK: - Selector flotante de "/"
+
+    /// Una fila del selector: un comando integrado o una skill resuelta.
+    private enum Sugerencia: Identifiable {
+        case comando(ComandoIntegrado)
+        case skill(SkillResuelta)
+
+        var id: String {
+            switch self {
+            case .comando(let comando):
+                return "comando-\(comando.rawValue)"
+            case .skill(let skill):
+                return "skill-\(skill.slug)"
+            }
+        }
+    }
+
+    /// Lo tecleado en el primer token, o nil si ya no toca mostrar el selector.
+    ///
+    /// Basta con que aparezca un espacio: el usuario ya esta escribiendo el
+    /// mensaje y la lista dejaria de ser util.
+    private var consultaSelector: String? {
+        let sinIzquierda = estado.borrador.drop(while: { $0.isWhitespace })
+        guard sinIzquierda.hasPrefix("/") else { return nil }
+
+        let cuerpo = sinIzquierda.dropFirst()
+        guard !cuerpo.contains(where: { $0.isWhitespace }) else { return nil }
+        return String(cuerpo)
+    }
+
+    /// Skills primero y comandos abajo, como pide §4.2, con tope de 6 filas.
+    private var sugerencias: [Sugerencia] {
+        guard let consulta = consultaSelector,
+              !estado.enviando,
+              !estado.compactando
+        else {
+            return []
+        }
+
+        let buscado = AnalizadorComandos.normalizarSlug(consulta)
+        let comandos = ComandoIntegrado.allCases.filter { comando in
+            buscado.isEmpty || comando.rawValue.hasPrefix(buscado)
+        }
+        let skills = estado.skillsParaSelector(consulta).map(Sugerencia.skill)
+
+        return Array(
+            (skills + comandos.map(Sugerencia.comando)).prefix(6)
+        )
+    }
+
+    @ViewBuilder
+    private var selectorSugerencias: some View {
+        let lista = sugerencias
+
+        if !lista.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(lista) { sugerencia in
+                    Button {
+                        elegir(sugerencia)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(textoDe(sugerencia))
+                                .font(.footnote)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("sugerencia-\(sugerencia.id)")
+
+                    if sugerencia.id != lista.last?.id {
+                        Divider()
+                            .overlay(Tema.borde)
+                    }
+                }
+            }
+            .background(Tema.superficieAlta)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, Tema.margen)
+            .padding(.top, 6)
+            .accessibilityIdentifier("selector-sugerencias")
+        }
+    }
+
+    private func textoDe(_ sugerencia: Sugerencia) -> String {
+        switch sugerencia {
+        case .comando(let comando):
+            return "/\(comando.rawValue) — \(descripcionDe(comando))"
+        case .skill(let skill):
+            return "⚡ /\(skill.slug) — \(skill.nombre)"
+        }
+    }
+
+    private func descripcionDe(_ comando: ComandoIntegrado) -> String {
+        switch comando {
+        case .compact:
+            return "Resume la conversación y conserva lo último."
+        case .costo:
+            return "Muestra tokens y costo de este chat."
+        case .modelos:
+            return "Cambia el modelo activo."
+        case .nuevo:
+            return "Crea una conversación nueva."
+        case .exportar:
+            return "Comparte esta conversación como texto."
+        }
+    }
+
+    /// Los integrados se ejecutan al tocarlos porque no llevan texto; una skill
+    /// solo completa el borrador y espera el mensaje.
+    private func elegir(_ sugerencia: Sugerencia) {
+        switch sugerencia {
+        case .comando(let comando):
+            estado.borrador = "/\(comando.rawValue)"
+            estado.avisoComando = nil
+            estado.enviarTextoActual()
+
+        case .skill(let skill):
+            estado.borrador = "/\(skill.slug) "
+            estado.avisoComando = nil
+            escribiendo = true
+        }
+    }
+
+    // MARK: - Caja de texto
+
+    /// El borrador vive en EstadoApp: los comandos y el dictado lo comparten.
+    private var enlaceBorrador: Binding<String> {
+        Binding(
+            get: { estado.borrador },
+            set: { nuevo in
+                estado.borrador = nuevo
+                estado.avisoComando = nil
+            }
+        )
+    }
+
+    private var placeholderCaja: String {
+        estado.compactando ? "Compactando…" : "Escribe un mensaje"
+    }
+
     private var barraDeEntrada: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Escribe un mensaje", text: $borrador, axis: .vertical)
-                .lineLimit(1...5)
-                .focused($escribiendo)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Tema.superficie)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .foregroundStyle(.white)
-                .accessibilityIdentifier("caja-mensaje")
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField(
+                placeholderCaja,
+                text: enlaceBorrador,
+                axis: .vertical
+            )
+            .lineLimit(1...5)
+            .focused($escribiendo)
+            .disabled(estado.compactando)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Tema.superficie)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .foregroundStyle(.white)
+            .accessibilityIdentifier("caja-mensaje")
+
+            // Micrófono a la izquierda del botón Enviar. Rojo mientras dicta.
+            Button(action: alternarDictado) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(dictando ? Color.red : Tema.superficieAlta)
+                    .clipShape(Circle())
+            }
+            .disabled(estado.compactando || estado.enviando)
+            .accessibilityLabel(dictando ? "Detener dictado" : "Dictar")
+            .accessibilityIdentifier("boton-dictado")
 
             Button(action: accion) {
                 Image(systemName: estado.enviando ? "stop.fill" : "arrow.up")
@@ -708,7 +946,9 @@ struct ChatView: View {
     }
 
     private var botonActivo: Bool {
-        estado.enviando || !borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard !estado.compactando else { return false }
+        return estado.enviando
+            || !estado.borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func accion() {
@@ -716,9 +956,62 @@ struct ChatView: View {
             estado.cancelar()
             return
         }
-        let texto = borrador
-        borrador = ""
-        estado.enviar(texto)
+
+        // Tocar Enviar tambien termina el dictado: el texto parcial ya esta en
+        // la caja y se envia tal cual.
+        if dictando {
+            detenerDictado()
+        }
+        estado.enviarTextoActual()
+    }
+
+    // MARK: - Dictado
+
+    private func alternarDictado() {
+        if dictando {
+            detenerDictado()
+            return
+        }
+
+        Task { @MainActor in
+            let permitido = await estado.dictado.solicitarPermisos()
+            guard permitido else {
+                estado.avisoComando =
+                    "El dictado necesita permiso de micrófono y reconocimiento de voz."
+                return
+            }
+
+            // Se conserva lo que ya habia en la caja y solo se reemplaza la
+            // parte dictada en esta sesion.
+            textoAntesDeDictar = estado.borrador
+            do {
+                try estado.dictado.empezar { parcial in
+                    Task { @MainActor in
+                        aplicarDictado(parcial)
+                    }
+                }
+                dictando = true
+            } catch {
+                dictando = false
+                estado.avisoComando = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
+        }
+    }
+
+    private func aplicarDictado(_ parcial: String) {
+        let prefijo = textoAntesDeDictar
+        let separador = prefijo.isEmpty
+            || prefijo.hasSuffix(" ")
+            || prefijo.hasSuffix("\n") ? "" : " "
+        estado.borrador = prefijo + separador + parcial
+        estado.avisoComando = nil
+    }
+
+    private func detenerDictado() {
+        guard dictando else { return }
+        estado.dictado.detener()
+        dictando = false
     }
 }
 

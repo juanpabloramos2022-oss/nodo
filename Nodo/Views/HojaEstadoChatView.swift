@@ -32,7 +32,7 @@ struct HojaEstadoChatView: View {
     }
 
     private var ocupacion: UsoTokens? {
-        MetricasChat.ocupacionVentana(de: estado.conversacion.mensajes)
+        estado.ocupacionDelChat
     }
 
     private var ventanaActiva: Int? {
@@ -41,7 +41,7 @@ struct HojaEstadoChatView: View {
     }
 
     private var consumo: UsoTokens? {
-        CostoEstimado.usoAcumulado(de: estado.conversacion.mensajes)
+        estado.usoAcumuladoDelChat
     }
 
     private var modelosConVentana: [String] {
