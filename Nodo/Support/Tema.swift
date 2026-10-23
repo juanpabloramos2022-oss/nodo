@@ -23,8 +23,9 @@ enum Tema {
 /// Burbuja de un mensaje.
 struct BurbujaMensaje: View {
     let mensaje: ChatMessage
-    /// Pie de la respuesta (tokens, costo, regenerar y copiar). Solo lo llevan
-    /// las respuestas del asistente que tienen consumo medido.
+    /// Pie de la respuesta (tokens, costo, regenerar y copiar). Lo llevan
+    /// TODAS las respuestas del asistente que tienen consumo medido; el boton
+    /// de regenerar solo se muestra en la ultima (lo decide ChatView).
     var pie: PieRespuesta?
 
     init(mensaje: ChatMessage, pie: PieRespuesta? = nil) {
@@ -178,7 +179,8 @@ private struct BloqueCodigo: View {
 }
 
 /// Pie de una respuesta: consumo, costo, regenerar y copiar, en una sola fila
-/// pegada a su burbuja (SPEC §3.3).
+/// pegada a su burbuja (SPEC §3.3). Se pinta en cada respuesta con consumo;
+/// `puedeRegenerar` solo es true en la ultima.
 struct PieRespuesta: View {
     let uso: UsoTokens
     let costo: Double?

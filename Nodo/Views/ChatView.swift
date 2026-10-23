@@ -496,21 +496,28 @@ struct ChatView: View {
 
     // MARK: - Consumo y pie de respuesta
 
-    /// Pie de la respuesta, solo para mensajes del asistente con consumo.
+    /// Pie de la respuesta: se pinta bajo TODAS las respuestas del asistente
+    /// con consumo. La parte informativa y Copiar van en todas; el boton de
+    /// regenerar solo en la ultima, porque regenerar actua sobre ella.
     private func pieDe(_ mensaje: ChatMessage) -> PieRespuesta? {
         guard mensaje.rol == .asistente, let uso = mensaje.uso else { return nil }
 
-        let esUltima = estado.conversacion.mensajes.last?.id == mensaje.id
         return PieRespuesta(
             uso: uso,
             costo: costoDe(uso),
             textoParaCopiar: mensaje.texto,
-            puedeRegenerar: esUltima && !estado.enviando,
+            puedeRegenerar: esUltimaRespuesta(mensaje) && !estado.enviando,
             otrosProveedores: otrosProveedores,
             nombreDeProveedor: { nombreDeModelo($0) },
             alRegenerar: { estado.regenerar() },
             alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) }
         )
+    }
+
+    /// Regenerar actua siempre sobre la ultima respuesta del hilo; por eso el
+    /// pie de las respuestas anteriores no ofrece el boton.
+    private func esUltimaRespuesta(_ mensaje: ChatMessage) -> Bool {
+        estado.conversacion.mensajes.last?.id == mensaje.id
     }
 
     /// Los demas modelos configurados, para "Regenerar con…" y "Cambiar modelo".
