@@ -24,7 +24,9 @@ sigue siendo el de compilación y no cambia.
 La extracción intenta `xcrun xcresulttool export attachments` (Xcode 16+) y,
 si el comando no está disponible, busca los PNG dentro del bundle del
 resultado. En ambos casos los deja en `capturas/` con el nombre descriptivo del
-adjunto.
+adjunto. Los adjuntos de texto (por ejemplo `diagnostico-jerarquia`, la
+jerarquía de accesibilidad que dejan los tests cuando no aparece la píldora) se
+copian también, normalizados a `.txt`.
 
 ## Convención de nombres
 

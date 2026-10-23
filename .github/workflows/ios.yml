@@ -142,6 +142,9 @@ jobs:
             # diagnostico cuando los tests fallan y no hay ningun PNG.
             cp xcodebuild-capturas.log "$DEST/" 2>/dev/null || echo "Sin log en esta corrida."
             cp capturas/*.png "$DEST/" 2>/dev/null || echo "Sin PNG en esta corrida."
+            # Los adjuntos de texto (jerarquia de accesibilidad de los tests)
+            # viajan con las capturas para diagnosticar sin bajar artefactos.
+            cp capturas/*.txt "$DEST/" 2>/dev/null || echo "Sin TXT en esta corrida."
             cd pub
             git config user.name "nodo-ci"
             git config user.email "ci@localhost"

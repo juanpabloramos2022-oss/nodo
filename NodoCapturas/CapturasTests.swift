@@ -365,8 +365,34 @@ final class CapturasTests: XCTestCase {
             texto.tap()
         }
 
+        // La pildora se espera como CUALQUIER tipo de elemento, no solo como
+        // boton: asi el fallo distingue "no se navego" de "la pildora existe
+        // pero no se expone como boton". El timeout es corto a proposito:
+        // cuando la navegacion no ocurre, fallar a los 20 s abarata el
+        // diagnostico (y deja la evidencia menos contaminada por la espera).
+        let pildora = app.descendants(matching: .any)
+            .matching(identifier: "pildora-modelo")
+            .firstMatch
+        let aparecio = pildora.waitForExistence(timeout: 20)
+        // El resto de los tests toca la pildora como boton, asi que se sigue
+        // exigiendo ese tipo, con un margen corto para que el toolbar termine
+        // de exponerla. Si la busqueda amplia ya fallo no se espera de mas.
+        let esBoton = aparecio
+            && app.buttons["pildora-modelo"].waitForExistence(timeout: 5)
+
+        if !aparecio {
+            // Evidencia de lo que hay en pantalla justo despues del toque: la
+            // foto dice si se navego o no y la jerarquia dice que se pinta y
+            // con que tipos de elemento.
+            adjuntarCaptura("diagnostico-tras-toque")
+            adjuntarJerarquia()
+        } else if !esBoton {
+            // La pildora esta, pero no como boton: la jerarquia es la prueba.
+            adjuntarJerarquia()
+        }
+
         XCTAssertTrue(
-            app.buttons["pildora-modelo"].waitForExistence(timeout: 60),
+            aparecio && esBoton,
             "No se abrio la conversacion \(titulo)"
         )
         // Margen para que termine la animacion de empuje de la pila antes de
@@ -547,5 +573,17 @@ final class CapturasTests: XCTestCase {
         captura.name = nombre
         captura.lifetime = .keepAlways
         add(captura)
+    }
+
+    /// Adjunta la jerarquia de accesibilidad de la app como texto plano.
+    ///
+    /// Es la evidencia que dice si la navegacion no ocurrio, si el destino
+    /// pinta otra cosa o si la pildora existe con otro tipo de elemento.
+    /// `herramientas/extraer-capturas.py` la copia como .txt junto a los PNG.
+    private func adjuntarJerarquia() {
+        let jerarquia = XCTAttachment(string: app.debugDescription)
+        jerarquia.name = "diagnostico-jerarquia"
+        jerarquia.lifetime = .keepAlways
+        add(jerarquia)
     }
 }
