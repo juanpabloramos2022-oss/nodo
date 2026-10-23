@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  ↪︎Find: Descendants matching type Any
+    ↪︎Find: Elements matching predicate '"pildora-modelo" IN identifiers'
+      ↪︎Find: First Match
