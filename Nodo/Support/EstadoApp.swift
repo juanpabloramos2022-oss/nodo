@@ -164,17 +164,6 @@ final class EstadoApp: ObservableObject {
         return formateador.string(from: NSNumber(value: valor)) ?? "\(valor)"
     }
 
-    /// Costo con coma decimal y tres decimales ("0,004").
-    private static func costoTexto(_ valor: Double) -> String {
-        let formateador = NumberFormatter()
-        formateador.locale = Locale(identifier: "es_ES")
-        formateador.numberStyle = .decimal
-        formateador.minimumFractionDigits = 3
-        formateador.maximumFractionDigits = 3
-        return formateador.string(from: NSNumber(value: valor))
-            ?? String(format: "%.3f", valor)
-    }
-
     init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
@@ -826,7 +815,8 @@ final class EstadoApp: ObservableObject {
                precioEntrada: proveedor?.precioEntradaPorMillon,
                precioSalida: proveedor?.precioSalidaPorMillon
            ) {
-            texto += " · ≈ $\(Self.costoTexto(costo)) con \(modelo)"
+            // Mismo formato que el pie y el subtitulo de la pildora.
+            texto += " · ≈ $\(String(format: "%.4f", costo)) con \(modelo)"
         } else {
             texto += " con \(modelo)"
         }

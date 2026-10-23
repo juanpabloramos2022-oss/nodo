@@ -573,51 +573,56 @@ struct ChatView: View {
     @ViewBuilder
     private var franjaTope: some View {
         if estado.topeSuperado {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
 
-                Text("Este chat ya supera tu tope de aviso ($\(textoTopeActual))")
-                    .font(.caption2)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .layoutPriority(1)
+                    Text("Este chat ya supera tu tope de aviso ($\(textoTopeActual))")
+                        .font(.caption2)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-                Spacer(minLength: 4)
-
-                Menu {
-                    ForEach(escalonesDeTope, id: \.self) { valor in
-                        Button("$\(String(format: "%.2f", valor))") {
-                            estado.fijarTopeAviso(valor)
+                HStack(spacing: 8) {
+                    Menu {
+                        ForEach(escalonesDeTope, id: \.self) { valor in
+                            Button("$\(String(format: "%.2f", valor))") {
+                                estado.fijarTopeAviso(valor)
+                            }
                         }
+                    } label: {
+                        Text("Subir tope")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.orange.opacity(0.25))
+                            .clipShape(Capsule())
                     }
-                } label: {
-                    Text("Subir tope")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.orange.opacity(0.25))
-                        .clipShape(Capsule())
-                }
-                .disabled(escalonesDeTope.isEmpty)
-                .accessibilityIdentifier("subir-tope")
+                    .disabled(escalonesDeTope.isEmpty)
+                    .accessibilityIdentifier("subir-tope")
 
-                Button {
-                    estado.ignorarTopeEnEsteChat()
-                } label: {
-                    Text("Seguir igual")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Tema.superficieAlta)
-                        .clipShape(Capsule())
+                    Button {
+                        estado.ignorarTopeEnEsteChat()
+                    } label: {
+                        Text("Seguir igual")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Tema.superficieAlta)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("seguir-igual")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("seguir-igual")
             }
             .padding(.horizontal, Tema.margen)
             .padding(.vertical, 8)
