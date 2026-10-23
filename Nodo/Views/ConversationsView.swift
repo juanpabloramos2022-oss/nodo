@@ -5,11 +5,11 @@ import NodoCore
 
 /// Lista de conversaciones guardadas: raiz de la pestana Chats.
 ///
-/// No conoce la pila: abrir una fila o crear un chat se delega en la raiz, que
-/// es quien empuja la conversacion en la misma NavigationStack.
+/// Cada fila es un `NavigationLink` por valor (`id`): la raiz declara el
+/// destino y es quien sincroniza la conversacion abierta. Crear un chat se
+/// sigue delegando en la raiz.
 struct ConversationsView: View {
     @EnvironmentObject private var estado: EstadoApp
-    let alAbrir: (Conversation) -> Void
     let alNuevo: (Bool) -> Void
 
     @State private var aBorrar: Conversation?
@@ -155,13 +155,12 @@ struct ConversationsView: View {
 
     @ViewBuilder
     private func filaConAcciones(_ conversacion: Conversation, archivada: Bool) -> some View {
-        Button {
-            alAbrir(conversacion)
-        } label: {
+        NavigationLink(value: conversacion.id) {
             fila(conversacion)
         }
-        .buttonStyle(.plain)
         .listRowBackground(Tema.superficie)
+        // La fila ya es un enlace de navegacion: sin flecha de divulgacion.
+        .navigationLinkIndicatorVisibility(.hidden)
         .swipeActions(edge: .leading) {
             if archivada {
                 Button {

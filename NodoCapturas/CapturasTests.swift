@@ -342,71 +342,6 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f2-tarea-ejecutando")
     }
 
-    // MARK: - Sonda de navegacion (Fase 2)
-
-    /// Sonda que biseca el fallo de las capturas F2: separa "falla solo la ruta
-    /// de la fila (`alAbrir`)" de "falla todo el empuje de la NavigationStack
-    /// (`@State` + `navigationDestination`)".
-    ///
-    /// No es una captura exigida por la SPEC: sus adjuntos son evidencia de
-    /// diagnostico. Si la fila no abre, prueba el otro camino de empuje (el +
-    /// de la barra) para ver si el mecanismo de navegacion funciona en general.
-    func testSondaNavegacion() throws {
-        lanzar(estado: "chat")
-
-        // Mismo criterio que `abrirConversacion`: la fila se busca como boton
-        // por su etiqueta, con respaldo por si iOS expone el titulo suelto.
-        let fila = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "Chat de ejemplo")
-        ).firstMatch
-        if fila.waitForExistence(timeout: 60) {
-            fila.tap()
-        } else {
-            let texto = app.staticTexts["Chat de ejemplo"]
-            XCTAssertTrue(
-                texto.waitForExistence(timeout: 15),
-                "No aparecio la fila Chat de ejemplo en la lista de Chats"
-            )
-            texto.tap()
-        }
-
-        // Se busca como CUALQUIER tipo de elemento: el fallo que se investiga
-        // es la navegacion, no el tipo con que se expone la pildora.
-        let pildora = app.descendants(matching: .any)
-            .matching(identifier: "pildora-modelo")
-            .firstMatch
-
-        if pildora.waitForExistence(timeout: 10) {
-            // La ruta de la fila funciona: no hay nada mas que bisecar.
-            adjuntarCaptura("sonda-fila-funciona")
-            return
-        }
-
-        // La fila no abrio. Se deja la foto y la jerarquia de ese estado antes
-        // de probar el otro camino de empuje.
-        adjuntarCaptura("sonda-tras-fila-sin-apertura")
-        adjuntarJerarquia(nombre: "sonda-jerarquia-tras-fila")
-
-        let nuevo = app.buttons["nuevo-chat"]
-        XCTAssertTrue(
-            nuevo.waitForExistence(timeout: 30),
-            "No aparecio el boton + de la lista de Chats"
-        )
-        nuevo.tap()
-
-        if pildora.waitForExistence(timeout: 10) {
-            // El + si empuja: el mecanismo de la pila funciona y el problema
-            // esta en la ruta de la fila (`alAbrir`).
-            adjuntarCaptura("sonda-nuevo-funciona")
-            return
-        }
-
-        // Tampoco el + empuja: el problema esta en el mecanismo de navegacion.
-        adjuntarCaptura("sonda-tras-nuevo-sin-apertura")
-        adjuntarJerarquia(nombre: "sonda-jerarquia-tras-nuevo")
-        XCTFail("Ni la fila ni el boton + abrieron la conversacion")
-    }
-
     // MARK: - Ayudas
 
     /// Entra a la conversacion tocando su fila en la lista de Chats.
@@ -645,7 +580,7 @@ final class CapturasTests: XCTestCase {
     /// Es la evidencia que dice si la navegacion no ocurrio, si el destino
     /// pinta otra cosa o si la pildora existe con otro tipo de elemento.
     /// `herramientas/extraer-capturas.py` la copia como .txt junto a los PNG.
-    /// El nombre es configurable para que la sonda distinga cada momento.
+    /// El nombre permite distinguir cada momento del diagnostico.
     private func adjuntarJerarquia(nombre: String = "diagnostico-jerarquia") {
         let jerarquia = XCTAttachment(string: app.debugDescription)
         jerarquia.name = nombre

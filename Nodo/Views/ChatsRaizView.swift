@@ -17,12 +17,12 @@ struct ChatsRaizView: View {
 
     var body: some View {
         NavigationStack(path: $ruta) {
-            ConversationsView(
-                alAbrir: abrir,
-                alNuevo: nueva
-            )
+            ConversationsView(alNuevo: nueva)
             .navigationDestination(for: UUID.self) { id in
-                if estado.conversacion.id == id {
+                // El destino se resuelve contra la LISTA, no contra la
+                // conversacion abierta: la ruta solo guarda ids y la
+                // conversacion abierta puede ser otra (o ninguna).
+                if let conversacion = estado.conversaciones.first(where: { $0.id == id }) {
                     ChatView(
                         alGestionarModelos: {
                             bajarTeclado()
@@ -30,6 +30,13 @@ struct ChatsRaizView: View {
                         },
                         alVolverALista: { ruta.removeAll() }
                     )
+                    // La sincronizacion del estado abierto se hace al aparecer
+                    // el destino, que es el punto fiable del empuje.
+                    .onAppear {
+                        if estado.conversacion.id != id {
+                            estado.abrir(conversacion)
+                        }
+                    }
                 } else {
                     // La conversacion se borro o la ruta quedo obsoleta.
                     EstadoVacio(
@@ -44,12 +51,6 @@ struct ChatsRaizView: View {
         // La barra Listo se declara UNA sola vez en la raiz de esta jerarquia
         // (contrato §4): cubre el buscador de la lista y la caja del chat.
         .conBarraTecladoListo()
-    }
-
-    private func abrir(_ conversacion: Conversation) {
-        bajarTeclado()
-        estado.abrir(conversacion)
-        ruta.append(conversacion.id)
     }
 
     private func nueva(sinMemoria: Bool) {
