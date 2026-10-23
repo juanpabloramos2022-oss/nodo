@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  ↪︎Find: Descendants matching type TextField
+    ↪︎Find: Elements matching predicate '"skill-nombre" IN identifiers'

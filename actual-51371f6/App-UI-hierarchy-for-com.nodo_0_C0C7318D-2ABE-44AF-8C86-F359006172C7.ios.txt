@@ -1,0 +1,31 @@
+Application, 0x10684ec00, pid: 24486, label: 'Nodo' <App element pid: 24486>
+  Window (Main), 0x106853370, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4350655984.4>
+    Other, 0x106853730, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4351860272.5>
+      Other, 0x106853850, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4351861808.6>
+        Other, 0x106853490, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353132752.7>
+          Other, 0x1068535b0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353417456.8>
+            Other, 0x106853970, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4350690896.9>
+              Other, 0x106853a90, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4350696080.10>
+                Other, 0x1068592d0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353138560.12>
+                  Other, 0x1068593f0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353253152.210>
+                    Other, 0x106859510, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4351523792.212>
+                      Other, 0x106859630, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4351211600.213>
+                        Other, 0x106859750, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353452816.214>
+                          NavigationBar, 0x106859870, {{0.0, 53.7}, {393.0, 96.0}}, identifier: 'Tareas' <AX element pid: 24486, elementOrHash.elementID: 4353620592.215>
+                            Other, 0x106859990, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nueva-tarea', label: 'Nueva tarea' <AX element pid: 24486, elementOrHash.elementID: 4389759488.217>
+                              Other, 0x106859ab0, {{345.7, 60.7}, {31.3, 30.0}} <AX element pid: 24486, elementOrHash.elementID: 4690433104.220>
+                                Button, 0x106859bd0, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nueva-tarea', label: 'Nueva tarea' <AX element pid: 24486, elementOrHash.elementID: 4690431056.222>
+                            StaticText, 0x106859cf0, {{16.0, 101.3}, {104.3, 40.7}}, label: 'Tareas' <AX element pid: 24486, elementOrHash.elementID: 4690359200.218>
+                          Other, 0x106859e10, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4690297936.216>
+                            Other, 0x106859f30, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4690489184.219>
+                              Other, 0x10685a050, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4353685984.221>
+                                Other, 0x10685a170, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24486, elementOrHash.elementID: 4351379856.223>
+                                  Image, 0x10685a3b0, {{174.7, 409.7}, {43.3, 39.7}}, identifier: 'checklist', label: 'checklist' <AX element pid: 24486, elementOrHash.elementID: 4351169488.224>
+                                  StaticText, 0x10685a4d0, {{157.0, 464.5}, {79.0, 20.3}}, label: 'Sin tareas' <AX element pid: 24486, elementOrHash.elementID: 4351509552.225>
+                                  StaticText, 0x10685a5f0, {{54.0, 496.8}, {285.0, 15.7}}, label: 'Crea una tarea, revisa su plan y pulsa Empezar.' <AX element pid: 24486, elementOrHash.elementID: 4351379072.226>
+              TabBar, 0x10685a710, {{0.0, 769.0}, {393.0, 83.0}}, label: 'Tab Bar' <AX element pid: 24486, elementOrHash.elementID: 4350693584.11>
+                Button, 0x10685a830, {{2.0, 770.0}, {94.0, 48.0}}, label: 'Chats' <AX element pid: 24486, elementOrHash.elementID: 4350730304.13>
+                Button, 0x10685a950, {{100.0, 770.0}, {95.0, 48.0}}, label: 'Tareas', Selected <AX element pid: 24486, elementOrHash.elementID: 4350798416.14>
+                  Image, 0x10685aa70, {{131.0, 774.0}, {32.0, 27.3}}, identifier: 'checklist', label: 'checklist' <AX element pid: 24486, elementOrHash.elementID: 4350801168.211>
+                Button, 0x10685ab90, {{199.0, 770.0}, {94.0, 48.0}}, label: 'Mi Contexto' <AX element pid: 24486, elementOrHash.elementID: 4351954512.15>
+                Button, 0x10685acb0, {{297.0, 770.0}, {94.0, 48.0}}, label: 'Conexiones' <AX element pid: 24486, elementOrHash.elementID: 4351966512.16>
