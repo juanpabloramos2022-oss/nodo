@@ -23,8 +23,8 @@ struct NodoApp: App {
 /// Raiz definitiva de la app: tres pestanas, cada una con su propia pila.
 ///
 /// Chats conserva la pila de la Fase 2 (lista -> conversacion). Mi Contexto
-/// reune Memoria, Tope y Skills. Conexiones queda como fontaneria; su
-/// reconstruccion completa llega en la sesion 4.5/4.7.
+/// reune Memoria, Tope y Skills. Conexiones es solo fontaneria: proveedores
+/// agrupados por URL base, servidor MCP y Respaldo (§3.6/§4.8).
 struct RaizView: View {
     @State private var seleccion: PestanaRaiz = .chats
 

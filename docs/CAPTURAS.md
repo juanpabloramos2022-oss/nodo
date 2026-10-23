@@ -60,6 +60,8 @@ cada PNG a las "Capturas exigidas" de SPEC §5. El nombre viaja en
 | `f3-selector-flotante` | 3 | Selector flotante de "/" abierto sobre la caja con los comandos | `chat` |
 | `f3-error-en-linea` | 3 | Burbuja de error en línea con [Reintentar] y [Cambiar modelo] | `error-en-linea` |
 | `f4-tres-pestanas` | 4 | Raíz con las 3 pestañas Chats / Mi Contexto / Conexiones, sin Ajustes | `chat` |
+| `f4-conexiones` | 4 | Conexiones con UNA tarjeta InferHub agrupada (4 combos), tarjeta MCP y salida al Respaldo | `chat` |
+| `f4-conexiones-respaldo` | 4 | Sección Respaldo con Exportar mi configuración e Importar configuración | `chat` |
 | `f4-mi-contexto` | 4 | Mi Contexto: Memoria con peso `~N tokens est.`, acumulador encima de los botones y tope vigente marcado | `mi-contexto` |
 | `f4-mi-contexto-skills` | 4 | Bloque Skills con una skill de ejemplo y su `/slug` visible | `mi-contexto` |
 | `f4-mi-contexto-memoria-editor` | 4 | Editor de Memoria con Cancelar y Guardar | `mi-contexto` |

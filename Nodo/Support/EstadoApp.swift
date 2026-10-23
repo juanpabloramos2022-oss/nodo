@@ -297,6 +297,16 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    /// Aplica un respaldo y deja sus ventanas en el mismo almacen de siempre.
+    ///
+    /// La configuracion se persiste por su `didSet` y la tabla de ventanas por
+    /// el suyo, bajo `nodo.ventanas.v1`: la misma clave que lee la Hoja Estado
+    /// del chat. En modo capturas nada de esto toca el almacenamiento real.
+    func importarRespaldo(_ respaldo: RespaldoConfiguracion) {
+        config = RespaldoConfiguracion.aplicar(respaldo, sobre: config)
+        ventanasPorModelo = respaldo.ventanas
+    }
+
     /// La tabla se guarda como JSON aparte de la configuracion.
     ///
     /// `didSet` solo llega aqui cuando cambia el diccionario; `persistir`
@@ -617,6 +627,38 @@ final class EstadoApp: ObservableObject {
             baseURL: "https://",
             modelo: ""
         )
+    }
+
+    /// Borrador de un registro que hereda nombre, URL y clave de otro.
+    ///
+    /// Es el "+ Anadir modelo/combo" de Conexiones (§3.6): el registro nace
+    /// con el modelo y los precios vacios para que solo haya que escribir el
+    /// ID y sus dos precios. La clave se copia ya al llavero con el id nuevo,
+    /// de modo que el Editor la muestre rellena y Guardar no la borre.
+    func proveedorDuplicado(desde origen: ProviderConfig) -> ProviderConfig {
+        var nuevo = origen
+        nuevo.id = UUID()
+        nuevo.modelo = ""
+        nuevo.precioEntradaPorMillon = nil
+        nuevo.precioSalidaPorMillon = nil
+
+        if let clave = clave(para: origen),
+           !clave.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guardarClave(clave, para: nuevo)
+        }
+        return nuevo
+    }
+
+    /// Borra la clave de un borrador que nunca llego a guardarse.
+    ///
+    /// Al abrir "+ Anadir modelo/combo" la clave se copia al llavero antes de
+    /// tiempo para que el Editor la muestre. Si el usuario cancela, ese
+    /// registro no entra en la configuracion y su credencial tampoco debe
+    /// quedarse huerfana.
+    func descartarClave(para proveedor: ProviderConfig) {
+        guard persistir else { return }
+        try? llavero.borrar(proveedor.claveKeychain)
+        clavesVersion += 1
     }
 
     func actualizarProveedor(_ proveedor: ProviderConfig) {
@@ -1537,21 +1579,5 @@ final class EstadoApp: ObservableObject {
         case .sistema: return "Sistema"
         case .herramienta: return "Herramienta"
         }
-    }
-
-    func exportarConfig() -> String? {
-        guard let datos = try? config.json() else { return nil }
-        return String(data: datos, encoding: .utf8)
-    }
-
-    func importarConfig(_ texto: String) -> Bool {
-        guard let datos = texto.data(using: .utf8),
-              let nueva = try? AppConfig.desde(json: datos)
-        else {
-            error = "El texto no es una configuracion valida."
-            return false
-        }
-        config = nueva
-        return true
     }
 }

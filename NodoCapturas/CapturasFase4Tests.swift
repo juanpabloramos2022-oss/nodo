@@ -47,6 +47,63 @@ final class CapturasFase4Tests: XCTestCase {
         disparar("f4-tres-pestanas")
     }
 
+    // MARK: - Conexiones
+
+    /// SPEC §3.6/§4.8: UNA tarjeta InferHub con sus cuatro combos, la tarjeta
+    /// MCP y la seccion Respaldo al final de la pestana.
+    func testF4ConexionesLimpias() throws {
+        lanzar(estado: "chat")
+        abrirConexiones()
+
+        let encabezado = elemento(identifier: "proveedor-grupo")
+        XCTAssertTrue(
+            encabezado.waitForExistence(timeout: 30),
+            "No aparecio la tarjeta agrupada de proveedores"
+        )
+        XCTAssertTrue(
+            encabezado.label.contains("InferHub"),
+            "La tarjeta no se encabeza con el nombre limpio InferHub: \(encabezado.label)"
+        )
+
+        for modelo in [
+            "deepseek-v4-1-flash",
+            "glm-5-3-flash",
+            "gpt-6-1-sol",
+            "gpt-6-astra"
+        ] {
+            XCTAssertTrue(
+                app.buttons["Editar \(modelo)"].waitForExistence(timeout: 30),
+                "Falta la fila del combo \(modelo) dentro de la tarjeta"
+            )
+        }
+
+        XCTAssertTrue(
+            elemento(identifier: "anadir-modelo-combo").waitForExistence(timeout: 30),
+            "Falta + Anadir modelo/combo al final de la tarjeta"
+        )
+        XCTAssertTrue(
+            elemento(identifier: "tarjeta-mcp").waitForExistence(timeout: 30),
+            "Falta la tarjeta MCP"
+        )
+        Thread.sleep(forTimeInterval: 0.4)
+
+        disparar("f4-conexiones")
+
+        let exportar = elemento(identifier: "exportar-respaldo")
+        XCTAssertTrue(
+            exportar.waitForExistence(timeout: 30),
+            "Falta Exportar mi configuracion en la seccion Respaldo"
+        )
+        XCTAssertTrue(
+            elemento(identifier: "importar-respaldo").waitForExistence(timeout: 30),
+            "Falta Importar configuracion en la seccion Respaldo"
+        )
+        asegurarVisible(exportar)
+        Thread.sleep(forTimeInterval: 0.4)
+
+        disparar("f4-conexiones-respaldo")
+    }
+
     // MARK: - Mi Contexto
 
     /// SPEC §3.5: los tres bloques, el peso con ~, el acumulador encima de los
@@ -285,6 +342,15 @@ final class CapturasFase4Tests: XCTestCase {
     }
 
     // MARK: - Navegacion y utilidades
+
+    private func abrirConexiones() {
+        let conexiones = app.tabBars.buttons["Conexiones"]
+        XCTAssertTrue(
+            conexiones.waitForExistence(timeout: 60),
+            "No aparecio la pestana Conexiones"
+        )
+        conexiones.tap()
+    }
 
     private func abrirMiContexto() {
         let contexto = app.tabBars.buttons["Mi Contexto"]
