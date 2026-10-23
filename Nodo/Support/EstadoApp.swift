@@ -426,6 +426,15 @@ final class EstadoApp: ObservableObject {
         self.puedeGuardarResumenesCompactados = true
         sincronizarSkills()
 
+        // PACK.1: siembra del pack de fabrica en el arranque. Es trabajo en
+        // memoria sobre la configuracion ya cargada (12 registros, sin red) y
+        // no bloquea el primer pintado: solo escribe la configuracion si de
+        // verdad hubo algo que sembrar o si el marcador subio.
+        sembrarSkillsDeFabrica()
+        // El pack pudo crear skills: el parser de "/" y el selector tienen que
+        // verlas ya en este primer arranque, no en el siguiente.
+        sincronizarSkills()
+
         // COST.3 y COST.2, en este orden: primero se sellan los mensajes legados
         // con los precios de SU proveedor y despues se migra el libro, para que
         // el USD migrado ya cuente esas estimaciones. La antigua poda de
@@ -450,6 +459,7 @@ final class EstadoApp: ObservableObject {
             SkillResuelta(
                 nombre: skill.nombre,
                 slug: skill.slug,
+                descripcion: skill.descripcion,
                 instrucciones: skill.instrucciones
             )
         }
@@ -479,6 +489,43 @@ final class EstadoApp: ObservableObject {
     /// Borra la skill indicada; comodo para las vistas que ya la tienen.
     func borrarSkill(_ skill: SkillLocal) {
         borrarSkill(id: skill.id)
+    }
+
+    /// Siembra las skills del pack de fabrica al arrancar (PACK.1).
+    ///
+    /// Corre dentro del init, igual que la migracion del libro de gasto, y por
+    /// eso persiste a mano: los observadores de `config` pueden no dispararse
+    /// durante el arranque. Si el marcador ya esta al dia no hace nada: no
+    /// reescribe la configuracion ni recorre las skills del dueno.
+    private func sembrarSkillsDeFabrica() {
+        let versionAnterior = config.packSkillsVersion
+        let creadas = SiembraSkills.sembrarSiFaltaVersion(en: &config)
+        guard creadas > 0 || config.packSkillsVersion != versionAnterior else {
+            return
+        }
+        guardarConfig()
+    }
+
+    /// [Restaurar skills de fabrica]: repone las del pack que el dueno borro.
+    ///
+    /// POR QUE no reusa la siembra por version: el marcador ya subio y la
+    /// siembra normal no resucita lo borrado. Este boton es la via explicita:
+    /// siembra inmediata de los slugs de fabrica ausentes, sin tocar las
+    /// skills propias ni las de fabrica que ya existen (aunque el dueno las
+    /// haya editado).
+    ///
+    /// - Returns: cuantas skills de fabrica volvieron.
+    @discardableResult
+    func restaurarSkillsDeFabrica() -> Int {
+        let creadas = SiembraSkills.restaurar(en: &config)
+        // Se refresca el parser y se persiste a mano cuando hubo cambios: el
+        // acceso `inout` a `config` no siempre dispara su `didSet`, y el boton
+        // tiene que dejar el efecto hecho antes de volver a la pantalla.
+        if creadas > 0 {
+            sincronizarSkills()
+            guardarConfig()
+        }
+        return creadas
     }
 
     // MARK: - Ventanas de contexto
