@@ -18,6 +18,63 @@ public struct EntradaMemoria: Codable, Equatable, Identifiable, Hashable {
     }
 }
 
+/// Accion que el modelo pidio ejecutar sobre la Memoria.
+///
+/// Se modela aparte del JSON crudo para que la validacion de argumentos viva
+/// en un solo sitio y la aplicacion sobre la lista sea una funcion pura.
+public enum AccionMemoria: Equatable {
+    case guardar(texto: String)
+    case actualizar(id: UUID, texto: String)
+    case borrar(id: UUID)
+}
+
+/// Resultado de aplicar una accion sobre la lista de entradas.
+public enum ResultadoAccionMemoria: Equatable {
+    case aplicada(CambioMemoria)
+    /// La accion era valida pero no se pudo aplicar (por ejemplo, un id que ya
+    /// no existe). La lista no se toca y el motivo vuelve al modelo.
+    case rechazada(String)
+}
+
+/// Cambio ya aplicado, con lo justo para deshacerlo EXACTAMENTE.
+///
+/// POR QUE guarda el estado anterior: deshacer no puede adivinar. Una
+/// actualizacion necesita el texto viejo y un borrado necesita la entrada
+/// completa y su posicion, o el Deshacer de la tarjeta no devolveria el estado
+/// que habia antes de la orden.
+public enum CambioMemoria: Equatable {
+    case guardada(EntradaMemoria)
+    case actualizada(id: UUID, anterior: String, nueva: String)
+    case borrada(EntradaMemoria, indice: Int)
+
+    /// Texto de la tarjeta de evento que se pinta en la conversacion.
+    public var textoDeTarjeta: String {
+        switch self {
+        case .guardada(let entrada):
+            return "Guarde en Memoria: \(entrada.texto)"
+        case .actualizada(_, _, let nueva):
+            return "Actualice en Memoria: \(nueva)"
+        case .borrada(let entrada, _):
+            return "Borre de Memoria: \(entrada.texto)"
+        }
+    }
+
+    /// Texto que vuelve al modelo como resultado de la herramienta.
+    ///
+    /// Lleva el id para que pueda confirmar en su respuesta cual entrada toco,
+    /// y para que una orden posterior pueda referirse a ella sin ambiguedad.
+    public var resultadoHerramienta: String {
+        switch self {
+        case .guardada(let entrada):
+            return "Guarde en Memoria la entrada \(entrada.id.uuidString)."
+        case .actualizada(let id, _, _):
+            return "Actualice en Memoria la entrada \(id.uuidString)."
+        case .borrada(let entrada, _):
+            return "Borre de Memoria la entrada \(entrada.id.uuidString)."
+        }
+    }
+}
+
 /// Reglas de la Memoria viva compartidas por el almacenamiento y el payload.
 public enum Memoria {
     /// Cabecera unica del bloque de sistema.
@@ -49,6 +106,142 @@ public enum Memoria {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty else { return [] }
         return [EntradaMemoria(texto: texto)]
+    }
+
+    /// Lee los argumentos de `memoria_chat` y devuelve la accion ya validada.
+    ///
+    /// La validacion ocurre antes de tocar la lista: un JSON roto, una accion
+    /// desconocida o un campo obligatorio vacio se convierten en error de
+    /// herramienta y la Memoria queda intacta.
+    public static func accion(desdeArgumentos texto: String) throws -> AccionMemoria {
+        let argumentos = try Argumentos.diccionario(texto)
+        let accion = (Argumentos.texto(argumentos, clave: "accion") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        guard !accion.isEmpty else {
+            throw ErrorHerramienta.argumentosInvalidos(
+                "falta la accion: guardar, actualizar o borrar"
+            )
+        }
+
+        switch accion {
+        case "guardar":
+            return .guardar(texto: try textoObligatorio(argumentos, accion: accion))
+        case "actualizar":
+            return .actualizar(
+                id: try idObligatorio(argumentos, accion: accion),
+                texto: try textoObligatorio(argumentos, accion: accion)
+            )
+        case "borrar":
+            return .borrar(id: try idObligatorio(argumentos, accion: accion))
+        default:
+            throw ErrorHerramienta.argumentosInvalidos(
+                "accion no valida: \(accion). Usa guardar, actualizar o borrar."
+            )
+        }
+    }
+
+    /// Aplica una accion sobre la lista y devuelve el cambio exacto.
+    ///
+    /// Es pura a proposito: el llamador decide donde vive la lista y cuando se
+    /// persiste, y las pruebas pueden comprobar la operacion sin red ni estado
+    /// global.
+    public static func aplicar(
+        _ accion: AccionMemoria,
+        en entradas: inout [EntradaMemoria],
+        fecha: Date = Date(),
+        id: UUID = UUID()
+    ) -> ResultadoAccionMemoria {
+        switch accion {
+        case .guardar(let texto):
+            let entrada = EntradaMemoria(id: id, texto: texto, fecha: fecha)
+            entradas.append(entrada)
+            return .aplicada(.guardada(entrada))
+
+        case .actualizar(let id, let texto):
+            guard let indice = entradas.firstIndex(where: { $0.id == id }) else {
+                return .rechazada(
+                    "no existe ninguna entrada de Memoria con id \(id.uuidString)."
+                )
+            }
+            let anterior = entradas[indice].texto
+            entradas[indice].texto = texto
+            return .aplicada(
+                .actualizada(id: id, anterior: anterior, nueva: texto)
+            )
+
+        case .borrar(let id):
+            guard let indice = entradas.firstIndex(where: { $0.id == id }) else {
+                return .rechazada(
+                    "no existe ninguna entrada de Memoria con id \(id.uuidString)."
+                )
+            }
+            let entrada = entradas.remove(at: indice)
+            return .aplicada(.borrada(entrada, indice: indice))
+        }
+    }
+
+    /// Revierte un cambio ya aplicado.
+    ///
+    /// Si la entrada objetivo ya no existe (por ejemplo, se borro a mano
+    /// despues), la operacion no inventa nada: no hay estado anterior que
+    /// restaurar. El borrado se reinserta en su posicion original para que el
+    /// Deshacer devuelva la lista tal como estaba.
+    public static func deshacer(_ cambio: CambioMemoria, en entradas: inout [EntradaMemoria]) {
+        switch cambio {
+        case .guardada(let entrada):
+            entradas.removeAll { $0.id == entrada.id }
+
+        case .actualizada(let id, let anterior, _):
+            guard let indice = entradas.firstIndex(where: { $0.id == id }) else {
+                return
+            }
+            entradas[indice].texto = anterior
+
+        case .borrada(let entrada, let indice):
+            // Si otra operacion ya reintrodujo esa entrada, no se duplica.
+            guard !entradas.contains(where: { $0.id == entrada.id }) else {
+                return
+            }
+            let destino = min(max(0, indice), entradas.count)
+            entradas.insert(entrada, at: destino)
+        }
+    }
+
+    private static func textoObligatorio(
+        _ argumentos: [String: Any],
+        accion: String
+    ) throws -> String {
+        guard let texto = Argumentos.texto(argumentos, clave: "texto")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !texto.isEmpty
+        else {
+            throw ErrorHerramienta.argumentosInvalidos(
+                "la accion \(accion) necesita un texto."
+            )
+        }
+        return texto
+    }
+
+    private static func idObligatorio(
+        _ argumentos: [String: Any],
+        accion: String
+    ) throws -> UUID {
+        guard let crudo = Argumentos.texto(argumentos, clave: "id")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !crudo.isEmpty
+        else {
+            throw ErrorHerramienta.argumentosInvalidos(
+                "la accion \(accion) necesita un id."
+            )
+        }
+        guard let id = UUID(uuidString: crudo) else {
+            throw ErrorHerramienta.argumentosInvalidos(
+                "el id no es un UUID valido: \(crudo)"
+            )
+        }
+        return id
     }
 
     /// Texto plano de la Memoria, solo para la interfaz que todavia edita como
@@ -110,20 +303,35 @@ public enum Memoria {
 
 /// Herramienta de Memoria del turno de Chat.
 ///
-/// MEM.2 solo la OFRECE en el payload: el modelo ya ve su esquema y el bloque
-/// que explica cuando usarla. La ejecucion real (escribir la entrada en la
-/// configuracion) llega en MEM.3. Hasta entonces, si el modelo la llama, el
-/// bucle devuelve un error de texto en vez de romper el turno.
+/// MEM.3 la ejecuta de verdad: el modelo pide guardar, actualizar o borrar y la
+/// app escribe la lista. En Chat no hay hoja de aprobacion (HP1): la orden
+/// explicita del dueno es el propio mensaje que provoco la llamada, y el bloque
+/// de sistema ya limita la herramienta a esa orden. La distincion es por
+/// contexto y herramienta, nunca por heuristica sobre el texto del mensaje.
+///
+/// El ejecutor se inyecta porque la lista vive en la configuracion de la app:
+/// el nucleo valida y aplica, y la capa app decide donde se guarda y como se
+/// pinta la tarjeta del cambio.
 public struct HerramientaMemoriaChat: Herramienta {
-    public init() {}
+    public typealias Ejecutor = (AccionMemoria) async -> ResultadoAccionMemoria
+
+    private let ejecutor: Ejecutor
+
+    public init(ejecutor: @escaping Ejecutor) {
+        self.ejecutor = ejecutor
+    }
 
     public var definicion: ToolDefinition {
         Memoria.herramientaChat
     }
 
     public func ejecutar(argumentos: String) async throws -> String {
-        throw ErrorHerramienta.noPermitida(
-            "la ejecucion de \(Memoria.nombreHerramientaChat) llega en MEM.3"
-        )
+        let accion = try Memoria.accion(desdeArgumentos: argumentos)
+        switch await ejecutor(accion) {
+        case .aplicada(let cambio):
+            return cambio.resultadoHerramienta
+        case .rechazada(let motivo):
+            return "Error: \(motivo)"
+        }
     }
 }

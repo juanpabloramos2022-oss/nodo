@@ -135,3 +135,115 @@ final class MemoriaTests: XCTestCase {
         XCTAssertTrue(definicion.parametros.requeridos.contains("accion"))
     }
 }
+
+// MARK: - Operaciones de lista (MEM.3)
+
+/// Pruebas puras de aplicar y deshacer acciones sobre la lista.
+///
+/// Viven aparte de la migracion porque aqui no importa el formato guardado:
+/// importa que el inverso devuelva EXACTAMENTE el estado anterior.
+final class MemoriaOperacionesTests: XCTestCase {
+    private let idUno = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+    private let idDos = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
+
+    func testGuardarAnadeUnaEntradaYDeshacerLaQuita() {
+        var entradas: [EntradaMemoria] = []
+
+        let resultado = Memoria.aplicar(
+            .guardar(texto: "Vive en Madrid"),
+            en: &entradas
+        )
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una accion aplicada")
+        }
+        XCTAssertEqual(entradas.map(\.texto), ["Vive en Madrid"])
+
+        Memoria.deshacer(cambio, en: &entradas)
+        XCTAssertTrue(entradas.isEmpty)
+    }
+
+    func testActualizarCambiaSoloLaEntradaIndicadaYDeshacerRestauraElTexto() {
+        let original = EntradaMemoria(
+            id: idUno,
+            texto: "Vive en Madrid",
+            fecha: Date(timeIntervalSince1970: 100)
+        )
+        let otra = EntradaMemoria(
+            id: idDos,
+            texto: "Prefiere respuestas breves",
+            fecha: Date(timeIntervalSince1970: 200)
+        )
+        var entradas = [original, otra]
+
+        let resultado = Memoria.aplicar(
+            .actualizar(id: idUno, texto: "Vive en Barcelona"),
+            en: &entradas
+        )
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una accion aplicada")
+        }
+        XCTAssertEqual(entradas[0].texto, "Vive en Barcelona")
+        XCTAssertEqual(entradas[1], otra)
+
+        Memoria.deshacer(cambio, en: &entradas)
+        XCTAssertEqual(entradas, [original, otra])
+    }
+
+    func testBorrarQuitaLaEntradaYDeshacerLaReinsertaEnSuPosicionConSuId() {
+        let original = EntradaMemoria(
+            id: idUno,
+            texto: "Vive en Madrid",
+            fecha: Date(timeIntervalSince1970: 100)
+        )
+        let otra = EntradaMemoria(
+            id: idDos,
+            texto: "Prefiere respuestas breves",
+            fecha: Date(timeIntervalSince1970: 200)
+        )
+        var entradas = [original, otra]
+
+        let resultado = Memoria.aplicar(.borrar(id: idUno), en: &entradas)
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una accion aplicada")
+        }
+        XCTAssertEqual(entradas, [otra])
+
+        Memoria.deshacer(cambio, en: &entradas)
+        XCTAssertEqual(entradas, [original, otra])
+    }
+
+    func testUnIdDesconocidoSeRechazaSinTocarLaLista() {
+        let original = EntradaMemoria(id: idUno, texto: "Vive en Madrid")
+        var entradas = [original]
+
+        let resultado = Memoria.aplicar(
+            .actualizar(id: idDos, texto: "No debe entrar"),
+            en: &entradas
+        )
+
+        guard case .rechazada(let motivo) = resultado else {
+            return XCTFail("Se esperaba un rechazo")
+        }
+        XCTAssertTrue(motivo.contains(idDos.uuidString))
+        XCTAssertEqual(entradas, [original])
+    }
+
+    func testLaAccionSeLeeDeLosArgumentosYSeRechazaLoQueFalta() throws {
+        let accion = try Memoria.accion(
+            desdeArgumentos: #"{"accion":"guardar","texto":"Hola"}"#
+        )
+        XCTAssertEqual(accion, .guardar(texto: "Hola"))
+
+        XCTAssertThrowsError(
+            try Memoria.accion(desdeArgumentos: #"{"accion":"renombrar"}"#)
+        )
+        XCTAssertThrowsError(
+            try Memoria.accion(
+                desdeArgumentos: #"{"accion":"actualizar","texto":"sin id"}"#
+            )
+        )
+    }
+}

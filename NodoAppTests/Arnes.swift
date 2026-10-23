@@ -115,6 +115,8 @@ enum ErrorArnes: Error {
 struct GuionRespuesta {
     var texto: String
     var uso: UsoTokens?
+    /// Llamadas a herramienta que pedira el modelo en este turno (MEM.3).
+    var toolCalls: [ToolCall]
 }
 
 /// Transporte falso que graba peticiones y sirve respuestas SSE guionizadas.
@@ -130,10 +132,19 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     private var respuestasUnarias: [HTTPRespuesta] = []
 
     /// Encola una respuesta de chat completions con su consumo.
-    func guionar(texto: String, uso: UsoTokens? = nil) {
+    ///
+    /// `toolCalls` permite guionizar un turno que pide herramientas, que es lo
+    /// que necesita MEM.3 para probar `memoria_chat` sin red.
+    func guionar(
+        texto: String,
+        uso: UsoTokens? = nil,
+        toolCalls: [ToolCall] = []
+    ) {
         candado.lock()
         defer { candado.unlock() }
-        guiones.append(GuionRespuesta(texto: texto, uso: uso))
+        guiones.append(
+            GuionRespuesta(texto: texto, uso: uso, toolCalls: toolCalls)
+        )
     }
 
     /// Encola una respuesta completa para las rutas que no usan streaming.
@@ -196,7 +207,8 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     /// Construye el SSE con el mismo dialecto que lee `ChatCompletionsClient`:
-    /// trozos de `delta.content`, un bloque final de `usage` y `[DONE]`.
+    /// trozos de `delta.content`, llamadas de `delta.tool_calls`, un bloque
+    /// final de `usage` y `[DONE]`.
     private static func cuerpoSSE(_ guion: GuionRespuesta) -> Data {
         var lineas: [String] = []
 
@@ -210,6 +222,26 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
                 "choices": [
                     ["delta": ["content": parte]]
                 ]
+            ]
+            lineas.append(evento(objeto))
+        }
+
+        // Una sola pieza por llamada: el cliente acumula nombre y argumentos
+        // por indice, asi que este formato minimo ya ejercita el camino real.
+        for (indice, llamada) in guion.toolCalls.enumerated() {
+            let funcion: [String: Any] = [
+                "name": llamada.nombre,
+                "arguments": llamada.argumentos
+            ]
+            let llamadaJSON: [String: Any] = [
+                "index": indice,
+                "id": llamada.id,
+                "type": "function",
+                "function": funcion
+            ]
+            let delta: [String: Any] = ["tool_calls": [llamadaJSON]]
+            let objeto: [String: Any] = [
+                "choices": [["delta": delta]]
             ]
             lineas.append(evento(objeto))
         }

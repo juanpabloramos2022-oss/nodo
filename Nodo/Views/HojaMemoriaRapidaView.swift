@@ -9,8 +9,8 @@ import NodoCore
 /// (leyes n. 2 y n. 3).
 ///
 /// Esta hoja todavia edita la Memoria como un bloque unico. Al guardar, el
-/// texto completo se conserva en UNA entrada; MEM.4 es la tarea que convierte
-/// esta pantalla en editor de entradas sueltas.
+/// texto completo se conserva en UNA entrada; su conversion a entradas sueltas
+/// es H6.3 y no se mezcla con MEM.4, que ya edita la lista en Mi Contexto.
 struct HojaMemoriaRapidaView: View {
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss
@@ -130,7 +130,7 @@ struct HojaMemoriaRapidaView: View {
 
     /// Guardar escribe la Memoria real y da el cierre normal de hoja.
     ///
-    /// Mientras MEM.4 no separe la edicion por entradas, el bloque editado se
+    /// Mientras H6.3 no separe esta hoja por entradas, el bloque editado se
     /// guarda como una sola entrada: se conserva el texto completo y no se
     /// inventa un troceo que el dueno no pidio.
     private func guardar() {

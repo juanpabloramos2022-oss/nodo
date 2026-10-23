@@ -15,6 +15,9 @@ struct ChatView: View {
     let alGestionarModelos: () -> Void
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void
+    /// Lleva a Mi Contexto para revisar la Memoria (accion [Ver] de la tarjeta
+    /// de evento de MEM.3).
+    let alVerMemoria: () -> Void
 
     @State private var dictando = false
     @State private var textoAntesDeDictar = ""
@@ -411,12 +414,22 @@ struct ChatView: View {
             filaDeMensajeNormal(mensaje)
 
         case .evento(let evento):
-            Text(evento.texto)
-                .font(.caption2)
-                .foregroundStyle(Tema.textoSuave)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 2)
-                .accessibilityLabel(evento.texto)
+            if evento.cambioMemoria != nil {
+                TarjetaMemoria(
+                    evento: evento,
+                    alVer: alVerMemoria,
+                    alDeshacer: {
+                        _ = estado.deshacerCambioDeMemoria(id: evento.id)
+                    }
+                )
+            } else {
+                Text(evento.texto)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 2)
+                    .accessibilityLabel(evento.texto)
+            }
         }
     }
 
@@ -992,5 +1005,77 @@ private struct BurbujaErrorTurno: View {
             Spacer(minLength: 48)
         }
         .accessibilityIdentifier("error-turno")
+    }
+}
+
+/// Tarjeta de evento de Memoria (MEM.3).
+///
+/// No es un mensaje: vive en `eventosVisuales` y nunca viaja en el payload.
+/// [Ver] lleva a Mi Contexto para revisar la lista y [Deshacer] revierte
+/// EXACTAMENTE el cambio que esta tarjeta representa. Una vez deshecha, la
+/// tarjeta queda como constancia y ya no ofrece deshacer otra vez.
+private struct TarjetaMemoria: View {
+    let evento: EventoVisual
+    let alVer: () -> Void
+    let alDeshacer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.caption2)
+                    .foregroundStyle(Tema.acento)
+
+                Text(evento.texto)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button(action: alVer) {
+                    Text("Ver")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Tema.superficieAlta)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("memoria-evento-ver")
+
+                if evento.deshecho {
+                    Text("Deshecho")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityIdentifier("memoria-evento-deshecho")
+                } else {
+                    Button(action: alDeshacer) {
+                        Text("Deshacer")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Tema.acento.opacity(0.22))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("memoria-evento-deshacer")
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memoria-evento")
     }
 }

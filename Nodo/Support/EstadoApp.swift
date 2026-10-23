@@ -801,12 +801,13 @@ final class EstadoApp: ObservableObject {
 
     // MARK: - Memoria
 
-    /// Texto plano de la Memoria para las pantallas que todavia editan un solo
-    /// bloque (MEM.4 las convierte en lista de entradas).
+    /// Texto plano de la Memoria para la hoja rapida del chat (H6.3) y para
+    /// medir su peso.
     ///
-    /// El payload NO usa esto: `Historial` manda el bloque con las entradas y
-    /// sus ids. Se conserva para que el peso, el costo y la vista previa sigan
-    /// midiendo exactamente lo que el dueno ve en Mi Contexto.
+    /// Mi Contexto ya edita por entradas (MEM.4), pero la hoja rapida sigue
+    /// trabajando con el bloque completo: su conversion es H6.3 y no se mezcla
+    /// con esta tarea. El payload NO usa esto: `Historial` manda el bloque con
+    /// las entradas y sus ids.
     var textoMemoria: String {
         Memoria.textoPlano(config.memoria)
     }
@@ -821,9 +822,11 @@ final class EstadoApp: ObservableObject {
 
     /// Costo estimado de mandar la Memoria en un envio.
     ///
-    /// Usa solo el precio de entrada del proveedor activo y devuelve tambien su
-    /// nombre limpio para rotularlo. Sin precio de entrada no hay cifra.
-    var costoEstimadoDeMemoria: (costo: Double, modelo: String)? {
+    /// Usa solo el precio de entrada del proveedor ACTIVO y devuelve su nombre
+    /// limpio para rotularlo. Sin precio de entrada no hay cifra. Es un rotulo
+    /// informativo de la vista, no un costo historico: por eso manda el activo
+    /// y no el proveedor que genero cada mensaje.
+    var costoEstimadoDeMemoria: (costo: Double, proveedor: String)? {
         let memoria = textoMemoria
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !memoria.isEmpty,
@@ -836,14 +839,98 @@ final class EstadoApp: ObservableObject {
         }
 
         let costo = Double(pesoEstimadoMemoria) * precioEntrada / 1_000_000
-        let limpio = NombresLimpios.modelo(proveedor.modelo)
-        let modelo = limpio.isEmpty
-            ? NombresLimpios.proveedor(
-                nombre: proveedor.nombre,
-                baseURL: proveedor.baseURL
+        let nombre = NombresLimpios.proveedor(
+            nombre: proveedor.nombre,
+            baseURL: proveedor.baseURL
+        )
+        return (costo, nombre)
+    }
+
+    /// Anade una entrada escrita a mano desde Mi Contexto (MEM.4).
+    ///
+    /// Aqui no hay tarjeta ni Deshacer: el dueno esta en la pantalla de edicion
+    /// y el cambio es directo. La tarjeta es para los cambios que ordena al
+    /// modelo dentro de un chat.
+    @discardableResult
+    func agregarEntradaMemoria(_ texto: String) -> EntradaMemoria? {
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty else { return nil }
+
+        let entrada = EntradaMemoria(texto: limpio)
+        config.memoria.append(entrada)
+        return entrada
+    }
+
+    /// Cambia el texto de UNA entrada sin tocar las demas (MEM.4).
+    func actualizarEntradaMemoria(id: UUID, texto: String) {
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty,
+              let indice = config.memoria.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+        config.memoria[indice].texto = limpio
+    }
+
+    /// Borra UNA entrada de la Memoria (MEM.4).
+    func borrarEntradaMemoria(id: UUID) {
+        config.memoria.removeAll { $0.id == id }
+    }
+
+    /// Aplica una accion de `memoria_chat` sobre la configuracion y deja la
+    /// tarjeta de evento en el hilo donde se dio la orden.
+    ///
+    /// Se llama desde la herramienta, ya en el MainActor. La lista se escribe
+    /// una sola vez y solo cuando la accion se aplico: un id desconocido no
+    /// toca nada.
+    private func aplicarAccionDeMemoria(
+        _ accion: AccionMemoria,
+        idConversacion: UUID
+    ) -> ResultadoAccionMemoria {
+        var entradas = config.memoria
+        let resultado = Memoria.aplicar(accion, en: &entradas)
+        guard case .aplicada(let cambio) = resultado else {
+            return resultado
+        }
+
+        config.memoria = entradas
+
+        // La tarjeta se ancla al ultimo mensaje visible: la orden del dueno ya
+        // esta en el hilo y la confirmacion del modelo aun no ha llegado.
+        // Si el dueno cambio de chat mientras el modelo respondia, el cambio
+        // de Memoria sigue siendo real (es global), pero su tarjeta no debe
+        // aparecer en otro hilo.
+        if conversacion.id == idConversacion {
+            eventosVisuales.append(
+                EventoVisual(
+                    trasMensaje: conversacion.mensajes.last?.id,
+                    texto: cambio.textoDeTarjeta,
+                    cambioMemoria: cambio
+                )
             )
-            : limpio
-        return (costo, modelo)
+        }
+
+        return .aplicada(cambio)
+    }
+
+    /// Revierte exactamente el cambio de una tarjeta de Memoria (MEM.3).
+    ///
+    /// Devuelve false si la tarjeta no existe, no es de Memoria o ya se habia
+    /// deshecho: el segundo toque no puede volver a aplicar el inverso.
+    @discardableResult
+    func deshacerCambioDeMemoria(id eventoID: UUID) -> Bool {
+        guard let indice = eventosVisuales.firstIndex(where: { $0.id == eventoID }),
+              let cambio = eventosVisuales[indice].cambioMemoria,
+              !eventosVisuales[indice].deshecho
+        else {
+            return false
+        }
+
+        var entradas = config.memoria
+        Memoria.deshacer(cambio, en: &entradas)
+        config.memoria = entradas
+        eventosVisuales[indice] = eventosVisuales[indice].comoDeshecho()
+        return true
     }
 
     /// Ocupacion de la ventana del chat abierto (§4.1).
@@ -1266,7 +1353,9 @@ final class EstadoApp: ObservableObject {
             eventosVisuales[indice] = EventoVisual(
                 id: eventosVisuales[indice].id,
                 trasMensaje: ancla,
-                texto: eventosVisuales[indice].texto
+                texto: eventosVisuales[indice].texto,
+                cambioMemoria: eventosVisuales[indice].cambioMemoria,
+                deshecho: eventosVisuales[indice].deshecho
             )
         }
     }
@@ -1810,6 +1899,7 @@ final class EstadoApp: ObservableObject {
         // otro. Se captura antes de lanzar la tarea para que un cambio de chat
         // a mitad de turno no mezcle dos contextos.
         let usaMemoria = !conversacion.sinMemoria
+        let idConversacion = conversacion.id
         tareaActual = Task { [weak self] in
             guard let self else { return }
 
@@ -1818,6 +1908,7 @@ final class EstadoApp: ObservableObject {
                 clave: clave,
                 historial: historial,
                 usaMemoria: usaMemoria,
+                idConversacion: idConversacion,
                 tipo: tipo,
                 alFracasar: alFracasar
             )
@@ -1838,6 +1929,7 @@ final class EstadoApp: ObservableObject {
         clave: String,
         historial: [ChatMessage],
         usaMemoria: Bool,
+        idConversacion: UUID,
         tipo: TipoTurnoFallido,
         alFracasar: () -> Void
     ) async {
@@ -1845,11 +1937,29 @@ final class EstadoApp: ObservableObject {
             let motor = motorPara(proveedor: proveedor, clave: clave)
             // Un chat normal sigue SIN las herramientas del modo Tarea. La unica
             // excepcion es la Memoria: si el chat la usa, se ofrece memoria_chat
-            // para que el dueno pueda ordenar guardar, actualizar o borrar
-            // (MEM.2). En un chat sin memoria no se ofrece nada.
-            let herramientas: [Herramienta] = usaMemoria
-                ? [HerramientaMemoriaChat()]
-                : []
+            // y se ejecuta de verdad (MEM.3). En un chat sin memoria no se
+            // ofrece nada.
+            var herramientas: [Herramienta] = []
+            if usaMemoria {
+                herramientas = [
+                    HerramientaMemoriaChat { [weak self] accion in
+                        guard let self else {
+                            return .rechazada(
+                                "la Memoria no esta disponible en este turno."
+                            )
+                        }
+                        // La lista vive en el estado de la app: el salto al
+                        // MainActor se hace aqui, en la costura, y el nucleo
+                        // sigue sin conocer SwiftUI ni el hilo.
+                        return await MainActor.run {
+                            self.aplicarAccionDeMemoria(
+                                accion,
+                                idConversacion: idConversacion
+                            )
+                        }
+                    }
+                ]
+            }
             let bucle = ToolLoop(motor: motor, herramientas: herramientas)
 
             let resultado = try await bucle.ejecutar(

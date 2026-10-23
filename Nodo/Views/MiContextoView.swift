@@ -12,6 +12,11 @@ struct MiContextoView: View {
     @EnvironmentObject private var estado: EstadoApp
 
     @State private var hoja: HojaMiContexto?
+    /// Entrada que espera confirmacion antes de borrarse (MEM.4).
+    ///
+    /// La Memoria es texto curado a mano: un borrado por deslizamiento no debe
+    /// ejecutarse sin preguntar, igual que el borrado de un chat.
+    @State private var entradaAConfirmar: EntradaMemoria?
     @State private var mostrandoOtroTope = false
     @State private var otroTope = ""
     @FocusState private var otroTopeEnfocado: Bool
@@ -52,11 +57,32 @@ struct MiContextoView: View {
             .scrollDismissesKeyboard(.interactively)
             .sheet(item: $hoja) { hoja in
                 switch hoja {
-                case .memoria:
-                    HojaMemoriaRapidaView(titulo: "Editar memoria")
+                case .entrada(let entrada):
+                    HojaEntradaMemoriaView(entrada: entrada)
                 case .skill(let skill):
                     HojaSkillView(skill: skill)
                 }
+            }
+            .confirmationDialog(
+                "¿Borrar esta entrada de Memoria?",
+                isPresented: Binding(
+                    get: { entradaAConfirmar != nil },
+                    set: { presentado in
+                        if !presentado { entradaAConfirmar = nil }
+                    }
+                ),
+                titleVisibility: .visible,
+                presenting: entradaAConfirmar
+            ) { entrada in
+                Button("Borrar", role: .destructive) {
+                    estado.borrarEntradaMemoria(id: entrada.id)
+                    entradaAConfirmar = nil
+                }
+                Button("Cancelar", role: .cancel) {
+                    entradaAConfirmar = nil
+                }
+            } message: { entrada in
+                Text("Se quitará de la Memoria: \(entrada.texto)")
             }
         }
     }
@@ -76,11 +102,26 @@ struct MiContextoView: View {
                     .foregroundStyle(Tema.textoSuave)
                     .accessibilityIdentifier("memoria-vacia")
             } else {
-                Text(estado.textoMemoria)
-                    .font(.body)
-                    .foregroundStyle(.white)
-                    .lineLimit(4)
-                    .accessibilityIdentifier("memoria-vista-previa")
+                // MEM.4: una fila por entrada. Tocar la fila abre su editor;
+                // deslizar hacia la izquierda pide confirmacion antes de
+                // borrarla. Ya no hay un unico bloque de texto editable.
+                ForEach(estado.config.memoria) { entrada in
+                    Button {
+                        hoja = .entrada(entrada)
+                    } label: {
+                        filaEntrada(entrada)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("memoria-entrada")
+                    .accessibilityLabel("Editar entrada de Memoria: \(entrada.texto)")
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            entradaAConfirmar = entrada
+                        } label: {
+                            Label("Borrar", systemImage: "trash")
+                        }
+                    }
+                }
 
                 HStack {
                     Text("Peso estimado")
@@ -94,9 +135,10 @@ struct MiContextoView: View {
                 }
 
                 if let estimacion = estado.costoEstimadoDeMemoria {
-                    // Sin precios a la vista: solo el costo por envio y el
-                    // nombre limpio del modelo con el que se calculo.
-                    Text("≈$\(String(format: "%.6f", estimacion.costo)) por envío · calculado con \(estimacion.modelo)")
+                    // Rotulo informativo: es una estimacion con el precio de
+                    // entrada del proveedor ACTIVO, y se dice con cual se
+                    // calculo. No es un costo historico.
+                    Text("≈$\(String(format: "%.6f", estimacion.costo)) por envío · estimado con \(estimacion.proveedor)")
                         .font(.caption2)
                         .foregroundStyle(Tema.textoSuave)
                         .fixedSize(horizontal: false, vertical: true)
@@ -105,16 +147,36 @@ struct MiContextoView: View {
             }
 
             Button {
-                hoja = .memoria
+                hoja = .entrada(nil)
             } label: {
-                Label("Editar memoria", systemImage: "square.and.pencil")
+                Label("Añadir entrada", systemImage: "plus.circle")
             }
+            // Se conserva el identificador de las capturas de la Fase 4: ahora
+            // abre el editor de una entrada nueva, no el bloque unico.
             .accessibilityIdentifier("memoria-editar")
         } header: {
             Text("Memoria")
         } footer: {
             Text("Se aplica desde el siguiente mensaje que envíes.")
         }
+    }
+
+    /// Fila de una entrada: texto completo (hasta 3 lineas) y acceso al editor.
+    private func filaEntrada(_ entrada: EntradaMemoria) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(entrada.texto)
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
     }
 
     // MARK: - Bloque 2: Tope de gasto
@@ -343,15 +405,17 @@ struct MiContextoView: View {
     }
 }
 
-/// Hoja que puede abrir Mi Contexto: el editor de Memoria o el de una skill.
+/// Hoja que puede abrir Mi Contexto: el editor de una entrada de Memoria o el
+/// de una skill.
 private enum HojaMiContexto: Identifiable {
-    case memoria
+    /// nil = entrada nueva.
+    case entrada(EntradaMemoria?)
     case skill(SkillLocal?)
 
     var id: String {
         switch self {
-        case .memoria:
-            return "memoria"
+        case .entrada(let entrada):
+            return "memoria-\(entrada?.id.uuidString ?? "nueva")"
         case .skill(let skill):
             return "skill-\(skill?.id.uuidString ?? "nueva")"
         }
