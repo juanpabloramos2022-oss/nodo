@@ -125,25 +125,33 @@ jobs:
           # Rama de solo capturas: cada corrida deja una carpeta
           # <fase>-<sha corto>/ con los PNG y el log completo de xcodebuild,
           # para que la revision visual y el diagnostico se hagan con git.
-          DEST="pub/${FASE}-${GITHUB_SHA::7}"
-          rm -rf pub
-          if git clone --depth 1 --branch capturas \
-              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
-            echo "Rama capturas existente."
-          else
-            mkdir pub && cd pub && git init -q -b capturas . && cd ..
-            echo "Rama capturas creada como huerfana."
-          fi
-          mkdir -p "$DEST"
-          cp capturas/*.png "$DEST/" 2>/dev/null || echo "Sin PNG en esta corrida."
-          cp xcodebuild-capturas.log "$DEST/" 2>/dev/null || true
-          cd pub
-          git config user.name "nodo-ci"
-          git config user.email "ci@localhost"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Nada nuevo que publicar."
-          else
+          # Si dos corridas publican a la vez, el push perdedor se reintenta
+          # clonando de nuevo: publicar nunca debe tumbar el job.
+          publicar() {
+            rm -rf pub
+            if git clone --depth 1 --branch capturas \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+              echo "Rama capturas existente."
+            else
+              mkdir pub && (cd pub && git init -q -b capturas .)
+              echo "Rama capturas creada como huerfana."
+            fi
+            DEST="pub/${FASE}-${GITHUB_SHA::7}"
+            mkdir -p "$DEST"
+            # El log se copia PRIMERO y sin condicion: es la evidencia de
+            # diagnostico cuando los tests fallan y no hay ningun PNG.
+            cp xcodebuild-capturas.log "$DEST/" 2>/dev/null || echo "Sin log en esta corrida."
+            cp capturas/*.png "$DEST/" 2>/dev/null || echo "Sin PNG en esta corrida."
+            cd pub
+            git config user.name "nodo-ci"
+            git config user.email "ci@localhost"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Nada nuevo que publicar."
+              cd ..
+              return 0
+            fi
             git commit -q -m "capturas ${FASE} ${GITHUB_SHA::7}"
             git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
-          fi
+          }
+          publicar || { sleep 10; publicar; } || { sleep 20; publicar; } || echo "Publicacion omitida tras 3 intentos; el artefacto sigue disponible."
