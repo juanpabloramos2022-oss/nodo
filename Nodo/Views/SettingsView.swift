@@ -9,14 +9,18 @@ struct SettingsView: View {
     @EnvironmentObject private var estado: EstadoApp
     @State private var aviso: String?
     @State private var topeAviso = ""
+    @State private var proveedorEnEdicion: ProviderConfig?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Proveedores") {
                     ForEach(estado.config.proveedores) { proveedor in
-                        NavigationLink {
-                            EditorProveedorView(proveedor: proveedor)
+                        Button {
+                            // Al abrir el editor el teclado de Ajustes se baja:
+                            // la hoja empieza con su propia barra Listo.
+                            bajarTeclado()
+                            proveedorEnEdicion = proveedor
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -31,8 +35,14 @@ struct SettingsView: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(Tema.acento)
                                 }
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(Tema.textoSuave)
+                                    .accessibilityHidden(true)
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                     .onDelete { indices in
                         for indice in indices {
@@ -41,7 +51,10 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        estado.anadirProveedor()
+                        // El proveedor nuevo se crea como borrador: solo entra
+                        // en la configuracion si el editor confirma Guardar.
+                        bajarTeclado()
+                        proveedorEnEdicion = estado.proveedorNuevo()
                     } label: {
                         Label("Anadir proveedor", systemImage: "plus.circle")
                     }
@@ -133,8 +146,15 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(Tema.fondo.ignoresSafeArea())
             .navigationTitle("Ajustes")
+            // Blindaje de la pantalla vieja: la barra Listo vive aqui, una sola
+            // vez para toda la jerarquia de Ajustes. Su rediseno es la Fase 4.
+            .conBarraTecladoListo()
+            .scrollDismissesKeyboard(.interactively)
             .onAppear {
                 topeAviso = Self.textoDe(estado.config.topeAvisoCostoEfectivo)
+            }
+            .sheet(item: $proveedorEnEdicion) { proveedor in
+                EditorProveedorView(proveedor: proveedor)
             }
             .alert(
                 "Nodo",

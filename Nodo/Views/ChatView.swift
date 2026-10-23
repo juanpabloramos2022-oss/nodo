@@ -38,6 +38,9 @@ struct ChatView: View {
                     }
                 }
             }
+            // Una sola barra por jerarquia: la caja del chat y cualquier campo
+            // que se abra desde esta pantalla comparten esta raiz.
+            .conBarraTecladoListo()
         }
     }
 

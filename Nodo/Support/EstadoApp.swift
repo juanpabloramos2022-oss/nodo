@@ -109,22 +109,27 @@ final class EstadoApp: ObservableObject {
 
     // MARK: - Proveedores
 
-    func anadirProveedor() {
-        let nuevo = ProviderConfig(
+    /// Crea un proveedor nuevo como borrador, sin tocar la configuracion.
+    ///
+    /// El editor solo lo guarda si el usuario confirma; asi Cancelar no deja
+    /// registros a medias ni cambia el proveedor activo.
+    func proveedorNuevo() -> ProviderConfig {
+        ProviderConfig(
             nombre: "Proveedor",
             protocolo: .chatCompletions,
             baseURL: "https://",
             modelo: ""
         )
-        config.proveedores.append(nuevo)
-        config.proveedorActivo = nuevo.id
     }
 
     func actualizarProveedor(_ proveedor: ProviderConfig) {
-        guard let indice = config.proveedores.firstIndex(where: { $0.id == proveedor.id }) else {
-            return
+        if let indice = config.proveedores.firstIndex(where: { $0.id == proveedor.id }) {
+            config.proveedores[indice] = proveedor
+        } else {
+            // Un proveedor recien creado entra aqui al confirmar Guardar.
+            config.proveedores.append(proveedor)
+            config.proveedorActivo = proveedor.id
         }
-        config.proveedores[indice] = proveedor
     }
 
     func borrarProveedor(_ proveedor: ProviderConfig) {

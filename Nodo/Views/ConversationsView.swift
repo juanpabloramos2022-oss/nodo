@@ -44,6 +44,10 @@ struct ConversationsView: View {
                     }
                 }
             }
+            // La barra de teclado vive en la raiz de esta jerarquia (tambien
+            // cubre el buscador); no se repite en las pantallas que se abren
+            // desde aqui.
+            .conBarraTecladoListo()
             .confirmationDialog(
                 "Borrar esta conversacion?",
                 isPresented: Binding(
@@ -115,6 +119,9 @@ struct ConversationsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Arrastrar la lista hacia abajo esconde el teclado del buscador sin
+        // cerrar la pantalla ni perder lo escrito.
+        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder

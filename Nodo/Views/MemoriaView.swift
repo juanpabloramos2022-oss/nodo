@@ -66,6 +66,7 @@ struct MemoriaView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Tema.fondo.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Memoria")
         .navigationBarTitleDisplayMode(.inline)
     }
