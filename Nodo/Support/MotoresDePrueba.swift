@@ -64,7 +64,7 @@ final class MotorDePrueba: ChatEngine {
             )
         }
 
-        let texto = "He completado la tarea de ejemplo."
+        let texto = "Respuesta de ejemplo para las capturas."
         alRecibirTexto?(texto)
         return RespuestaModelo(
             texto: texto,

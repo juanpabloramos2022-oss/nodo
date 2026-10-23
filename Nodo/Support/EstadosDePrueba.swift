@@ -31,6 +31,8 @@ enum EstadosDePrueba {
         case ajustesTope = "ajustes-tope"
         case conversacionEjemplo = "conversacion-ejemplo"
         case historialEjemplo = "historial-ejemplo"
+        /// Conversacion con historial, Memoria y los 4 combos del preset.
+        case chat = "chat"
         case tarea = "tarea"
     }
 
@@ -121,6 +123,58 @@ enum EstadosDePrueba {
         archivada: true
     )
 
+    /// Conversacion del estado `chat`: dos turnos de ejemplo y consumo medido
+    /// en la ultima respuesta, para que la pildora, el Estado del chat y el
+    /// divisor del cambio de modelo tengan algo real que ensenar.
+    private static let conversacionChat: Conversation = Conversation(
+        id: id("00000000-0000-0000-0000-000000000020"),
+        titulo: "Chat de ejemplo",
+        mensajes: [
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000021"),
+                rol: .usuario,
+                texto: "Hola, primer mensaje de ejemplo.",
+                fecha: fechaFija
+            ),
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000022"),
+                rol: .asistente,
+                texto: "Respuesta de ejemplo: aquí estoy para ayudarte.",
+                fecha: fechaFija.addingTimeInterval(1)
+            ),
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000023"),
+                rol: .usuario,
+                texto: "Segundo mensaje de ejemplo.",
+                fecha: fechaFija.addingTimeInterval(2)
+            ),
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000024"),
+                rol: .asistente,
+                texto: "Segunda respuesta de ejemplo con el consumo del chat.",
+                fecha: fechaFija.addingTimeInterval(3),
+                tokensEntrada: 1200,
+                tokensSalida: 300
+            )
+        ],
+        creada: fechaFija,
+        actualizada: fechaFija.addingTimeInterval(3)
+    )
+
+    /// Memoria de ejemplo que se inyecta en el estado `chat`.
+    private static let memoriaDeEjemplo = """
+    Memoria de ejemplo: responde en español, con frases cortas y sin tecnicismos.
+    """
+
+    /// Configuracion del estado `chat`: los 4 combos del preset InferHub, sin
+    /// clave, con precios de ejemplo y una Memoria con texto.
+    private static func configuracionChat() -> AppConfig {
+        var config = AppConfig.inicial()
+        config.systemPrompt = memoriaDeEjemplo
+        config.topeAvisoCosto = 1.00
+        return config
+    }
+
     private static func configuracion(tope: Double = 1.00) -> AppConfig {
         AppConfig(
             proveedores: [proveedorEjemplo],
@@ -164,6 +218,13 @@ enum EstadosDePrueba {
                 config: configuracion(),
                 conversacion: conversacionEjemplo,
                 conversaciones: [conversacionEjemplo, conversacionArchivada]
+            )
+        case .chat:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(),
+                conversacion: conversacionChat,
+                conversaciones: [conversacionChat]
             )
         case .tarea:
             let conversacionTarea = Conversation(

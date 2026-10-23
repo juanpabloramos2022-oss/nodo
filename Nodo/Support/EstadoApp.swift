@@ -569,8 +569,6 @@ final class EstadoApp: ObservableObject {
         modoTarea: Bool,
         alFracasar: () -> Void
     ) async {
-        defer { herramientaEnCurso = nil }
-
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
             let herramientas: [Herramienta]
@@ -642,7 +640,8 @@ final class EstadoApp: ObservableObject {
             herramientas: herramientas,
             alIniciarHerramienta: { [weak self] llamada in
                 Task { @MainActor [weak self] in
-                    self?.herramientaEnCurso = llamada.nombre
+                    guard let self, self.enviando else { return }
+                    self.herramientaEnCurso = llamada.nombre
                 }
             },
             alTerminarHerramienta: { [weak self] _, _ in
@@ -674,6 +673,10 @@ final class EstadoApp: ObservableObject {
     /// exactamente una vez; si ya habia otra pendiente, se rechaza para no
     /// dejar nunca un turno colgado.
     private func pedirAprobacion(_ llamada: ToolCall) async -> Bool {
+        // Si Detener llego justo antes de pedir la aprobacion, no se abre una
+        // hoja que ya nadie va a poder resolver.
+        guard !Task.isCancelled else { return false }
+
         if let anterior = continuacionAprobacion {
             continuacionAprobacion = nil
             aprobacionPendiente = nil

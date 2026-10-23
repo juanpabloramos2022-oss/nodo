@@ -39,6 +39,15 @@ cada PNG a las "Capturas exigidas" de SPEC §5. El nombre viaja en
 |---|---|---|---|
 | `f1-editor-teclado-numerico` | 1 | Editor de proveedor con el teclado numérico abierto y la barra **Listo** visible | `editor-proveedor` |
 | `f1-ajustes-tope-teclado-numerico` | 1 | Campo de tope con teclado y barra **Listo** visible | `ajustes-tope` |
+| `f2-cabecera-teclado-abierto` | 2 | Cabecera despejada completa (← Chats, píldora y •••) con el teclado abierto | `chat` |
+| `f2-tira-fina` | 2 | Tira fina con el conmutador Chat \| Tarea y el botón 🧠 sobre la caja | `chat` |
+| `f2-menu-pildora` | 2 | Menú de la píldora abierto, con los modelos y el ✓ en el activo | `chat` |
+| `f2-divisor-cambio-modelo` | 2 | Divisor ── Ahora responde X ── tras elegir otro modelo | `chat` |
+| `f2-estado-del-chat` | 2 | Hoja Estado del chat con Ocupación de la ventana y Consumo acumulado del chat | `chat` |
+| `f2-memoria-rapida` | 2 | Hoja Memoria rápida con Cancelar/Guardar | `chat` |
+| `f2-tarea-aprobacion` | 2 | Hoja de aprobación antes de ejecutar la herramienta con consecuencias | `tarea` |
+| `f2-tarea-paso-completado` | 2 | Turno de tarea terminado: respuesta final y paso plegable | `tarea` |
+| `f2-tarea-ejecutando` | 2 | Intento del estado intermedio "Ejecutando…" justo tras aprobar | `tarea` |
 
 ## Estados de prueba disponibles
 
@@ -52,6 +61,8 @@ exactamente como siempre.
 | `ajustes-tope` | Igual, con tope de aviso 1.00 |
 | `conversacion-ejemplo` | Conversación con mensajes genéricos |
 | `historial-ejemplo` | Varias conversaciones de ejemplo |
+| `chat` | Los 4 combos del preset, Memoria con texto y conversación abierta con dos turnos y consumo medido (1200/300 tokens) |
+| `tarea` | Conversación vacía en modo Tarea, con la herramienta de prueba que pide aprobación |
 
 Los estados se siembran en memoria: el modo capturas no escribe en
 `UserDefaults`, en el almacén de conversaciones ni en el llavero del simulador.

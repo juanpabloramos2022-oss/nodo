@@ -422,7 +422,9 @@ struct ChatView: View {
         } else if mensaje.rol == .asistente, !mensaje.toolCalls.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 if !mensaje.texto.isEmpty {
-                    BurbujaMensaje(mensaje: mensaje)
+                    // El texto del asistente se pinta sin repetir las llamadas:
+                    // los nombres ya salen en las filas de paso de abajo.
+                    BurbujaMensaje(mensaje: mensajeSinLlamadas(mensaje))
                 }
 
                 ForEach(mensaje.toolCalls, id: \.id) { llamada in
@@ -442,6 +444,13 @@ struct ChatView: View {
         } else {
             filaDeMensajeNormal(mensaje)
         }
+    }
+
+    /// Copia del mensaje sin las llamadas, para no pintarlas dos veces.
+    private func mensajeSinLlamadas(_ mensaje: ChatMessage) -> ChatMessage {
+        var copia = mensaje
+        copia.toolCalls = []
+        return copia
     }
 
     private func esHerramientaYaRepresentada(_ mensaje: ChatMessage) -> Bool {
@@ -643,6 +652,7 @@ struct ChatView: View {
                 .background(Tema.superficie)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .foregroundStyle(.white)
+                .accessibilityIdentifier("caja-mensaje")
 
             Button(action: accion) {
                 Image(systemName: estado.enviando ? "stop.fill" : "arrow.up")
@@ -653,6 +663,8 @@ struct ChatView: View {
                     .clipShape(Circle())
             }
             .disabled(!botonActivo)
+            .accessibilityLabel(estado.enviando ? "Detener" : "Enviar")
+            .accessibilityIdentifier("enviar-mensaje")
         }
         .padding(.horizontal, Tema.margen)
         .padding(.top, 8)
