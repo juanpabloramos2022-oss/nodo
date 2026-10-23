@@ -99,15 +99,47 @@ targets:
         MARKETING_VERSION: "0.3.0"
         CURRENT_PROJECT_VERSION: "4"
 
+  # Target de pruebas unitarias de la capa app. Usa la app como host para que
+  # `@testable import Nodo` vea el estado y las vistas reales, y corre en el
+  # simulador igual que las capturas.
+  NodoAppTests:
+    type: bundle.unit-testing
+    platform: iOS
+    sources:
+      - path: NodoAppTests
+    dependencies:
+      - target: Nodo
+      # Las pruebas tambien usan tipos del nucleo (AlmacenClaves, HTTPStreaming,
+      # RespaldoConfiguracion), asi que se enlaza el paquete explicitamente.
+      - package: NodoCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios.apptests
+        PRODUCT_NAME: NodoAppTests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        # La app es el host: sin estas dos rutas XCTest no puede cargar el
+        # modulo Nodo ni ejecutar el bundle en el simulador.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nodo.app/Nodo"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        # Misma version que la app, solo para el Info.plist del bundle de tests.
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "4"
+
 schemes:
   Nodo:
     build:
       targets:
         Nodo: all
+        NodoAppTests: [test]
     run:
       config: Release
     archive:
       config: Release
+    test:
+      config: Debug
+      targets:
+        - NodoAppTests
 
   # Esquema propio para que `xcodebuild test` corra SOLO las capturas, sin
   # mezclarlas con la compilacion de la app que publica el .ipa.

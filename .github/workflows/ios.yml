@@ -32,6 +32,18 @@ jobs:
       - name: Generar el proyecto Xcode
         run: xcodegen generate
 
+      - name: Pruebas de la app (NodoAppTests)
+        run: |
+          xcodebuild test \
+            -project Nodo.xcodeproj \
+            -scheme Nodo \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:NodoAppTests \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
       - name: Compilar sin firma
         run: |
           xcodebuild \

@@ -128,7 +128,14 @@ final class EstadoApp: ObservableObject {
     /// el estado llega sembrado en memoria y las capturas no deben ensuciar
     /// los datos de quien use la app de verdad.
     private let persistir: Bool
-    private let transporte = TransporteURLSession()
+    /// Transporte inyectable: en produccion es URLSession y en los tests es un
+    /// doble que graba las peticiones y devuelve respuestas guionizadas. El tipo
+    /// compuesto cubre los dos usos de red de la app: streaming y peticion
+    /// completa.
+    private let transporte: any HTTPStreaming & HTTPUnary
+    /// Preferencias inyectables: los tests usan una suite temporal para no
+    /// tocar los datos del telefono ni depender de un estado anterior.
+    private let defaults: UserDefaults
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
     /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
@@ -174,10 +181,18 @@ final class EstadoApp: ObservableObject {
         return formateador.string(from: NSNumber(value: valor)) ?? "\(valor)"
     }
 
-    init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
+    init(
+        llavero: AlmacenClaves = LlaveroAlmacen(),
+        estadoDePrueba: EstadoPrueba? = nil,
+        transporte: any HTTPStreaming & HTTPUnary = TransporteURLSession(),
+        defaults: UserDefaults = .standard,
+        directorioStore: URL? = nil
+    ) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
         self.persistir = estadoDePrueba == nil
+        self.transporte = transporte
+        self.defaults = defaults
         // En capturas el dictado es un doble que inyecta una transcripcion fija
         // sin pedir permisos ni tocar el microfono. El resto del flujo es el
         // mismo que en el iPhone real.
@@ -202,7 +217,7 @@ final class EstadoApp: ObservableObject {
             return
         }
 
-        if let datos = UserDefaults.standard.data(forKey: Self.claveConfig),
+        if let datos = defaults.data(forKey: Self.claveConfig),
            let cargada = try? AppConfig.desde(json: datos) {
             self.config = cargada
         } else {
@@ -210,12 +225,20 @@ final class EstadoApp: ObservableObject {
         }
 
         self.conversacion = Conversation()
-        self.ventanasPorModelo = Self.ventanasGuardadas()
-        self.usoResumidoPorConversacion = Self.usosResumidosGuardados()
+        self.ventanasPorModelo = Self.ventanasGuardadas(de: defaults)
+        self.usoResumidoPorConversacion = Self.usosResumidosGuardados(de: defaults)
 
         var almacen: ConversationStore?
         do {
-            let directorio = try ConversationStore.directorioPorDefecto()
+            // Un directorio inyectado manda; nil conserva la ruta real de la
+            // app. Asi los tests escriben en una carpeta temporal sin tocar el
+            // historial del telefono.
+            let directorio: URL
+            if let directorioStore {
+                directorio = directorioStore
+            } else {
+                directorio = try ConversationStore.directorioPorDefecto()
+            }
             almacen = try ConversationStore(directorio: directorio)
         } catch {
             self.error = "No se pudo abrir el almacen de conversaciones."
@@ -231,7 +254,7 @@ final class EstadoApp: ObservableObject {
 
     private func guardarConfig() {
         guard persistir, let datos = try? config.json() else { return }
-        UserDefaults.standard.set(datos, forKey: Self.claveConfig)
+        defaults.set(datos, forKey: Self.claveConfig)
     }
 
     /// Copia las skills persistidas al puerto que consume el parser.
@@ -323,11 +346,11 @@ final class EstadoApp: ObservableObject {
         else {
             return
         }
-        UserDefaults.standard.set(datos, forKey: Self.claveVentanas)
+        defaults.set(datos, forKey: Self.claveVentanas)
     }
 
-    private static func ventanasGuardadas() -> [String: Int] {
-        guard let datos = UserDefaults.standard.data(forKey: claveVentanas),
+    private static func ventanasGuardadas(de defaults: UserDefaults) -> [String: Int] {
+        guard let datos = defaults.data(forKey: claveVentanas),
               let ventanas = try? JSONDecoder().decode([String: Int].self, from: datos)
         else {
             return [:]
@@ -348,11 +371,11 @@ final class EstadoApp: ObservableObject {
         else {
             return
         }
-        UserDefaults.standard.set(datos, forKey: Self.claveUsosResumidos)
+        defaults.set(datos, forKey: Self.claveUsosResumidos)
     }
 
-    private static func usosResumidosGuardados() -> [String: UsoTokens] {
-        guard let datos = UserDefaults.standard.data(forKey: claveUsosResumidos),
+    private static func usosResumidosGuardados(de defaults: UserDefaults) -> [String: UsoTokens] {
+        guard let datos = defaults.data(forKey: claveUsosResumidos),
               let usos = try? JSONDecoder().decode([String: UsoTokens].self, from: datos)
         else {
             return [:]
