@@ -69,6 +69,10 @@ cada PNG a las "Capturas exigidas" de SPEC §5. El nombre viaja en
 | `f4-mi-contexto-skill-reservada` | 4 | Aviso de nombre reservado en la hoja de skill, sin guardar | `mi-contexto` |
 | `f4-skill-enviada` | 4 | Burbuja del mensaje con la etiqueta visual ⚡ nombre de la skill invocada | `mi-contexto` |
 | `f4-bienvenida-tope` | 4 | Tarjeta de Bienvenida con el tope vigente real bajo el título | `bienvenida` |
+| `f5-historial` | 5 | Lista con los fijados arriba y filas enriquecidas (pastilla de costo y último modelo) | `historial-ejemplo` |
+| `f5-archivados` | 5 | Segmento Archivados mostrando solo chats archivados | `historial-ejemplo` |
+| `f5-menu-fila` | 5 | Menú de pulsación larga con Fijar, Renombrar, Archivar y Borrar | `historial-ejemplo` |
+| `f5-ramificada` | 5 | Conversación ramificada desde un punto intermedio, abierta y solo con los mensajes hasta el corte | `chat` |
 
 ## Estados de prueba disponibles
 
@@ -81,7 +85,7 @@ exactamente como siempre.
 | `editor-proveedor` | Proveedor de ejemplo sin clave, precios 0.10/0.20 y conversación de ejemplo |
 | `ajustes-tope` | Igual, con tope de aviso 1.00 |
 | `conversacion-ejemplo` | Conversación con mensajes genéricos |
-| `historial-ejemplo` | Varias conversaciones de ejemplo |
+| `historial-ejemplo` | Un chat fijado con consumo, uno activo y uno archivado (lista enriquecida y segmentos) |
 | `chat` | Los 4 combos del preset, Memoria con texto y conversación abierta con dos turnos y consumo medido (1200/300 tokens) |
 | `tarea` | Conversación vacía en modo Tarea, con la herramienta de prueba que pide aprobación |
 | `bienvenida` | Chat vacío con el preset y una clave de ejemplo solo en memoria: la tarjeta se ve conectada, sin ⚠️ |
