@@ -1,0 +1,850 @@
+Command line invocation:
+    /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/xcodebuild test -project Nodo.xcodeproj -scheme Capturas -destination "platform=iOS Simulator,name=iPhone 16" "-only-testing:NodoCapturas" -parallel-testing-enabled NO -resultBundlePath capturas.xcresult -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = 
+    CODE_SIGNING_ALLOWED = NO
+    CODE_SIGNING_REQUIRED = NO
+
+Resolve Package Graph
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  NodoCore: /Users/runner/work/nodo/nodo
+
+Writing result bundle at path:
+	/Users/runner/work/nodo/nodo/capturas.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }
+{ platform:iOS Simulator, arch:x86_64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }
+note: Using codesigning identity override: 
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (4 targets)
+    Target 'NodoCapturas' in project 'Nodo'
+        ➜ Explicit dependency on target 'Nodo' in project 'Nodo'
+    Target 'Nodo' in project 'Nodo'
+        ➜ Explicit dependency on target 'NodoCore' in project 'NodoCore'
+    Target 'NodoCore' in project 'NodoCore'
+        ➜ Explicit dependency on target 'NodoCore' in project 'NodoCore'
+    Target 'NodoCore' in project 'NodoCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: 66d25afb9d028e03dbd0e547eb6252ee
+Build description path: /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/XCBuildData/66d25afb9d028e03dbd0e547eb6252ee.xcbuilddata
+ClangStatCache /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -o /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache
+
+CreateBuildDirectory /Users/runner/work/nodo/nodo/build/Build/Products
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-create-build-directory /Users/runner/work/nodo/nodo/build/Build/Products
+
+CreateBuildDirectory /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-create-build-directory /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-create-build-directory /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml
+
+CreateBuildDirectory /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-create-build-directory /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator
+
+CreateBuildDirectory /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-create-build-directory /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_const_extract_protocols.json (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftConstValuesFileList (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.LinkFileList (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.LinkFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-OutputFileMap.json (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.modulemap (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.modulemap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyStaticMetadataFileList (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyMetadataFileList (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyMetadataFileList
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/NodoCore.modulemap /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.modulemap (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.modulemap /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/empty-NodoCapturas.plist (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/empty-NodoCapturas.plist
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/ProductTypeInfoPlistAdditions.plist (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/ProductTypeInfoPlistAdditions.plist
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_const_extract_protocols.json (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftConstValuesFileList (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.LinkFileList (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.LinkFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-OutputFileMap.json (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyStaticMetadataFileList (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyMetadataFileList (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-project-headers.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-project-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-own-target-headers.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-generated-files.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-generated-files.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-target-headers.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-non-framework-target-headers.hmap (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_const_extract_protocols.json (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftConstValuesFileList (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.LinkFileList (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.LinkFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-OutputFileMap.json (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyStaticMetadataFileList (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyMetadataFileList (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-project-headers.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-project-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-own-target-headers.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-generated-files.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-generated-files.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-target-headers.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-non-framework-target-headers.hmap (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibPath-normal-arm64.txt (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibPath-normal-arm64.txt
+
+WriteAuxiliaryFile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibInstallName-normal-arm64.txt (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    write-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibInstallName-normal-arm64.txt
+
+MkDir /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /bin/mkdir -p /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest
+
+MkDir /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /bin/mkdir -p /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app
+
+SwiftDriver NodoCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-SwiftDriver -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCore -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -package-name nodo -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_const_extract_protocols.json -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-Swift.h -working-directory /Users/runner/work/nodo/nodo/Nodo.xcodeproj -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ NodoCore (in target 'NodoCore' from project 'NodoCore')
+
+EmitSwiftModule normal arm64 (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ AlmacenClaves.swift,\ AnthropicClient.swift,\ AppConfig.swift,\ ChatCompletionsClient.swift,\ ChatEngine.swift,\ ChatMessage.swift,\ ConversationStore.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AlmacenClaves.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AnthropicClient.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AppConfig.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatCompletionsClient.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatEngine.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatMessage.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ConversationStore.swift (in target 'NodoCore' from project 'NodoCore')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AlmacenClaves.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AnthropicClient.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/AppConfig.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatCompletionsClient.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatEngine.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ChatMessage.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ConversationStore.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ PoliticaAprobacion.swift,\ ProviderConfig.swift,\ SSEParser.swift,\ ToolDefinition.swift,\ ToolLoop.swift,\ UsoTokens.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/PoliticaAprobacion.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ProviderConfig.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/SSEParser.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ToolDefinition.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ToolLoop.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/UsoTokens.swift (in target 'NodoCore' from project 'NodoCore')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/PoliticaAprobacion.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ProviderConfig.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/SSEParser.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ToolDefinition.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/ToolLoop.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/UsoTokens.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ HTTP.swift,\ Historial.swift,\ HttpFetchTool.swift,\ MCPClient.swift,\ MetricasChat.swift,\ NodoVersion.swift,\ NombresLimpios.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/HTTP.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/Historial.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/HttpFetchTool.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/MCPClient.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/MetricasChat.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/NodoVersion.swift /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/NombresLimpios.swift (in target 'NodoCore' from project 'NodoCore')
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/HTTP.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/Historial.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/HttpFetchTool.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/MCPClient.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+/Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/MCPClient.swift:136:13: warning: variable 'cuerpo' was never mutated; consider changing to 'let' constant
+        var cuerpo: [String: Any] = [
+        ~~~ ^
+        let
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/MetricasChat.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/NodoVersion.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCore/Sources/NodoCore/NombresLimpios.swift (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for NodoCore (in target 'NodoCore' from project 'NodoCore')
+
+SwiftDriver\ Compilation\ Requirements NodoCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCore -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -package-name nodo -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_const_extract_protocols.json -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-Swift.h -working-directory /Users/runner/work/nodo/nodo/Nodo.xcodeproj -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Compiling HTTP.swift, Historial.swift, HttpFetchTool.swift, MCPClient.swift, MetricasChat.swift, NodoVersion.swift, NombresLimpios.swift (in target 'NodoCore' from project 'NodoCore')
+
+SwiftMergeGeneratedHeaders /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/NodoCore-Swift.h /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-Swift.h (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-swiftHeaderTool -arch arm64 /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-Swift.h -o /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/NodoCore-Swift.h
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftdoc (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.abi.json (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.abi.json /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftsourceinfo (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+MkDir /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/unthinned (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /bin/mkdir -p /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/unthinned
+
+MkDir /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /bin/mkdir -p /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned
+
+GenerateAssetSymbols /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/actool /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets --compile /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app --output-format human-readable-text --notices --warnings --export-dependency-info /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_dependencies --output-partial-info-plist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --minimum-deployment-target 17.0 --platform iphonesimulator --bundle-identifier com.nodo.ios --generate-swift-asset-symbol-extensions NO --generate-swift-asset-symbols /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.swift --generate-objc-asset-symbols /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.h --generate-asset-symbol-index /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/* com.apple.actool.compilation-results */
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.h
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.swift
+
+
+CompileAssetCatalogVariant thinned /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/actool /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets --compile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPhone17,3 --filter-for-device-os-version 26.2 --development-region en --target-device iphone --minimum-deployment-target 17.0 --platform iphonesimulator
+/* com.apple.actool.compilation-results */
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist_thinned
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned/AppIcon60x60@2x.png
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned/AppIcon76x76@2x~ipad.png
+/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned/Assets.car
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling AlmacenClaves.swift, AnthropicClient.swift, AppConfig.swift, ChatCompletionsClient.swift, ChatEngine.swift, ChatMessage.swift, ConversationStore.swift (in target 'NodoCore' from project 'NodoCore')
+
+SwiftDriverJobDiscovery normal arm64 Compiling PoliticaAprobacion.swift, ProviderConfig.swift, SSEParser.swift, ToolDefinition.swift, ToolLoop.swift, UsoTokens.swift (in target 'NodoCore' from project 'NodoCore')
+
+SwiftDriver\ Compilation NodoCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo/Nodo.xcodeproj
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCore -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -package-name nodo -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_const_extract_protocols.json -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore-Swift.h -working-directory /Users/runner/work/nodo/nodo/Nodo.xcodeproj -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.o normal (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -r -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O0 -L/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -filelist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.o
+
+ExtractAppIntentsMetadata (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name NodoCore --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk --xcode-version 16F6 --platform-family iOS --deployment-target 17.0 --bundle-identifier nodo.NodoCore --output /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.appintents --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.o --dependency-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore_dependency_info.dat --stringsdata-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftFileList --metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/NodoCore.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-23 07:13:56.699 appintentsmetadataprocessor[8393:29495] Starting appintentsmetadataprocessor export
+2026-10-23 07:13:57.214 appintentsmetadataprocessor[8393:29495] Extracted no relevant App Intents symbols, skipping writing output
+
+RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.o (in target 'NodoCore' from project 'NodoCore')
+    cd /Users/runner/work/nodo/nodo
+    builtin-RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCore.o
+
+Ld /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/__preview.dylib normal (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O0 -L/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -install_name @rpath/Nodo.debug.dylib -dead_strip -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_dependency_info.dat -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/__preview.dylib
+
+SwiftDriver Nodo normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-SwiftDriver -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Nodo -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Nodo (in target 'Nodo' from project 'Nodo')
+EmitSwiftModule normal arm64 (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 Compiling\ HojaEstadoChatView.swift,\ HojaMemoriaRapidaView.swift,\ Llavero.swift,\ MemoriaView.swift,\ MotoresDePrueba.swift,\ NodoApp.swift /Users/runner/work/nodo/nodo/Nodo/Views/HojaEstadoChatView.swift /Users/runner/work/nodo/nodo/Nodo/Views/HojaMemoriaRapidaView.swift /Users/runner/work/nodo/nodo/Nodo/Support/Llavero.swift /Users/runner/work/nodo/nodo/Nodo/Views/MemoriaView.swift /Users/runner/work/nodo/nodo/Nodo/Support/MotoresDePrueba.swift /Users/runner/work/nodo/nodo/Nodo/NodoApp.swift (in target 'Nodo' from project 'Nodo')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/HojaEstadoChatView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/HojaMemoriaRapidaView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/Llavero.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/MemoriaView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/MotoresDePrueba.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/NodoApp.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 Compiling\ ServerView.swift,\ SettingsView.swift,\ Teclado.swift,\ Tema.swift,\ TransporteURLSession.swift,\ GeneratedAssetSymbols.swift /Users/runner/work/nodo/nodo/Nodo/Views/ServerView.swift /Users/runner/work/nodo/nodo/Nodo/Views/SettingsView.swift /Users/runner/work/nodo/nodo/Nodo/Support/Teclado.swift /Users/runner/work/nodo/nodo/Nodo/Support/Tema.swift /Users/runner/work/nodo/nodo/Nodo/Support/TransporteURLSession.swift /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Nodo' from project 'Nodo')
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/ServerView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/SettingsView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/Teclado.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/Tema.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/TransporteURLSession.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+LinkAssetCatalog /Users/runner/work/nodo/nodo/Nodo/Assets.xcassets (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-linkAssetCatalog --thinned /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/thinned --thinned-dependencies /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist_unthinned --output /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app --plist-output /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist
+note: Emplaced /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/AppIcon60x60@2x.png (in target 'Nodo' from project 'Nodo')
+note: Emplaced /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Assets.car (in target 'Nodo' from project 'Nodo')
+note: Emplaced /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/AppIcon76x76@2x~ipad.png (in target 'Nodo' from project 'Nodo')
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for Nodo (in target 'Nodo' from project 'Nodo')
+
+SwiftDriver\ Compilation\ Requirements Nodo normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Nodo -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+ProcessInfoPlistFile /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Info.plist /Users/runner/work/nodo/nodo/Nodo/Info.plist (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-infoPlistUtility /Users/runner/work/nodo/nodo/Nodo/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/assetcatalog_generated_info.plist -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Info.plist
+
+SwiftMergeGeneratedHeaders /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/Nodo-Swift.h /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-Swift.h (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-swiftHeaderTool -arch arm64 /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-Swift.h -o /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/Nodo-Swift.h
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftdoc (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.abi.json (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.abi.json /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftsourceinfo (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+SwiftCompile normal arm64 Compiling\ ChatView.swift,\ ChatsRaizView.swift,\ ConversationsView.swift,\ EditorProveedorView.swift,\ EstadoApp.swift,\ EstadosDePrueba.swift,\ EventoVisual.swift /Users/runner/work/nodo/nodo/Nodo/Views/ChatView.swift /Users/runner/work/nodo/nodo/Nodo/Views/ChatsRaizView.swift /Users/runner/work/nodo/nodo/Nodo/Views/ConversationsView.swift /Users/runner/work/nodo/nodo/Nodo/Views/EditorProveedorView.swift /Users/runner/work/nodo/nodo/Nodo/Support/EstadoApp.swift /Users/runner/work/nodo/nodo/Nodo/Support/EstadosDePrueba.swift /Users/runner/work/nodo/nodo/Nodo/Support/EventoVisual.swift (in target 'Nodo' from project 'Nodo')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/ChatView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/ChatsRaizView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/ConversationsView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Views/EditorProveedorView.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/EstadoApp.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/EstadosDePrueba.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/Nodo/Support/EventoVisual.swift (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling ServerView.swift, SettingsView.swift, Teclado.swift, Tema.swift, TransporteURLSession.swift, GeneratedAssetSymbols.swift (in target 'Nodo' from project 'Nodo')
+
+SwiftDriverJobDiscovery normal arm64 Compiling HojaEstadoChatView.swift, HojaMemoriaRapidaView.swift, Llavero.swift, MemoriaView.swift, MotoresDePrueba.swift, NodoApp.swift (in target 'Nodo' from project 'Nodo')
+
+SwiftDriver NodoCapturas normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-SwiftDriver -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCapturas -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -parse-as-library -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ NodoCapturas (in target 'NodoCapturas' from project 'Nodo')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCapturas/CapturasTests.swift (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftCompile normal arm64 Compiling\ CapturasTests.swift /Users/runner/work/nodo/nodo/NodoCapturas/CapturasTests.swift (in target 'NodoCapturas' from project 'Nodo')
+SwiftCompile normal arm64 /Users/runner/work/nodo/nodo/NodoCapturas/CapturasTests.swift (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChatView.swift, ChatsRaizView.swift, ConversationsView.swift, EditorProveedorView.swift, EstadoApp.swift, EstadosDePrueba.swift, EventoVisual.swift (in target 'Nodo' from project 'Nodo')
+
+SwiftDriver\ Compilation Nodo normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Nodo -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo.debug.dylib normal (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O0 -L/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -filelist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.LinkFileList -install_name @rpath/Nodo.debug.dylib -Xlinker -rpath -Xlinker /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.swiftmodule -Wl,-no_warn_duplicate_libraries -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/NodoCore.build/Debug-iphonesimulator/NodoCore.build/Objects-normal/arm64/NodoCore.swiftmodule
+
+ConstructStubExecutorLinkFileList /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-ExecutorLinkFileList-normal-arm64.txt (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    construct-stub-executor-link-file-list /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo.debug.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'Nodo' from project 'Nodo')
+
+Ld /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo normal (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O0 -L/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo-ExecutorLinkFileList-normal-arm64.txt /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo.debug.dylib -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo
+
+ExtractAppIntentsMetadata (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Nodo --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk --xcode-version 16F6 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.nodo.ios --output /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo --dependency-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo_dependency_info.dat --stringsdata-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftFileList --metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Objects-normal/arm64/Nodo.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-23 07:14:54.000 appintentsmetadataprocessor[10843:35376] Starting appintentsmetadataprocessor export
+2026-10-23 07:14:54.037 appintentsmetadataprocessor[10843:35376] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Nodo.debug.dylib --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Frameworks --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/PlugIns --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/SystemExtensions --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Extensions --platform iphonesimulator --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+AppIntentsSSUTraining (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Info.plist --temp-dir-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/ssu --bundle-id com.nodo.ios --product-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app --extracted-metadata-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app/Metadata.appintents --metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo.build/Nodo.DependencyMetadataFileList --archive-ssu-assets
+2026-10-23 07:14:54.503 appintentsnltrainingprocessor[10879:35449] Parsing options for appintentsnltrainingprocessor
+2026-10-23 07:14:54.533 appintentsnltrainingprocessor[10879:35449] No AppShortcuts found - Skipping.
+
+RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app
+
+Validate /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-validationUtility /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app -infoplist-subpath Info.plist
+
+Touch /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app (in target 'Nodo' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /usr/bin/touch -c /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/Nodo.app
+
+ProcessInfoPlistFile /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Info.plist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/empty-NodoCapturas.plist (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-infoPlistUtility /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/empty-NodoCapturas.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/ProductTypeInfoPlistAdditions.plist -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Info.plist
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for NodoCapturas (in target 'NodoCapturas' from project 'Nodo')
+
+SwiftDriver\ Compilation\ Requirements NodoCapturas normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCapturas -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -parse-as-library -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+SwiftMergeGeneratedHeaders /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources/NodoCapturas-Swift.h /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-Swift.h (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-swiftHeaderTool -arch arm64 /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-Swift.h -o /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources/NodoCapturas-Swift.h
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftdoc (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftdoc /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.abi.json (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.abi.json /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftsourceinfo (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftsourceinfo /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+SwiftDriverJobDiscovery normal arm64 Compiling CapturasTests.swift (in target 'NodoCapturas' from project 'Nodo')
+
+SwiftDriver\ Compilation NodoCapturas normal arm64 com.apple.xcode.tools.swift.compiler (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name NodoCapturas -Onone -enforce-exclusivity\=checked @/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/runner/work/nodo/nodo/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/nodo/nodo/build/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -I /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -parse-as-library -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/nodo/nodo/build/SDKStatCaches.noindex/iphonesimulator18.5-22F76-96ae0914227b19deccb34b33ba7b5dea.sdkstatcache -output-file-map /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/nodo/nodo/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-generated-files.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-own-target-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/Nodo-93a8f045ace3bc9db3920013da059ab3-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas-project-headers.hmap -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas-Swift.h -working-directory /Users/runner/work/nodo/nodo -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/NodoCapturas normal (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -bundle -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O0 -L/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk/Developer/Library/Frameworks -filelist /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.LinkFileList -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.swiftmodule -framework XCTest -lXCTestSwiftSupport -o /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/NodoCapturas
+
+ExtractAppIntentsMetadata (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name NodoCapturas --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk --xcode-version 16F6 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.nodo.ios.capturas --output /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/NodoCapturas --dependency-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas_dependency_info.dat --stringsdata-file /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftFileList --metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/Objects-normal/arm64/NodoCapturas.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-23 07:15:09.122 appintentsmetadataprocessor[11211:36325] Starting appintentsmetadataprocessor export
+2026-10-23 07:15:09.130 appintentsmetadataprocessor[11211:36325] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/NodoCapturas --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Frameworks --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/PlugIns --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/SystemExtensions --scan-folder /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+AppIntentsSSUTraining (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Info.plist --temp-dir-path /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/ssu --bundle-id com.nodo.ios.capturas --product-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest --extracted-metadata-path /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Metadata.appintents --metadata-file-list /Users/runner/work/nodo/nodo/build/Build/Intermediates.noindex/Nodo.build/Debug-iphonesimulator/NodoCapturas.build/NodoCapturas.DependencyMetadataFileList --archive-ssu-assets
+2026-10-23 07:15:09.189 appintentsnltrainingprocessor[11218:36337] Parsing options for appintentsnltrainingprocessor
+2026-10-23 07:15:09.196 appintentsnltrainingprocessor[11218:36337] No AppShortcuts found - Skipping.
+
+MkDir /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /bin/mkdir -p /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app
+
+CopyPlistFile /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Info.plist /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app/Info.plist (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copyPlist --validate --convert xml1 --macro-expansion WRAPPEDPRODUCTNAME NodoCapturas-Runner --macro-expansion WRAPPEDPRODUCTBUNDLEIDENTIFIER com.nodo.ios.capturas.xctrunner --macro-expansion TESTPRODUCTNAME NodoCapturas --macro-expansion TESTPRODUCTBUNDLEIDENTIFIER com.nodo.ios.capturas --copy-value UIDeviceFamily /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest/Info.plist --outdir /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app -- /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app/Info.plist
+
+CopyAndPreserveArchs /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/NodoCapturas-Runner (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/lipo /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app/XCTRunner -output /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/NodoCapturas-Runner -extract arm64
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PkgInfo /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app/PkgInfo (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app/PkgInfo /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/libXCTestSwiftSupport.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCUnit.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCUnit.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCUnit.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCUIAutomation.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/XCUIAutomation.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/XCUIAutomation.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCTestSupport.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTestSupport.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTestSupport.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCTestCore.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTestCore.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTestCore.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCTest.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/XCTest.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/XCTest.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/XCTAutomationSupport.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+Copy /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks/Testing.framework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/Testing.framework (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/Testing.framework /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/Frameworks
+
+RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    builtin-RegisterExecutionPolicyException /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest
+
+Touch /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest (in target 'NodoCapturas' from project 'Nodo')
+    cd /Users/runner/work/nodo/nodo
+    /usr/bin/touch -c /Users/runner/work/nodo/nodo/build/Build/Products/Debug-iphonesimulator/NodoCapturas-Runner.app/PlugIns/NodoCapturas.xctest
+
+Resolve Package Graph
+
+Resolve Package Graph
+
+2026-10-23 07:15:49.330006+0000 NodoCapturas-Runner[12491:39640] [UIKit App Config] `UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.
+2026-10-23 07:15:49.342187+0000 NodoCapturas-Runner[12491:39640] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'All tests' started at 2026-10-23 07:15:57.627.
+Test Suite 'NodoCapturas.xctest' started at 2026-10-23 07:15:57.628.
+Test Suite 'CapturasTests' started at 2026-10-23 07:15:57.629.
+Test Case '-[NodoCapturas.CapturasTests testF1AjustesTopeTecladoNumerico]' started.
+    t =     0.00s Start Test at 2026-10-23 07:15:57.630
+    t =     0.85s Set Up
+    t =     0.85s Open com.nodo.ios
+    t =     0.86s     Launch com.nodo.ios
+Resolve Package Graph
+    t =    12.79s         Setting up automation session
+    t =    15.84s         Wait for com.nodo.ios to idle
+
+    t =    19.40s Waiting 60.0s for "Ajustes" Button to exist
+    t =    20.45s     Checking `Expect predicate `existsNoRetry == 1` for object "Ajustes" Button`
+    t =    20.45s         Checking existence of `"Ajustes" Button`
+    t =    21.05s Tap "Ajustes" Button
+    t =    21.05s     Wait for com.nodo.ios to idle
+    t =    21.06s     Find the "Ajustes" Button
+    t =    21.22s     Check for interrupting elements affecting "gearshape.fill" Button
+    t =    21.55s     Synthesize event
+    t =    22.12s     Wait for com.nodo.ios to idle
+    t =    22.69s Waiting 30.0s for TextField (First Match) to exist
+    t =    23.76s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    23.77s         Checking existence of `TextField (First Match)`
+    t =    27.32s Checking `Expect predicate `hittable == 1` for object TextField (First Match)`
+    t =    27.32s     Find the TextField (First Match)
+    t =    30.10s Tap "tope-aviso" TextField
+    t =    30.10s     Wait for com.nodo.ios to idle
+    t =    30.11s     Find the "tope-aviso" TextField
+    t =    30.43s     Check for interrupting elements affecting "tope-aviso" TextField
+    t =    30.59s     Synthesize event
+    t =    30.90s     Wait for com.nodo.ios to idle
+    t =    33.76s Waiting 60.0s for Button (First Match) to exist
+    t =    34.78s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =    34.78s         Checking existence of `Button (First Match)`
+    t =    35.17s Find the Button (First Match)
+    t =    36.63s Checking `Expect predicate `exists == 1` for object Keyboard (Descendants matching type Keyboard)`
+    t =    36.64s     Checking existence of `Keyboard (Descendants matching type Keyboard)`
+    t =    38.18s Added attachment named 'f1-ajustes-tope-teclado-numerico'
+    t =    38.18s Tear Down
+    t =    38.18s     Terminate com.nodo.ios:13099
+Test Case '-[NodoCapturas.CapturasTests testF1AjustesTopeTecladoNumerico]' passed (40.469 seconds).
+Test Case '-[NodoCapturas.CapturasTests testF1EditorProveedorTecladoNumerico]' started.
+    t =     0.00s Start Test at 2026-10-23 07:16:38.108
+    t =     0.13s Set Up
+    t =     0.14s Open com.nodo.ios
+    t =     0.14s     Launch com.nodo.ios
+Resolve Package Graph
+    t =     2.66s         Setting up automation session
+
+    t =     4.76s         Wait for com.nodo.ios to idle
+    t =     6.87s Waiting 60.0s for "Ajustes" Button to exist
+    t =     7.90s     Checking `Expect predicate `existsNoRetry == 1` for object "Ajustes" Button`
+    t =     7.90s         Checking existence of `"Ajustes" Button`
+    t =     8.09s Tap "Ajustes" Button
+    t =     8.09s     Wait for com.nodo.ios to idle
+    t =     8.10s     Find the "Ajustes" Button
+    t =     8.16s     Check for interrupting elements affecting "Ajustes" Button
+    t =     8.20s     Synthesize event
+    t =     8.50s     Wait for com.nodo.ios to idle
+    t =     8.69s Waiting 30.0s for Any (First Match) to exist
+    t =     9.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     9.73s         Checking existence of `Any (First Match)`
+    t =    10.11s Tap Any (First Match)
+    t =    10.11s     Wait for com.nodo.ios to idle
+    t =    10.12s     Find the Any (First Match)
+    t =    10.44s     Check for interrupting elements affecting "proveedor-fila" Button
+    t =    10.62s     Synthesize event
+    t =    10.94s     Wait for com.nodo.ios to idle
+    t =    11.52s Waiting 30.0s for TextField (First Match) to exist
+    t =    12.58s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    12.58s         Checking existence of `TextField (First Match)`
+    t =    14.12s Checking `Expect predicate `hittable == 1` for object TextField (First Match)`
+    t =    14.12s     Find the TextField (First Match)
+    t =    14.49s Tap "precio-entrada" TextField
+    t =    14.49s     Wait for com.nodo.ios to idle
+    t =    14.50s     Find the "precio-entrada" TextField
+    t =    14.85s     Check for interrupting elements affecting "precio-entrada" TextField
+    t =    15.04s     Synthesize event
+    t =    15.35s     Wait for com.nodo.ios to idle
+    t =    16.10s Waiting 60.0s for Button (First Match) to exist
+    t =    17.19s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =    17.19s         Checking existence of `Button (First Match)`
+    t =    17.37s Find the Button (First Match)
+    t =    18.53s Checking `Expect predicate `exists == 1` for object Keyboard (Descendants matching type Keyboard)`
+    t =    18.53s     Checking existence of `Keyboard (Descendants matching type Keyboard)`
+    t =    19.94s Added attachment named 'f1-editor-teclado-numerico'
+    t =    19.95s Tear Down
+    t =    19.95s     Terminate com.nodo.ios:13608
+Test Case '-[NodoCapturas.CapturasTests testF1EditorProveedorTecladoNumerico]' passed (21.079 seconds).
+Test Suite 'CapturasTests' passed at 2026-10-23 07:16:59.184.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 61.548 (61.555) seconds
+Test Suite 'NodoCapturas.xctest' passed at 2026-10-23 07:16:59.184.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 61.548 (61.556) seconds
+Test Suite 'All tests' passed at 2026-10-23 07:16:59.185.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 61.548 (61.558) seconds
+2026-10-23 07:17:00.103 xcodebuild[3666:16870] [MT] IDETestOperationsObserverDebug: 110.406 elapsed -- Testing started completed.
+2026-10-23 07:17:00.103 xcodebuild[3666:16870] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-23 07:17:00.103 xcodebuild[3666:16870] [MT] IDETestOperationsObserverDebug: 110.406 sec, +110.406 sec -- end
+Resolve Package Graph
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/nodo/nodo/capturas.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started
