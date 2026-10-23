@@ -4,10 +4,13 @@ import Foundation
 public struct RespuestaModelo: Equatable {
     public var texto: String
     public var toolCalls: [ToolCall]
+    /// Consumo que reporto la API para esta llamada, si lo trajo.
+    public var uso: UsoTokens?
 
-    public init(texto: String, toolCalls: [ToolCall] = []) {
+    public init(texto: String, toolCalls: [ToolCall] = [], uso: UsoTokens? = nil) {
         self.texto = texto
         self.toolCalls = toolCalls
+        self.uso = uso
     }
 
     public var pideHerramientas: Bool { !toolCalls.isEmpty }

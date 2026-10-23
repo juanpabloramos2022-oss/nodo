@@ -11,17 +11,21 @@ public struct ResultadoTurno: Equatable {
     public var iteraciones: Int
     /// Si se corto por el limite y no porque el modelo terminara.
     public var seAgotoElLimite: Bool
+    /// Suma del consumo de todas las llamadas internas del turno.
+    public var usoTotal: UsoTokens?
 
     public init(
         mensajesNuevos: [ChatMessage],
         texto: String,
         iteraciones: Int,
-        seAgotoElLimite: Bool = false
+        seAgotoElLimite: Bool = false,
+        usoTotal: UsoTokens? = nil
     ) {
         self.mensajesNuevos = mensajesNuevos
         self.texto = texto
         self.iteraciones = iteraciones
         self.seAgotoElLimite = seAgotoElLimite
+        self.usoTotal = usoTotal
     }
 }
 
@@ -50,8 +54,28 @@ public final class ToolLoop {
         var nuevos: [ChatMessage] = []
         var textoAcumulado = ""
         var iteraciones = 0
+        var usoTotal: UsoTokens?
 
         let definiciones = herramientas.map { $0.definicion }
+
+        /// Cierra el turno con el consumo total en el ultimo mensaje de
+        /// asistente. Ese es el que pinta la vista y el que suma el acumulado
+        /// guardado, asi que no se repite el uso en las llamadas intermedias.
+        func armarResultado(seAgotoElLimite: Bool) -> ResultadoTurno {
+            var mensajesFinales = nuevos
+            if let usoTotal,
+               let indice = mensajesFinales.lastIndex(where: { $0.rol == .asistente }) {
+                mensajesFinales[indice].tokensEntrada = usoTotal.entrada
+                mensajesFinales[indice].tokensSalida = usoTotal.salida
+            }
+            return ResultadoTurno(
+                mensajesNuevos: mensajesFinales,
+                texto: textoAcumulado,
+                iteraciones: iteraciones,
+                seAgotoElLimite: seAgotoElLimite,
+                usoTotal: usoTotal
+            )
+        }
 
         while iteraciones < maxIteraciones {
             iteraciones += 1
@@ -61,6 +85,10 @@ public final class ToolLoop {
                 herramientas: definiciones,
                 alRecibirTexto: alRecibirTexto
             )
+
+            if let uso = respuesta.uso {
+                usoTotal = usoTotal?.sumando(uso) ?? uso
+            }
 
             if !respuesta.texto.isEmpty {
                 textoAcumulado += respuesta.texto
@@ -75,11 +103,7 @@ public final class ToolLoop {
             nuevos.append(mensajeAsistente)
 
             guard respuesta.pideHerramientas else {
-                return ResultadoTurno(
-                    mensajesNuevos: nuevos,
-                    texto: textoAcumulado,
-                    iteraciones: iteraciones
-                )
+                return armarResultado(seAgotoElLimite: false)
             }
 
             for llamada in respuesta.toolCalls {
@@ -95,12 +119,7 @@ public final class ToolLoop {
             }
         }
 
-        return ResultadoTurno(
-            mensajesNuevos: nuevos,
-            texto: textoAcumulado,
-            iteraciones: iteraciones,
-            seAgotoElLimite: true
-        )
+        return armarResultado(seAgotoElLimite: true)
     }
 
     /// Ejecuta una herramienta y devuelve siempre texto.

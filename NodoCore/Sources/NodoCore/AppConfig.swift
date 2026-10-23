@@ -39,9 +39,10 @@ public struct ServerConfig: Codable, Equatable {
 
 /// Configuracion completa de la app, exportable a JSON.
 ///
-/// El JSON exportado **no contiene claves**: solo proveedores, modelo, prompt y
-/// servidor. Importarlo en otro telefono deja las credenciales por introducir,
-/// que es justo lo que se quiere al mover una configuracion entre dispositivos.
+/// El JSON exportado **no contiene claves**: solo proveedores, modelo, prompt,
+/// servidor y el tope de aviso. Importarlo en otro telefono deja las
+/// credenciales por introducir, que es justo lo que se quiere al mover una
+/// configuracion entre dispositivos.
 public struct AppConfig: Codable, Equatable {
     /// Version del formato, para poder migrar sin romper.
     public var version: Int
@@ -49,19 +50,29 @@ public struct AppConfig: Codable, Equatable {
     public var proveedorActivo: UUID?
     public var systemPrompt: String
     public var servidor: ServerConfig
+    /// Tope de aviso por chat, en dolares estimados. nil usa el valor por
+    /// defecto; 0 o negativo desactiva el aviso.
+    public var topeAvisoCosto: Double?
 
     public init(
         version: Int = 1,
         proveedores: [ProviderConfig] = [],
         proveedorActivo: UUID? = nil,
         systemPrompt: String = AppConfig.promptPorDefecto,
-        servidor: ServerConfig = ServerConfig()
+        servidor: ServerConfig = ServerConfig(),
+        topeAvisoCosto: Double? = nil
     ) {
         self.version = version
         self.proveedores = proveedores
         self.proveedorActivo = proveedorActivo
         self.systemPrompt = systemPrompt
         self.servidor = servidor
+        self.topeAvisoCosto = topeAvisoCosto
+    }
+
+    /// Tope que se aplica de verdad: el guardado o un dolar si nunca se fijo.
+    public var topeAvisoCostoEfectivo: Double {
+        topeAvisoCosto ?? 1.00
     }
 
     public static let promptPorDefecto = """

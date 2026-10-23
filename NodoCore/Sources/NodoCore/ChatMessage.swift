@@ -36,6 +36,11 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
     /// Identificador de la llamada a la que responde este mensaje. Solo en
     /// mensajes de herramienta.
     public var toolCallId: String?
+    /// Tokens de entrada que reporto la API para este mensaje. nil en los
+    /// mensajes guardados antes de existir el consumo.
+    public var tokensEntrada: Int?
+    /// Tokens de salida que reporto la API para este mensaje.
+    public var tokensSalida: Int?
 
     public init(
         id: UUID = UUID(),
@@ -43,7 +48,9 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         texto: String,
         fecha: Date = Date(),
         toolCalls: [ToolCall] = [],
-        toolCallId: String? = nil
+        toolCallId: String? = nil,
+        tokensEntrada: Int? = nil,
+        tokensSalida: Int? = nil
     ) {
         self.id = id
         self.rol = rol
@@ -51,6 +58,14 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         self.fecha = fecha
         self.toolCalls = toolCalls
         self.toolCallId = toolCallId
+        self.tokensEntrada = tokensEntrada
+        self.tokensSalida = tokensSalida
+    }
+
+    /// Consumo del mensaje, si lo tiene. Los mensajes viejos devuelven nil.
+    public var uso: UsoTokens? {
+        guard tokensEntrada != nil || tokensSalida != nil else { return nil }
+        return UsoTokens(entrada: tokensEntrada ?? 0, salida: tokensSalida ?? 0)
     }
 
     /// Un mensaje de herramienta necesita saber a que llamada responde; sin eso
@@ -72,6 +87,9 @@ public struct Conversation: Codable, Identifiable, Equatable {
     public var fijada: Bool
     /// Si esta archivada, no sale en la lista principal del Historial.
     public var archivada: Bool
+    /// Si ya se aviso en este chat que el acumulado paso el tope. Se guarda
+    /// para no repetir el aviso en cada turno.
+    public var avisoCostoMostrado: Bool
 
     public init(
         id: UUID = UUID(),
@@ -80,7 +98,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         creada: Date = Date(),
         actualizada: Date = Date(),
         fijada: Bool = false,
-        archivada: Bool = false
+        archivada: Bool = false,
+        avisoCostoMostrado: Bool = false
     ) {
         self.id = id
         self.titulo = titulo
@@ -89,6 +108,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.actualizada = actualizada
         self.fijada = fijada
         self.archivada = archivada
+        self.avisoCostoMostrado = avisoCostoMostrado
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -99,13 +119,15 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case actualizada
         case fijada
         case archivada
+        case avisoCostoMostrado
     }
 
     /// Decodificacion tolerante con los archivos de v0.1.0.
     ///
-    /// Las conversaciones guardadas antes de existir fijar y archivar no traen
-    /// esas claves. El Decodable sintetizado las exigiria y dejaria de abrir el
-    /// historial entero, asi que se leen como opcionales con valor por defecto.
+    /// Las conversaciones guardadas antes de existir fijar, archivar o el aviso
+    /// de costo no traen esas claves. El Decodable sintetizado las exigiria y
+    /// dejaria de abrir el historial entero, asi que se leen como opcionales con
+    /// valor por defecto.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -115,6 +137,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         actualizada = try contenedor.decode(Date.self, forKey: .actualizada)
         fijada = try contenedor.decodeIfPresent(Bool.self, forKey: .fijada) ?? false
         archivada = try contenedor.decodeIfPresent(Bool.self, forKey: .archivada) ?? false
+        avisoCostoMostrado = try contenedor.decodeIfPresent(Bool.self, forKey: .avisoCostoMostrado) ?? false
     }
 
     /// Titulo derivado del primer mensaje del usuario, recortado a una linea.

@@ -24,22 +24,35 @@ public final class ChatCompletionsClient: ChatEngine {
         var parser = SSEParser()
         var texto = ""
         var acumuladores: [Int: AcumuladorToolCall] = [:]
+        var uso: UsoTokens?
 
         for try await trozo in stream {
             for evento in parser.consumir(trozo) {
-                if let resultado = procesar(evento: evento, texto: &texto, acumuladores: &acumuladores, alRecibirTexto: alRecibirTexto) {
+                if let resultado = procesar(
+                    evento: evento,
+                    texto: &texto,
+                    acumuladores: &acumuladores,
+                    uso: &uso,
+                    alRecibirTexto: alRecibirTexto
+                ) {
                     return resultado
                 }
             }
         }
 
         for evento in parser.terminar() {
-            if let resultado = procesar(evento: evento, texto: &texto, acumuladores: &acumuladores, alRecibirTexto: alRecibirTexto) {
+            if let resultado = procesar(
+                evento: evento,
+                texto: &texto,
+                acumuladores: &acumuladores,
+                uso: &uso,
+                alRecibirTexto: alRecibirTexto
+            ) {
                 return resultado
             }
         }
 
-        return RespuestaModelo(texto: texto, toolCalls: cerrar(acumuladores))
+        return RespuestaModelo(texto: texto, toolCalls: cerrar(acumuladores), uso: uso)
     }
 
     // MARK: - Peticion
@@ -50,7 +63,9 @@ public final class ChatCompletionsClient: ChatEngine {
         var cuerpo: [String: Any] = [
             "model": config.modelo,
             "messages": mensajes.map(Self.diccionarioMensaje),
-            "stream": true
+            "stream": true,
+            // Sin esto el stream no manda el trozo final con el consumo.
+            "stream_options": ["include_usage": true]
         ]
 
         if !herramientas.isEmpty {
@@ -125,20 +140,30 @@ public final class ChatCompletionsClient: ChatEngine {
         evento: SSEEvent,
         texto: inout String,
         acumuladores: inout [Int: AcumuladorToolCall],
+        uso: inout UsoTokens?,
         alRecibirTexto: ((String) -> Void)?
     ) -> RespuestaModelo? {
         let datos = evento.datos.trimmingCharacters(in: .whitespacesAndNewlines)
         if datos.isEmpty { return nil }
         if datos == "[DONE]" {
-            return RespuestaModelo(texto: texto, toolCalls: cerrar(acumuladores))
+            return RespuestaModelo(texto: texto, toolCalls: cerrar(acumuladores), uso: uso)
         }
 
-        guard let objeto = Self.objetoJSON(datos),
-              let opciones = objeto["choices"] as? [[String: Any]],
-              let primera = opciones.first
-        else {
+        guard let objeto = Self.objetoJSON(datos) else {
             // Un trozo ilegible no rompe el stream: se ignora. Pasa con
             // latidos y con servidores que mandan lineas de mas.
+            return nil
+        }
+
+        // El trozo final de consumo llega sin choices. Se lee antes del guard
+        // para no descartarlo, que es justo lo que pasaba antes.
+        if let usoJSON = objeto["usage"] as? [String: Any] {
+            uso = Self.leerUso(usoJSON) ?? uso
+        }
+
+        guard let opciones = objeto["choices"] as? [[String: Any]],
+              let primera = opciones.first
+        else {
             return nil
         }
 
@@ -180,6 +205,17 @@ public final class ChatCompletionsClient: ChatEngine {
             let argumentos = acumulador.argumentos.isEmpty ? "{}" : acumulador.argumentos
             return ToolCall(id: id, nombre: acumulador.nombre, argumentos: argumentos)
         }
+    }
+
+    /// Lee el bloque usage de chat completions.
+    ///
+    /// Se usan prompt_tokens y completion_tokens; total_tokens incluye la
+    /// cache y no sirve para estimar el costo por separado.
+    static func leerUso(_ diccionario: [String: Any]) -> UsoTokens? {
+        let entrada = (diccionario["prompt_tokens"] as? NSNumber)?.intValue
+        let salida = (diccionario["completion_tokens"] as? NSNumber)?.intValue
+        guard entrada != nil || salida != nil else { return nil }
+        return UsoTokens(entrada: entrada ?? 0, salida: salida ?? 0)
     }
 
     static func objetoJSON(_ texto: String) -> [String: Any]? {
