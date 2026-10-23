@@ -72,6 +72,27 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
 
+  # Target de UI tests que arranca la app en el simulador y adjunta un PNG por
+  # captura. No cambia el bundle id ni la version de la app: es un bundle de
+  # pruebas aparte, con su propio identificador.
+  NodoCapturas:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: NodoCapturas
+    dependencies:
+      - target: Nodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios.capturas
+        PRODUCT_NAME: NodoCapturas
+        TEST_TARGET_NAME: Nodo
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        # Misma version que la app, solo para el Info.plist del bundle de tests.
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "3"
+
 schemes:
   Nodo:
     build:
@@ -81,3 +102,17 @@ schemes:
       config: Release
     archive:
       config: Release
+
+  # Esquema propio para que `xcodebuild test` corra SOLO las capturas, sin
+  # mezclarlas con la compilacion de la app que publica el .ipa.
+  Capturas:
+    build:
+      targets:
+        Nodo: all
+        NodoCapturas: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - NodoCapturas

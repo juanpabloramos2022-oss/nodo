@@ -42,6 +42,7 @@ struct EditorProveedorView: View {
                 Section("Identidad") {
                     TextField("Nombre", text: $nombre)
                         .foregroundStyle(.white)
+                        .accessibilityIdentifier("nombre-proveedor")
 
                     Picker("Protocolo", selection: $protocolo) {
                         ForEach(ProtocoloProveedor.allCases) { opcion in
@@ -56,11 +57,13 @@ struct EditorProveedorView: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("url-proveedor")
 
                     TextField("Modelo", text: $modelo)
                         .foregroundStyle(.white)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("modelo-proveedor")
                 } header: {
                     Text("Conexion")
                 } footer: {
@@ -79,6 +82,8 @@ struct EditorProveedorView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.white)
                             .frame(maxWidth: 120)
+                            .accessibilityIdentifier("precio-entrada")
+                            .accessibilityLabel("Precio de entrada")
                     }
 
                     HStack {
@@ -90,6 +95,8 @@ struct EditorProveedorView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.white)
                             .frame(maxWidth: 120)
+                            .accessibilityIdentifier("precio-salida")
+                            .accessibilityLabel("Precio de salida")
                     }
                 } header: {
                     Text("Precios")
@@ -104,9 +111,11 @@ struct EditorProveedorView: View {
                                 .foregroundStyle(.white)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                                .accessibilityIdentifier("clave-proveedor")
                         } else {
                             SecureField("Clave de API", text: $clave)
                                 .foregroundStyle(.white)
+                                .accessibilityIdentifier("clave-proveedor")
                         }
 
                         Button {

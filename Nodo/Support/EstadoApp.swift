@@ -21,14 +21,30 @@ final class EstadoApp: ObservableObject {
     @Published var error: String?
 
     private let llavero: AlmacenClaves
+    /// En modo capturas no se escribe nada en el almacenamiento del telefono:
+    /// el estado llega sembrado en memoria y las capturas no deben ensuciar
+    /// los datos de quien use la app de verdad.
+    private let persistir: Bool
     private let transporte = TransporteURLSession()
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
 
     private static let claveConfig = "nodo.config.v1"
 
-    init(llavero: AlmacenClaves = LlaveroAlmacen()) {
+    init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
         self.llavero = llavero
+        self.persistir = estadoDePrueba == nil
+
+        // Gancho de capturas (SPEC §6/H7): estado de PRUEBA en memoria, sin
+        // leer ni escribir la configuracion, las conversaciones o el llavero
+        // reales. Sin este argumento se sigue por la ruta normal de siempre.
+        if let prueba = estadoDePrueba {
+            self.config = prueba.config
+            self.conversacion = prueba.conversacion
+            self.conversaciones = prueba.conversaciones
+            self.store = nil
+            return
+        }
 
         if let datos = UserDefaults.standard.data(forKey: Self.claveConfig),
            let cargada = try? AppConfig.desde(json: datos) {
@@ -53,15 +69,17 @@ final class EstadoApp: ObservableObject {
     // MARK: - Configuracion
 
     private func guardarConfig() {
-        guard let datos = try? config.json() else { return }
+        guard persistir, let datos = try? config.json() else { return }
         UserDefaults.standard.set(datos, forKey: Self.claveConfig)
     }
 
     func clave(para proveedor: ProviderConfig) -> String? {
-        llavero.leer(proveedor.claveKeychain)
+        guard persistir else { return nil }
+        return llavero.leer(proveedor.claveKeychain)
     }
 
     func guardarClave(_ clave: String, para proveedor: ProviderConfig) {
+        guard persistir else { return }
         let limpia = clave.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             if limpia.isEmpty {
@@ -75,10 +93,12 @@ final class EstadoApp: ObservableObject {
     }
 
     var tokenServidor: String? {
-        llavero.leer(ServerConfig.tokenKeychain)
+        guard persistir else { return nil }
+        return llavero.leer(ServerConfig.tokenKeychain)
     }
 
     func guardarTokenServidor(_ token: String) {
+        guard persistir else { return }
         let limpio = token.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             if limpio.isEmpty {
@@ -134,7 +154,9 @@ final class EstadoApp: ObservableObject {
 
     func borrarProveedor(_ proveedor: ProviderConfig) {
         config.proveedores.removeAll { $0.id == proveedor.id }
-        try? llavero.borrar(proveedor.claveKeychain)
+        if persistir {
+            try? llavero.borrar(proveedor.claveKeychain)
+        }
 
         if config.proveedorActivo == proveedor.id {
             config.proveedorActivo = config.proveedores.first?.id
@@ -144,7 +166,10 @@ final class EstadoApp: ObservableObject {
     // MARK: - Conversaciones
 
     func recargarConversaciones() {
-        conversaciones = store?.listar() ?? []
+        // En modo capturas `store` es nil: se conserva el estado sembrado en
+        // memoria en lugar de vaciar la lista.
+        guard let store else { return }
+        conversaciones = store.listar()
     }
 
     func nuevaConversacion() {

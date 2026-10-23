@@ -4,7 +4,11 @@ import NodoCore
 
 @main
 struct NodoApp: App {
-    @StateObject private var estado = EstadoApp()
+    // El gancho de capturas solo devuelve un estado si la app se lanzo con
+    // `-CapturasPrueba`; en cualquier otro arranque vale nil y todo sigue igual.
+    @StateObject private var estado = EstadoApp(
+        estadoDePrueba: EstadosDePrueba.estadoSolicitado()
+    )
 
     var body: some Scene {
         WindowGroup {

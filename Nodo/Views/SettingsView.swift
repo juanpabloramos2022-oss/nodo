@@ -43,6 +43,8 @@ struct SettingsView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("proveedor-fila")
+                        .accessibilityLabel("Editar \(proveedor.nombre)")
                     }
                     .onDelete { indices in
                         for indice in indices {
@@ -58,6 +60,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Anadir proveedor", systemImage: "plus.circle")
                     }
+                    .accessibilityIdentifier("anadir-proveedor")
                 }
 
                 Section("Servidor remoto") {
@@ -110,6 +113,8 @@ struct SettingsView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.white)
                             .frame(maxWidth: 120)
+                            .accessibilityIdentifier("tope-aviso")
+                            .accessibilityLabel("Tope de aviso por chat")
                             .onChange(of: topeAviso) { _, nuevo in
                                 actualizarTope(nuevo)
                             }

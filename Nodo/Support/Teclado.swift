@@ -28,6 +28,9 @@ struct BarraTecladoListo: ViewModifier {
                     bajarTeclado()
                 }
                 .fontWeight(.semibold)
+                // Identificador estable para que el test de captura compruebe
+                // la barra sin depender del idioma ni del arbol de UIKit.
+                .accessibilityIdentifier("teclado-listo")
             }
         }
     }

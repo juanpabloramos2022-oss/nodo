@@ -2,12 +2,20 @@ name: ios
 
 # Compila la app y publica un .ipa SIN firmar como artifact descargable.
 # La firma se hace despues, fuera de GitHub, con el certificado de quien instala.
+# El job `capturas` ademas arranca la app en el simulador y publica los PNG de
+# verificacion visual que exige la SPEC (seccion 6, H7).
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/gran-avance]
   pull_request:
   workflow_dispatch:
+    inputs:
+      fase:
+        description: "Fase para nombrar el artefacto de capturas (por defecto: actual)"
+        required: false
+        default: "actual"
+        type: string
 
 jobs:
   compilar:
@@ -50,4 +58,53 @@ jobs:
         with:
           name: Nodo-ipa
           path: Nodo.ipa
+          retention-days: 30
+
+  # Job independiente: si falla una captura, `compilar` sigue publicando el
+  # .ipa igual que antes. Solo corre el target NodoCapturas, no `swift test`.
+  capturas:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar el proyecto Xcode
+        run: xcodegen generate
+
+      - name: Preparar el simulador
+        run: |
+          # En CI no hay teclado fisico: el simulador debe mostrar el teclado
+          # en pantalla para que las capturas de la Fase 1 lo incluyan.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          xcrun simctl bootstatus booted -b || true
+
+      - name: Capturas del simulador
+        run: |
+          rm -rf capturas.xcresult capturas
+          xcodebuild test \
+            -project Nodo.xcodeproj \
+            -scheme Capturas \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:NodoCapturas \
+            -parallel-testing-enabled NO \
+            -resultBundlePath capturas.xcresult \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Extraer los PNG del .xcresult
+        if: always()
+        run: python3 herramientas/extraer-capturas.py capturas.xcresult capturas
+
+      - name: Publicar las capturas
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: capturas-${{ github.event.inputs.fase || 'actual' }}
+          path: capturas/
+          if-no-files-found: warn
           retention-days: 30
