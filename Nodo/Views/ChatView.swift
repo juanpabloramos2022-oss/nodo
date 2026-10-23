@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 import NodoCore
@@ -17,6 +18,8 @@ struct ChatView: View {
                     AvisoError(texto: error) { estado.error = nil }
                         .padding(.bottom, 8)
                 }
+
+                resumenDelChat
 
                 barraDeEntrada
             }
@@ -107,8 +110,18 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(estado.conversacion.mensajes) { mensaje in
-                            BurbujaMensaje(mensaje: mensaje)
-                                .id(mensaje.id.uuidString)
+                            VStack(alignment: .leading, spacing: 2) {
+                                BurbujaMensaje(mensaje: mensaje)
+
+                                if mensaje.rol == .asistente,
+                                   let linea = lineaDeConsumo(mensaje) {
+                                    Text(linea)
+                                        .font(.caption2)
+                                        .foregroundStyle(Tema.textoSuave)
+                                        .padding(.leading, 14)
+                                }
+                            }
+                            .id(mensaje.id.uuidString)
                         }
 
                         if puedeRegenerar {
@@ -175,6 +188,57 @@ struct ChatView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Regenerar la ultima respuesta")
+    }
+
+    /// Consumo acumulado del chat, si algun mensaje trae cifras.
+    private var usoDelChat: UsoTokens? {
+        CostoEstimado.usoAcumulado(de: estado.conversacion.mensajes)
+    }
+
+    /// Fila fina con el acumulado del chat, encima de la barra de entrada.
+    @ViewBuilder
+    private var resumenDelChat: some View {
+        if let uso = usoDelChat {
+            HStack {
+                Text(textoResumen(uso))
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Tema.margen)
+            .padding(.top, 6)
+        }
+    }
+
+    private func textoResumen(_ uso: UsoTokens) -> String {
+        var texto = "Chat: \(uso.total) tokens"
+        if let costo = costoDe(uso) {
+            texto += " · " + textoCosto(costo)
+        }
+        return texto
+    }
+
+    /// Linea discreta bajo una respuesta: tokens y, si hay precios, costo.
+    private func lineaDeConsumo(_ mensaje: ChatMessage) -> String? {
+        guard let uso = mensaje.uso else { return nil }
+        var linea = "\(uso.entrada) de entrada · \(uso.salida) de salida"
+        if let costo = costoDe(uso) {
+            linea += " · " + textoCosto(costo)
+        }
+        return linea
+    }
+
+    private func costoDe(_ uso: UsoTokens) -> Double? {
+        let proveedor = estado.config.proveedorSeleccionado
+        return CostoEstimado.costo(
+            uso: uso,
+            precioEntrada: proveedor?.precioEntradaPorMillon,
+            precioSalida: proveedor?.precioSalidaPorMillon
+        )
+    }
+
+    private func textoCosto(_ costo: Double) -> String {
+        "≈$\(String(format: "%.4f", costo)) estimado"
     }
 
     private var barraDeEntrada: some View {

@@ -319,11 +319,13 @@ final class EstadoApp: ObservableObject {
 
             textoEnCurso = ""
             conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
-            persistirActual()
 
             if resultado.seAgotoElLimite {
                 error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
             }
+
+            revisarAvisoCosto(proveedor: proveedor)
+            persistirActual()
         } catch is CancellationError {
             textoEnCurso = ""
             alFracasar()
@@ -335,6 +337,29 @@ final class EstadoApp: ObservableObject {
                 ?? fallo.localizedDescription
             persistirActual()
         }
+    }
+
+    /// Avisa una sola vez si el acumulado estimado del chat cruzo el tope.
+    ///
+    /// Se calcula con los precios del proveedor que acaba de responder y solo
+    /// despues de un turno nuevo: abrir un chat viejo no dispara el aviso.
+    private func revisarAvisoCosto(proveedor: ProviderConfig) {
+        guard !conversacion.avisoCostoMostrado else { return }
+        guard error == nil else { return }
+
+        guard let costo = CostoEstimado.acumulado(
+            mensajes: conversacion.mensajes,
+            precioEntrada: proveedor.precioEntradaPorMillon,
+            precioSalida: proveedor.precioSalidaPorMillon
+        ) else {
+            return
+        }
+
+        let tope = config.topeAvisoCostoEfectivo
+        guard tope > 0, costo >= tope else { return }
+
+        conversacion.avisoCostoMostrado = true
+        error = "Este chat ya paso de $\(String(format: "%.2f", tope)) estimados"
     }
 
     func cancelar() {
