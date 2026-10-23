@@ -137,7 +137,7 @@ final class AppConfigTests: XCTestCase {
 
     func testConfiguracionInicialTraeProveedorSeleccionado() {
         let config = AppConfig.inicial()
-        XCTAssertEqual(config.proveedores.count, 1)
+        XCTAssertEqual(config.proveedores.count, 4)
         XCTAssertNotNil(config.proveedorSeleccionado)
         XCTAssertEqual(config.proveedorActivo, config.proveedores.first?.id)
     }

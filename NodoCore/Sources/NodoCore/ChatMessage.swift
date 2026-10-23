@@ -90,6 +90,12 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Si ya se aviso en este chat que el acumulado paso el tope. Se guarda
     /// para no repetir el aviso en cada turno.
     public var avisoCostoMostrado: Bool
+    /// Si el chat no recibe la Memoria como contexto (§4.6). Se guarda por chat
+    /// para que el ajuste sobreviva al cerrar la app.
+    public var sinMemoria: Bool
+    /// Si el chat esta en modo Tarea. Por ahora solo es un flag de datos: la
+    /// logica completa de herramientas llega con su tarea de interfaz.
+    public var modoTarea: Bool
 
     public init(
         id: UUID = UUID(),
@@ -99,7 +105,9 @@ public struct Conversation: Codable, Identifiable, Equatable {
         actualizada: Date = Date(),
         fijada: Bool = false,
         archivada: Bool = false,
-        avisoCostoMostrado: Bool = false
+        avisoCostoMostrado: Bool = false,
+        sinMemoria: Bool = false,
+        modoTarea: Bool = false
     ) {
         self.id = id
         self.titulo = titulo
@@ -109,6 +117,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.fijada = fijada
         self.archivada = archivada
         self.avisoCostoMostrado = avisoCostoMostrado
+        self.sinMemoria = sinMemoria
+        self.modoTarea = modoTarea
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -120,14 +130,16 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case fijada
         case archivada
         case avisoCostoMostrado
+        case sinMemoria
+        case modoTarea
     }
 
     /// Decodificacion tolerante con los archivos de v0.1.0.
     ///
-    /// Las conversaciones guardadas antes de existir fijar, archivar o el aviso
-    /// de costo no traen esas claves. El Decodable sintetizado las exigiria y
-    /// dejaria de abrir el historial entero, asi que se leen como opcionales con
-    /// valor por defecto.
+    /// Las conversaciones guardadas antes de existir fijar, archivar, el aviso
+    /// de costo, el chat sin memoria o el modo Tarea no traen esas claves. El
+    /// Decodable sintetizado las exigiria y dejaria de abrir el historial
+    /// entero, asi que se leen como opcionales con valor por defecto.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -138,6 +150,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         fijada = try contenedor.decodeIfPresent(Bool.self, forKey: .fijada) ?? false
         archivada = try contenedor.decodeIfPresent(Bool.self, forKey: .archivada) ?? false
         avisoCostoMostrado = try contenedor.decodeIfPresent(Bool.self, forKey: .avisoCostoMostrado) ?? false
+        sinMemoria = try contenedor.decodeIfPresent(Bool.self, forKey: .sinMemoria) ?? false
+        modoTarea = try contenedor.decodeIfPresent(Bool.self, forKey: .modoTarea) ?? false
     }
 
     /// Titulo derivado del primer mensaje del usuario, recortado a una linea.

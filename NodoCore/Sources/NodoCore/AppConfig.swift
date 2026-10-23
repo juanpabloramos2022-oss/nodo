@@ -80,12 +80,58 @@ public struct AppConfig: Codable, Equatable {
     Cuando no sabes algo, lo dices en vez de inventarlo.
     """
 
-    /// Configuracion inicial: un proveedor de ejemplo sin clave.
+    /// Configuracion inicial: el preset de fabrica de InferHub, sin clave.
+    ///
+    /// Es una decision cerrada de la SPEC (§3.6): en una instalacion limpia
+    /// pablo solo pega su clave y ya, sin reescribir proveedor, URL ni modelos.
+    /// Los ids son literales fijos para que el estado inicial sea determinista
+    /// en tests y capturas. La clave no vive aqui: ProviderConfig solo guarda el
+    /// nombre con el que la credencial vive en el Keychain, asi que el preset
+    /// nace sin claves por construccion.
     public static func inicial() -> AppConfig {
-        let proveedor = ProveedoresDeEjemplo.chatCompletions
+        let nombre = "InferHub"
+        let baseURL = "https://api.inferhub.dev/v1"
+
+        let deepseek = ProviderConfig(
+            id: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
+            nombre: nombre,
+            protocolo: .chatCompletions,
+            baseURL: baseURL,
+            modelo: "combo/deepseek-v4-1-flash",
+            precioEntradaPorMillon: 0.03,
+            precioSalidaPorMillon: 0.12
+        )
+        let glm = ProviderConfig(
+            id: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
+            nombre: nombre,
+            protocolo: .chatCompletions,
+            baseURL: baseURL,
+            modelo: "combo/glm-5-3-flash",
+            precioEntradaPorMillon: 0.03,
+            precioSalidaPorMillon: 0.10
+        )
+        let sol = ProviderConfig(
+            id: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            nombre: nombre,
+            protocolo: .chatCompletions,
+            baseURL: baseURL,
+            modelo: "combo/gpt-6-1-sol",
+            precioEntradaPorMillon: 0.6,
+            precioSalidaPorMillon: 3
+        )
+        let astra = ProviderConfig(
+            id: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
+            nombre: nombre,
+            protocolo: .chatCompletions,
+            baseURL: baseURL,
+            modelo: "combo/gpt-6-astra",
+            precioEntradaPorMillon: 3,
+            precioSalidaPorMillon: 15
+        )
+
         return AppConfig(
-            proveedores: [proveedor],
-            proveedorActivo: proveedor.id
+            proveedores: [deepseek, glm, sol, astra],
+            proveedorActivo: deepseek.id
         )
     }
 
@@ -93,6 +139,33 @@ public struct AppConfig: Codable, Equatable {
     public var proveedorSeleccionado: ProviderConfig? {
         guard let id = proveedorActivo else { return proveedores.first }
         return proveedores.first { $0.id == id } ?? proveedores.first
+    }
+
+    /// Los otros registros que comparten host con el proveedor dado.
+    ///
+    /// Es la regla pura de la clave compartida (§3.7): el mismo dominio sirve
+    /// para todos sus combos, aunque cambie la ruta o el puerto. La app la usara
+    /// al guardar una clave para propagarla solo a los companeros que no tengan
+    /// una propia; aqui solo se decide quien empareja. Una URL sin host valido
+    /// no empareja con nada, ni siquiera consigo misma.
+    public func companerosDeHost(de proveedor: ProviderConfig) -> [ProviderConfig] {
+        guard let host = AppConfig.hostNormalizado(proveedor.baseURL) else { return [] }
+        return proveedores.filter { otro in
+            otro.id != proveedor.id && AppConfig.hostNormalizado(otro.baseURL) == host
+        }
+    }
+
+    /// Host comparable: sin mayusculas y sin puerto (URL.host ya lo excluye).
+    private static func hostNormalizado(_ baseURL: String) -> String? {
+        let limpio = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty,
+              let url = URL(string: limpio),
+              let host = url.host,
+              !host.isEmpty
+        else {
+            return nil
+        }
+        return host.lowercased()
     }
 
     public func json() throws -> Data {
