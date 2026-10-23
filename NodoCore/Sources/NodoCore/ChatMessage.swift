@@ -131,6 +131,13 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Si el chat esta en modo Tarea. Por ahora solo es un flag de datos: la
     /// logica completa de herramientas llega con su tarea de interfaz.
     public var modoTarea: Bool
+    /// Proveedor con el que este chat responde ahora mismo.
+    ///
+    /// No es el proveedor activo global: cada conversacion conserva el suyo para
+    /// que la fila del historial pueda ensenar SU ultimo modelo y calcular SU
+    /// costo con SUS precios aunque el usuario haya cambiado de modelo despues.
+    /// nil en conversaciones viejas o creadas antes de existir este dato.
+    public var proveedorID: UUID?
     /// Si el usuario pulso "Seguir igual" en la franja de tope (§3.4): este
     /// chat deja de avisar sin tocar el tope global ni a los demas chats.
     public var topeIgnorado: Bool
@@ -154,7 +161,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         modoTarea: Bool = false,
         topeIgnorado: Bool = false,
         resumenCompactado: String? = nil,
-        usoTrasCompactar: UsoTokens? = nil
+        usoTrasCompactar: UsoTokens? = nil,
+        proveedorID: UUID? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -166,6 +174,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.avisoCostoMostrado = avisoCostoMostrado
         self.sinMemoria = sinMemoria
         self.modoTarea = modoTarea
+        self.proveedorID = proveedorID
         self.topeIgnorado = topeIgnorado
         self.resumenCompactado = resumenCompactado
         self.usoTrasCompactar = usoTrasCompactar
@@ -182,6 +191,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case avisoCostoMostrado
         case sinMemoria
         case modoTarea
+        case proveedorID
         case topeIgnorado
         case resumenCompactado
         case usoTrasCompactar
@@ -190,10 +200,10 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Decodificacion tolerante con los archivos de v0.1.0.
     ///
     /// Las conversaciones guardadas antes de existir fijar, archivar, el aviso
-    /// de costo, el chat sin memoria, el modo Tarea, el tope ignorado o la
-    /// compactacion no traen esas claves. El Decodable sintetizado las exigiria
-    /// y dejaria de abrir el historial entero, asi que se leen como opcionales
-    /// con valor por defecto.
+    /// de costo, el chat sin memoria, el modo Tarea, el proveedor del chat, el
+    /// tope ignorado o la compactacion no traen esas claves. El Decodable
+    /// sintetizado las exigiria y dejaria de abrir el historial entero, asi que
+    /// se leen como opcionales con valor por defecto.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -206,6 +216,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         avisoCostoMostrado = try contenedor.decodeIfPresent(Bool.self, forKey: .avisoCostoMostrado) ?? false
         sinMemoria = try contenedor.decodeIfPresent(Bool.self, forKey: .sinMemoria) ?? false
         modoTarea = try contenedor.decodeIfPresent(Bool.self, forKey: .modoTarea) ?? false
+        proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
         topeIgnorado = try contenedor.decodeIfPresent(Bool.self, forKey: .topeIgnorado) ?? false
         resumenCompactado = try contenedor.decodeIfPresent(String.self, forKey: .resumenCompactado)
         usoTrasCompactar = try contenedor.decodeIfPresent(UsoTokens.self, forKey: .usoTrasCompactar)
@@ -292,9 +303,9 @@ public enum HistorialConversaciones {
         de conversaciones: [Conversation],
         busqueda: String = ""
     ) -> SeccionesHistorial {
-        let ordenadas = conversaciones
-            .filter { coincide($0, con: busqueda) }
-            .sorted { $0.actualizada > $1.actualizada }
+        let ordenadas = ordenar(
+            conversaciones.filter { coincide($0, con: busqueda) }
+        )
 
         return SeccionesHistorial(
             fijadas: ordenadas.filter { $0.fijada && !$0.archivada },
