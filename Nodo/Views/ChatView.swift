@@ -31,7 +31,7 @@ struct ChatView: View {
                     .padding(.bottom, 8)
             }
 
-            resumenDelChat
+            franjaTope
             tiraFina
             filaHerramientaEnCurso
             barraDeEntrada
@@ -186,12 +186,7 @@ struct ChatView: View {
     }
 
     private var costoAcumulado: Double? {
-        guard let proveedor = estado.config.proveedorSeleccionado else { return nil }
-        return CostoEstimado.acumulado(
-            mensajes: estado.conversacion.mensajes,
-            precioEntrada: proveedor.precioEntradaPorMillon,
-            precioSalida: proveedor.precioSalidaPorMillon
-        )
+        estado.costoAcumuladoDelChat
     }
 
     private func nombreDeModelo(_ proveedor: ProviderConfig) -> String {
@@ -343,14 +338,23 @@ struct ChatView: View {
                                 .id(fila.id)
                         }
 
-                        if puedeRegenerar {
-                            botonRegenerar
-                                .id(Self.marcaRegenerar)
-                        }
-
                         if estado.enviando {
                             BurbujaEnCurso(texto: estado.textoEnCurso)
                                 .id(Self.marcaEnCurso)
+                        }
+
+                        if !estado.enviando, let error = estado.errorDeTurno {
+                            BurbujaErrorTurno(
+                                texto: error,
+                                otrosProveedores: otrosProveedores,
+                                nombreDeProveedor: { nombreDeModelo($0) },
+                                alReintentar: { estado.reintentar() },
+                                alCambiarModelo: { proveedor in
+                                    estado.cambiarProveedor(proveedor)
+                                    estado.reintentar()
+                                }
+                            )
+                            .id(Self.marcaError)
                         }
                     }
                     .padding(.horizontal, Tema.margen)
@@ -364,6 +368,12 @@ struct ChatView: View {
                     desplazarAlFinal(proxy)
                 }
                 .onChange(of: estado.textoEnCurso) { _, _ in
+                    desplazarAlFinal(proxy)
+                }
+                .onChange(of: estado.enviando) { _, _ in
+                    desplazarAlFinal(proxy)
+                }
+                .onChange(of: estado.errorDeTurno) { _, _ in
                     desplazarAlFinal(proxy)
                 }
                 .onAppear { desplazarAlFinal(proxy) }
@@ -393,17 +403,7 @@ struct ChatView: View {
 
     @ViewBuilder
     private func filaDeMensajeNormal(_ mensaje: ChatMessage) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            BurbujaMensaje(mensaje: mensaje)
-
-            if mensaje.rol == .asistente,
-               let linea = lineaDeConsumo(mensaje) {
-                Text(linea)
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                    .padding(.leading, 14)
-            }
-        }
+        BurbujaMensaje(mensaje: mensaje, pie: pieDe(mensaje))
     }
 
     /// En modo Tarea los mensajes internos se leen como pasos plegables.
@@ -427,7 +427,10 @@ struct ChatView: View {
                 if !mensaje.texto.isEmpty {
                     // El texto del asistente se pinta sin repetir las llamadas:
                     // los nombres ya salen en las filas de paso de abajo.
-                    BurbujaMensaje(mensaje: mensajeSinLlamadas(mensaje))
+                    BurbujaMensaje(
+                        mensaje: mensajeSinLlamadas(mensaje),
+                        pie: pieDe(mensaje)
+                    )
                 }
 
                 ForEach(mensaje.toolCalls, id: \.id) { llamada in
@@ -435,13 +438,6 @@ struct ChatView: View {
                         nombre: llamada.nombre,
                         resultado: resultadoDeHerramienta(para: llamada.id)
                     )
-                }
-
-                if let linea = lineaDeConsumo(mensaje) {
-                    Text(linea)
-                        .font(.caption2)
-                        .foregroundStyle(Tema.textoSuave)
-                        .padding(.leading, 14)
                 }
             }
         } else {
@@ -480,14 +476,14 @@ struct ChatView: View {
     }
 
     private static let marcaEnCurso = "nodo-en-curso"
-    private static let marcaRegenerar = "nodo-regenerar"
+    private static let marcaError = "nodo-error-turno"
 
     private func desplazarAlFinal(_ proxy: ScrollViewProxy) {
         let destino: String?
         if estado.enviando {
             destino = Self.marcaEnCurso
-        } else if puedeRegenerar {
-            destino = Self.marcaRegenerar
+        } else if estado.errorDeTurno != nil {
+            destino = Self.marcaError
         } else {
             destino = filas.last?.id
         }
@@ -498,66 +494,28 @@ struct ChatView: View {
         }
     }
 
-    /// Solo se puede regenerar la ultima respuesta cuando el turno ya termino.
-    private var puedeRegenerar: Bool {
-        !estado.enviando && estado.conversacion.mensajes.last?.rol == .asistente
+    // MARK: - Consumo y pie de respuesta
+
+    /// Pie de la respuesta, solo para mensajes del asistente con consumo.
+    private func pieDe(_ mensaje: ChatMessage) -> PieRespuesta? {
+        guard mensaje.rol == .asistente, let uso = mensaje.uso else { return nil }
+
+        let esUltima = estado.conversacion.mensajes.last?.id == mensaje.id
+        return PieRespuesta(
+            uso: uso,
+            costo: costoDe(uso),
+            textoParaCopiar: mensaje.texto,
+            puedeRegenerar: esUltima && !estado.enviando,
+            otrosProveedores: otrosProveedores,
+            nombreDeProveedor: { nombreDeModelo($0) },
+            alRegenerar: { estado.regenerar() },
+            alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) }
+        )
     }
 
-    /// Boton bajo la ultima respuesta para volver a generarla.
-    private var botonRegenerar: some View {
-        Button {
-            estado.regenerar()
-        } label: {
-            Label("Regenerar", systemImage: "arrow.triangle.2.circlepath")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(Tema.textoSuave)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Tema.superficie)
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Regenerar la ultima respuesta")
-    }
-
-    // MARK: - Consumo
-
-    /// Consumo acumulado del chat, si algun mensaje trae cifras.
-    private var usoDelChat: UsoTokens? {
-        CostoEstimado.usoAcumulado(de: estado.conversacion.mensajes)
-    }
-
-    /// Fila fina con el acumulado del chat, encima de la tira y la caja.
-    @ViewBuilder
-    private var resumenDelChat: some View {
-        if let uso = usoDelChat {
-            HStack {
-                Text(textoResumen(uso))
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Tema.margen)
-            .padding(.top, 6)
-        }
-    }
-
-    private func textoResumen(_ uso: UsoTokens) -> String {
-        var texto = "Chat: \(uso.total) tokens"
-        if let costo = costoDe(uso) {
-            texto += " · " + textoCosto(costo)
-        }
-        return texto
-    }
-
-    /// Linea discreta bajo una respuesta: tokens y, si hay precios, costo.
-    private func lineaDeConsumo(_ mensaje: ChatMessage) -> String? {
-        guard let uso = mensaje.uso else { return nil }
-        var linea = "\(uso.entrada) de entrada · \(uso.salida) de salida"
-        if let costo = costoDe(uso) {
-            linea += " · " + textoCosto(costo)
-        }
-        return linea
+    /// Los demas modelos configurados, para "Regenerar con…" y "Cambiar modelo".
+    private var otrosProveedores: [ProviderConfig] {
+        estado.config.proveedores.filter { !esActivo($0) }
     }
 
     private func costoDe(_ uso: UsoTokens) -> Double? {
@@ -569,11 +527,78 @@ struct ChatView: View {
         )
     }
 
-    private func textoCosto(_ costo: Double) -> String {
-        "≈$\(String(format: "%.4f", costo)) estimado"
+    // MARK: - Tira fina y caja de texto
+
+    /// Franja ámbar de tope, justo sobre la tira fina y la caja (§3.3).
+    ///
+    /// "Subir tope" solo ofrece escalones POR ENCIMA del actual (máximo 4) y
+    /// actualiza el tope global; "Seguir igual" silencia solo este chat.
+    @ViewBuilder
+    private var franjaTope: some View {
+        if estado.topeSuperado {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+
+                Text("Este chat ya supera tu tope de aviso ($\(textoTopeActual))")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                Menu {
+                    ForEach(escalonesDeTope, id: \.self) { valor in
+                        Button("$\(String(format: "%.2f", valor))") {
+                            estado.fijarTopeAviso(valor)
+                        }
+                    }
+                } label: {
+                    Text("Subir tope")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.orange.opacity(0.25))
+                        .clipShape(Capsule())
+                }
+                .disabled(escalonesDeTope.isEmpty)
+                .accessibilityIdentifier("subir-tope")
+
+                Button {
+                    estado.ignorarTopeEnEsteChat()
+                } label: {
+                    Text("Seguir igual")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Tema.superficieAlta)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("seguir-igual")
+            }
+            .padding(.horizontal, Tema.margen)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.14))
+            .accessibilityIdentifier("franja-tope")
+        }
     }
 
-    // MARK: - Tira fina y caja de texto
+    private var textoTopeActual: String {
+        String(format: "%.2f", estado.config.topeAvisoCostoEfectivo)
+    }
+
+    /// Escalera de topes por encima del vigente, recortada a 4 opciones.
+    private var escalonesDeTope: [Double] {
+        let actual = estado.config.topeAvisoCostoEfectivo
+        let escalera: [Double] = [0.25, 0.50, 1.00, 2.00, 5.00, 10.00]
+        return Array(escalera.filter { $0 > actual + 0.000_000_1 }.prefix(4))
+    }
 
     /// Fila fina sobre la caja: modo Chat | Tarea y acceso rapido a la Memoria.
     private var tiraFina: some View {
@@ -648,7 +673,7 @@ struct ChatView: View {
     private var barraDeEntrada: some View {
         HStack(alignment: .bottom, spacing: 10) {
             TextField("Escribe un mensaje", text: $borrador, axis: .vertical)
-                .lineLimit(1...6)
+                .lineLimit(1...5)
                 .focused($escribiendo)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -687,6 +712,83 @@ struct ChatView: View {
         let texto = borrador
         borrador = ""
         estado.enviar(texto)
+    }
+}
+
+/// Burbuja de error en linea al final del hilo (§3.7).
+///
+/// El mensaje del usuario sigue en su sitio; desde aqui se puede reintentar el
+/// mismo turno o cambiar de modelo y reintentar, sin volver a escribirlo.
+private struct BurbujaErrorTurno: View {
+    let texto: String
+    let otrosProveedores: [ProviderConfig]
+    let nombreDeProveedor: (ProviderConfig) -> String
+    let alReintentar: () -> Void
+    let alCambiarModelo: (ProviderConfig) -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(Color.red.opacity(0.9))
+                    Text(texto)
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        alReintentar()
+                    } label: {
+                        Text("Reintentar")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Tema.acento)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reintentar-turno")
+
+                    if !otrosProveedores.isEmpty {
+                        Menu {
+                            ForEach(otrosProveedores) { proveedor in
+                                Button {
+                                    alCambiarModelo(proveedor)
+                                } label: {
+                                    Text(nombreDeProveedor(proveedor))
+                                }
+                            }
+                        } label: {
+                            Text("Cambiar modelo")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Tema.superficieAlta)
+                                .clipShape(Capsule())
+                        }
+                        .accessibilityIdentifier("cambiar-modelo-error")
+                    }
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(12)
+            .background(Color.red.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Tema.radio, style: .continuous)
+                    .stroke(Color.red.opacity(0.25), lineWidth: 1)
+            }
+
+            Spacer(minLength: 48)
+        }
+        .accessibilityIdentifier("error-turno")
     }
 }
 

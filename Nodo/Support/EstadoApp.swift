@@ -58,6 +58,12 @@ final class EstadoApp: ObservableObject {
     /// conversacion se limpian.
     @Published private(set) var eventosVisuales: [EventoVisual] = []
     @Published var error: String?
+    /// Mensaje legible del ultimo turno fallido.
+    ///
+    /// Se pinta en linea al final del hilo (§3.7) en vez de en el aviso
+    /// generico: asi el mensaje del usuario sigue a la vista y se puede
+    /// reintentar sin volver a escribirlo.
+    @Published var errorDeTurno: String?
 
     /// Ventana de contexto de cada modelo, en tokens.
     ///
@@ -80,6 +86,13 @@ final class EstadoApp: ObservableObject {
     private let transporte = TransporteURLSession()
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
+    /// Que clase de turno fallo, para que `reintentar()` sepa si debe volver a
+    /// enviar el historial actual o regenerar la ultima respuesta restaurada.
+    private enum TipoTurnoFallido {
+        case envio
+        case regeneracion
+    }
+    private var turnoFallido: TipoTurnoFallido?
     /// Continuacion que mantiene el turno suspendido mientras la hoja de
     /// aprobacion espera. Se resuelve una sola vez por aprobacion.
     private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
@@ -270,6 +283,42 @@ final class EstadoApp: ObservableObject {
         return nil
     }
 
+    /// Costo acumulado del chat abierto, con los precios del proveedor activo.
+    ///
+    /// Sin precios configurados no hay cifra: no se inventa un costo.
+    var costoAcumuladoDelChat: Double? {
+        guard let proveedor = config.proveedorSeleccionado else { return nil }
+        return CostoEstimado.acumulado(
+            mensajes: conversacion.mensajes,
+            precioEntrada: proveedor.precioEntradaPorMillon,
+            precioSalida: proveedor.precioSalidaPorMillon
+        )
+    }
+
+    /// True cuando el acumulado del chat abierto alcanzo el tope vigente.
+    ///
+    /// La franja de §3.3 se pinta con esto y desaparece sola si el tope sube o
+    /// si el usuario marco "Seguir igual" en este chat (`topeIgnorado`).
+    var topeSuperado: Bool {
+        guard !conversacion.topeIgnorado else { return false }
+        let tope = config.topeAvisoCostoEfectivo
+        guard tope > 0, let costo = costoAcumuladoDelChat else { return false }
+        return costo >= tope
+    }
+
+    /// Sube (o fija) el tope global de aviso y lo persiste.
+    func fijarTopeAviso(_ valor: Double) {
+        guard valor > 0 else { return }
+        config.topeAvisoCosto = valor
+    }
+
+    /// "Seguir igual" de la franja: silencia el tope solo en este chat.
+    func ignorarTopeEnEsteChat() {
+        guard !conversacion.topeIgnorado else { return }
+        conversacion.topeIgnorado = true
+        guardarActual()
+    }
+
     /// Proveedor y clave con los que se puede enviar, o nil si falta algo.
     ///
     /// En modo capturas no hay llavero real ni clave: el motor de prueba no la
@@ -346,12 +395,14 @@ final class EstadoApp: ObservableObject {
     func nuevaConversacion(sinMemoria: Bool = false) {
         cancelar()
         limpiarEventosVisuales()
+        limpiarErrorDeTurno()
         conversacion = Conversation(sinMemoria: sinMemoria)
     }
 
     func abrir(_ otra: Conversation) {
         cancelar()
         limpiarEventosVisuales()
+        limpiarErrorDeTurno()
         conversacion = otra
     }
 
@@ -362,6 +413,7 @@ final class EstadoApp: ObservableObject {
         try? store?.borrar(id: otra.id)
         if conversacion.id == otra.id {
             limpiarEventosVisuales()
+            limpiarErrorDeTurno()
             conversacion = Conversation()
         }
         recargarConversaciones()
@@ -423,8 +475,39 @@ final class EstadoApp: ObservableObject {
         eventosVisuales = []
     }
 
+    private func limpiarErrorDeTurno() {
+        errorDeTurno = nil
+        turnoFallido = nil
+    }
+
     private func registrarEventoVisual(_ texto: String, tras mensaje: UUID?) {
         eventosVisuales.append(EventoVisual(trasMensaje: mensaje, texto: texto))
+    }
+
+    /// Mueve al ultimo mensaje del usuario los divisores que colgaban del turno
+    /// que se va a regenerar.
+    ///
+    /// Sin esto, un "── Ahora responde X ──" anclado a la respuesta descartada
+    /// quedaria huerfano y se pintaria despues de la respuesta nueva.
+    private func reanclarEventosDelTurnoDescartado(_ descartados: [ChatMessage]) {
+        let ids = Set(descartados.map(\.id))
+        guard let ancla = conversacion.mensajes.last(where: { $0.rol == .usuario })?.id else {
+            return
+        }
+
+        for indice in eventosVisuales.indices {
+            guard let tras = eventosVisuales[indice].trasMensaje,
+                  ids.contains(tras),
+                  eventosVisuales[indice].texto.hasPrefix("── Ahora responde")
+            else {
+                continue
+            }
+            eventosVisuales[indice] = EventoVisual(
+                id: eventosVisuales[indice].id,
+                trasMensaje: ancla,
+                texto: eventosVisuales[indice].texto
+            )
+        }
     }
 
     func renombrar(_ otra: Conversation, titulo: String) {
@@ -481,6 +564,9 @@ final class EstadoApp: ObservableObject {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty, !enviando else { return }
 
+        // Un mensaje nuevo retira la burbuja de error del turno anterior.
+        limpiarErrorDeTurno()
+
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
         conversacion.mensajes.append(ChatMessage(rol: .usuario, texto: limpio))
@@ -489,29 +575,12 @@ final class EstadoApp: ObservableObject {
         }
         persistirActual()
 
-        enviando = true
-        textoEnCurso = ""
-        herramientaEnCurso = nil
-        aprobacionPendiente = nil
-        error = nil
-
-        let historial = historialParaEnviar()
-        let modoTarea = conversacion.modoTarea
-
-        tareaActual = Task { [weak self] in
-            guard let self else { return }
-
-            await self.ejecutarTurno(
-                proveedor: proveedor,
-                clave: clave,
-                historial: historial,
-                modoTarea: modoTarea,
-                alFracasar: {}
-            )
-
-            self.enviando = false
-            self.tareaActual = nil
-        }
+        lanzarTurno(
+            tipo: .envio,
+            proveedor: proveedor,
+            clave: clave,
+            alFracasar: {}
+        )
     }
 
     /// Descarta la ultima respuesta y la vuelve a generar con el proveedor y el
@@ -527,8 +596,74 @@ final class EstadoApp: ObservableObject {
 
         let turnoDescartado = conversacion.descartarUltimoTurno()
         guard !turnoDescartado.isEmpty else { return }
+        reanclarEventosDelTurnoDescartado(turnoDescartado)
         persistirActual()
 
+        limpiarErrorDeTurno()
+        lanzarTurno(
+            tipo: .regeneracion,
+            proveedor: proveedor,
+            clave: clave,
+            alFracasar: { [weak self] in
+                self?.conversacion.mensajes.append(contentsOf: turnoDescartado)
+            }
+        )
+    }
+
+    /// Regenera la ultima respuesta con otro proveedor configurado.
+    ///
+    /// Primero cambia el activo por la ruta normal —con su divisor de cambio de
+    /// modelo— y despues reutiliza la maquinaria de `regenerar()`. Si el
+    /// proveedor ya era el activo, el cambio no hace nada y se regenera igual.
+    func regenerarCon(proveedorID: UUID) {
+        guard !enviando else { return }
+        guard let proveedor = config.proveedores.first(where: { $0.id == proveedorID }) else {
+            return
+        }
+        cambiarProveedor(proveedor)
+        regenerar()
+    }
+
+    /// Reintenta el ultimo turno fallido sin perder el texto del usuario.
+    ///
+    /// Un envio fallido se relanza sobre el historial actual (el mensaje del
+    /// usuario ya esta dentro). Una regeneracion fallida se vuelve a regenerar
+    /// sobre el turno anterior restaurado. Tras cambiar de modelo desde la
+    /// burbuja de error, este reintento usa ya el proveedor nuevo.
+    func reintentar() {
+        guard errorDeTurno != nil, !enviando else { return }
+
+        let tipo = turnoFallido
+        limpiarErrorDeTurno()
+
+        switch tipo {
+        case .regeneracion:
+            regenerar()
+        case .envio, .none:
+            reintentarEnvio()
+        }
+    }
+
+    private func reintentarEnvio() {
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+        lanzarTurno(
+            tipo: .envio,
+            proveedor: proveedor,
+            clave: clave,
+            alFracasar: {}
+        )
+    }
+
+    /// Arranca un turno con el historial ya preparado.
+    ///
+    /// La usan enviar, regenerar y los reintentos para no repetir la puesta a
+    /// punto de la tarea ni el manejo de `enviando`.
+    private func lanzarTurno(
+        tipo: TipoTurnoFallido,
+        proveedor: ProviderConfig,
+        clave: String,
+        alFracasar: @escaping () -> Void
+    ) {
         enviando = true
         textoEnCurso = ""
         herramientaEnCurso = nil
@@ -546,9 +681,8 @@ final class EstadoApp: ObservableObject {
                 clave: clave,
                 historial: historial,
                 modoTarea: modoTarea,
-                alFracasar: {
-                    self.conversacion.mensajes.append(contentsOf: turnoDescartado)
-                }
+                tipo: tipo,
+                alFracasar: alFracasar
             )
 
             self.enviando = false
@@ -561,12 +695,13 @@ final class EstadoApp: ObservableObject {
     ///
     /// Es la maquinaria que comparten enviar y regenerar. Si el turno falla,
     /// `alFracasar` deshace lo que haya hecho quien llama antes de publicar el
-    /// error.
+    /// error en linea (`errorDeTurno`), nunca en el aviso generico.
     private func ejecutarTurno(
         proveedor: ProviderConfig,
         clave: String,
         historial: [ChatMessage],
         modoTarea: Bool,
+        tipo: TipoTurnoFallido,
         alFracasar: () -> Void
     ) async {
         do {
@@ -599,12 +734,12 @@ final class EstadoApp: ObservableObject {
 
             textoEnCurso = ""
             conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
+            limpiarErrorDeTurno()
 
             if resultado.seAgotoElLimite {
                 error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
             }
 
-            revisarAvisoCosto(proveedor: proveedor)
             persistirActual()
         } catch is CancellationError {
             textoEnCurso = ""
@@ -613,8 +748,9 @@ final class EstadoApp: ObservableObject {
         } catch let fallo {
             textoEnCurso = ""
             alFracasar()
-            self.error = (fallo as? LocalizedError)?.errorDescription
+            errorDeTurno = (fallo as? LocalizedError)?.errorDescription
                 ?? fallo.localizedDescription
+            turnoFallido = tipo
             persistirActual()
         }
     }
@@ -702,29 +838,6 @@ final class EstadoApp: ObservableObject {
         continuacionAprobacion = nil
         aprobacionPendiente = nil
         continuacion.resume(returning: aprobada)
-    }
-
-    /// Avisa una sola vez si el acumulado estimado del chat cruzo el tope.
-    ///
-    /// Se calcula con los precios del proveedor que acaba de responder y solo
-    /// despues de un turno nuevo: abrir un chat viejo no dispara el aviso.
-    private func revisarAvisoCosto(proveedor: ProviderConfig) {
-        guard !conversacion.avisoCostoMostrado else { return }
-        guard error == nil else { return }
-
-        guard let costo = CostoEstimado.acumulado(
-            mensajes: conversacion.mensajes,
-            precioEntrada: proveedor.precioEntradaPorMillon,
-            precioSalida: proveedor.precioSalidaPorMillon
-        ) else {
-            return
-        }
-
-        let tope = config.topeAvisoCostoEfectivo
-        guard tope > 0, costo >= tope else { return }
-
-        conversacion.avisoCostoMostrado = true
-        error = "Este chat ya paso de $\(String(format: "%.2f", tope)) estimados"
     }
 
     func cancelar() {

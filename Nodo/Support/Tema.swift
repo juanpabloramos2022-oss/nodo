@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UIKit
 
 import NodoCore
 
@@ -21,6 +23,14 @@ enum Tema {
 /// Burbuja de un mensaje.
 struct BurbujaMensaje: View {
     let mensaje: ChatMessage
+    /// Pie de la respuesta (tokens, costo, regenerar y copiar). Solo lo llevan
+    /// las respuestas del asistente que tienen consumo medido.
+    var pie: PieRespuesta?
+
+    init(mensaje: ChatMessage, pie: PieRespuesta? = nil) {
+        self.mensaje = mensaje
+        self.pie = pie
+    }
 
     var esDelUsuario: Bool { mensaje.rol == .usuario }
     var esHerramienta: Bool { mensaje.rol == .herramienta }
@@ -35,10 +45,15 @@ struct BurbujaMensaje: View {
                 }
 
                 if !mensaje.texto.isEmpty {
-                    Text(mensaje.texto)
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
+                    if esDelUsuario || esHerramienta {
+                        Text(mensaje.texto)
+                            .font(.body)
+                            .textSelection(.enabled)
+                            .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ContenidoAsistente(texto: mensaje.texto)
+                    }
                 }
 
                 if !mensaje.toolCalls.isEmpty {
@@ -51,6 +66,10 @@ struct BurbujaMensaje: View {
                         }
                         .foregroundStyle(Tema.acento)
                     }
+                }
+
+                if let pie {
+                    pie
                 }
             }
             .padding(.horizontal, 14)
@@ -76,6 +95,200 @@ struct BurbujaMensaje: View {
     }
 }
 
+/// Texto de una respuesta del asistente, con sus bloques de codigo separados.
+///
+/// El parser vive en NodoCore (`BloquesRespuesta`); aqui solo se decide como se
+/// pinta cada tramo (§4.7).
+private struct ContenidoAsistente: View {
+    let texto: String
+
+    private var bloques: [BloqueRespuesta] {
+        BloquesRespuesta.parsear(texto)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(bloques.indices), id: \.self) { indice in
+                bloque(bloques[indice])
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bloque(_ bloque: BloqueRespuesta) -> some View {
+        switch bloque {
+        case .texto(let texto):
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .codigo(let lenguaje, let contenido):
+            BloqueCodigo(lenguaje: lenguaje, contenido: contenido)
+        }
+    }
+}
+
+/// Bloque monoespaciado con su boton "Copiar código" arriba a la derecha.
+private struct BloqueCodigo: View {
+    let lenguaje: String?
+    let contenido: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                if let lenguaje, !lenguaje.isEmpty {
+                    Text(lenguaje)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(Tema.textoSuave)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    UIPasteboard.general.string = contenido
+                } label: {
+                    Label("Copiar código", systemImage: "doc.on.doc")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.acento)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copiar código")
+                .accessibilityIdentifier("copiar-codigo")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 7)
+            .padding(.bottom, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(contenido)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 9)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+/// Pie de una respuesta: consumo, costo, regenerar y copiar, en una sola fila
+/// pegada a su burbuja (SPEC §3.3).
+struct PieRespuesta: View {
+    let uso: UsoTokens
+    let costo: Double?
+    let textoParaCopiar: String
+    let puedeRegenerar: Bool
+    let otrosProveedores: [ProviderConfig]
+    let nombreDeProveedor: (ProviderConfig) -> String
+    let alRegenerar: () -> Void
+    let alRegenerarCon: (ProviderConfig) -> Void
+
+    init(
+        uso: UsoTokens,
+        costo: Double?,
+        textoParaCopiar: String,
+        puedeRegenerar: Bool,
+        otrosProveedores: [ProviderConfig],
+        nombreDeProveedor: @escaping (ProviderConfig) -> String,
+        alRegenerar: @escaping () -> Void,
+        alRegenerarCon: @escaping (ProviderConfig) -> Void
+    ) {
+        self.uso = uso
+        self.costo = costo
+        self.textoParaCopiar = textoParaCopiar
+        self.puedeRegenerar = puedeRegenerar
+        self.otrosProveedores = otrosProveedores
+        self.nombreDeProveedor = nombreDeProveedor
+        self.alRegenerar = alRegenerar
+        self.alRegenerarCon = alRegenerarCon
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Rectangle()
+                .fill(Tema.borde)
+                .frame(height: 1)
+
+            HStack(spacing: 8) {
+                Text(textoConsumo)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                if puedeRegenerar {
+                    botonRegenerar
+                }
+
+                Button {
+                    UIPasteboard.general.string = textoParaCopiar
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.caption)
+                        .foregroundStyle(Tema.textoSuave)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copiar respuesta")
+                .accessibilityIdentifier("copiar-respuesta")
+            }
+        }
+        .padding(.top, 2)
+        .accessibilityIdentifier("pie-respuesta")
+    }
+
+    private var textoConsumo: String {
+        var texto = "\(uso.entrada) de entrada · \(uso.salida) de salida"
+        if let costo {
+            texto += " · ≈$\(String(format: "%.4f", costo)) estimado"
+        }
+        return texto
+    }
+
+    /// Toque corto = regenerar; pulsacion larga = elegir otro modelo.
+    private var botonRegenerarSimple: some View {
+        Button {
+            alRegenerar()
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Regenerar la última respuesta")
+        .accessibilityIdentifier("regenerar-respuesta")
+    }
+
+    @ViewBuilder
+    private var botonRegenerar: some View {
+        if otrosProveedores.isEmpty {
+            botonRegenerarSimple
+        } else {
+            botonRegenerarSimple.contextMenu {
+                ForEach(otrosProveedores) { proveedor in
+                    Button {
+                        alRegenerarCon(proveedor)
+                    } label: {
+                        Text("Regenerar con \(nombreDeProveedor(proveedor))")
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Texto que se esta escribiendo ahora mismo, con el cursor al final.
 struct BurbujaEnCurso: View {
     let texto: String
@@ -89,6 +302,7 @@ struct BurbujaEnCurso: View {
                 }
                 Text(texto.isEmpty ? "Pensando..." : texto)
                     .font(.body)
+                    .textSelection(.enabled)
                     .foregroundStyle(texto.isEmpty ? Tema.textoSuave : Color.white)
             }
             .padding(.horizontal, 14)
