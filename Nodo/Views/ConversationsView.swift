@@ -159,8 +159,6 @@ struct ConversationsView: View {
             fila(conversacion)
         }
         .listRowBackground(Tema.superficie)
-        // La fila ya es un enlace de navegacion: sin flecha de divulgacion.
-        .navigationLinkIndicatorVisibility(.hidden)
         .swipeActions(edge: .leading) {
             if archivada {
                 Button {
