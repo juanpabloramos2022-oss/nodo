@@ -304,11 +304,11 @@ final class EstadoApp: ObservableObject {
             textoEnCurso = ""
             alFracasar()
             persistirActual()
-        } catch {
+        } catch let fallo {
             textoEnCurso = ""
             alFracasar()
-            error = (error as? LocalizedError)?.errorDescription
-                ?? error.localizedDescription
+            self.error = (fallo as? LocalizedError)?.errorDescription
+                ?? fallo.localizedDescription
             persistirActual()
         }
     }
