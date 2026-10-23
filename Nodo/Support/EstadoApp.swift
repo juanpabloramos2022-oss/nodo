@@ -167,6 +167,30 @@ final class EstadoApp: ObservableObject {
         recargarConversaciones()
     }
 
+    /// Fija o desfija una conversacion sin tocar la que este abierta.
+    func fijar(_ otra: Conversation, fijada: Bool = true) {
+        var copia = otra
+        copia.fijada = fijada
+        try? store?.guardar(copia)
+        recargarConversaciones()
+    }
+
+    func desfijar(_ otra: Conversation) {
+        fijar(otra, fijada: false)
+    }
+
+    /// Archiva o desarchiva una conversacion sin tocar la que este abierta.
+    func archivar(_ otra: Conversation, archivada: Bool = true) {
+        var copia = otra
+        copia.archivada = archivada
+        try? store?.guardar(copia)
+        recargarConversaciones()
+    }
+
+    func desarchivar(_ otra: Conversation) {
+        archivar(otra, archivada: false)
+    }
+
     private func persistirActual() {
         conversacion.actualizada = Date()
         try? store?.guardar(conversacion)
