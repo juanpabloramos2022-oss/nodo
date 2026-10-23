@@ -660,9 +660,12 @@ final class EstadoApp: ObservableObject {
         reemplazarTareas(con: respaldo.tareas)
 
         // 3) Verificacion contra el manifiesto: lo aplicado tiene que cuadrar
-        //    con lo anunciado.
+        //    con lo anunciado. `real` son los conteos del estado ya aplicado y
+        //    `respaldo` es la fuente del manifiesto; `validarRespaldo` garantiza
+        //    que su manifiesto cuadra con su contenido, asi que comparar contra
+        //    el respaldo comprueba exactamente los conteos anunciados.
         let real = hacerRespaldoTotal().conteos
-        guard real.cuadraCon(manifiesto) else {
+        guard real.cuadraCon(respaldo) else {
             throw ErrorRespaldo.verificacionFallida
         }
         return manifiesto
