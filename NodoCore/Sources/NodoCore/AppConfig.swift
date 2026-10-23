@@ -40,9 +40,10 @@ public struct ServerConfig: Codable, Equatable {
 /// Configuracion completa de la app, exportable a JSON.
 ///
 /// El JSON exportado **no contiene claves**: solo proveedores, modelo, prompt,
-/// servidor, el tope de aviso y la lista de herramientas exentas. Importarlo en
-/// otro telefono deja las credenciales por introducir, que es justo lo que se
-/// quiere al mover una configuracion entre dispositivos.
+/// servidor, el tope de aviso, la lista de herramientas exentas, las skills y
+/// los contadores de gasto. Importarlo en otro telefono deja las credenciales
+/// por introducir, que es justo lo que se quiere al mover una configuracion
+/// entre dispositivos.
 public struct AppConfig: Codable, Equatable {
     /// Version del formato, para poder migrar sin romper.
     public var version: Int
@@ -57,6 +58,13 @@ public struct AppConfig: Codable, Equatable {
     /// consecuencias. nil equivale a la lista vacia, que es el valor por
     /// defecto que manda la SPEC (§4.3).
     public var herramientasSinAprobacion: [String]?
+    /// Biblioteca de skills locales (§4.4). Las configuraciones de la v0.2.0 no
+    /// traen este campo y se leen como lista vacia.
+    public var skills: [SkillLocal]
+    /// Contadores globales de gasto (§3.5). Viven en la configuracion para
+    /// sobrevivir al borrado de chats; las configuraciones viejas arrancan a
+    /// cero.
+    public var gasto: ContadoresGasto
 
     public init(
         version: Int = 1,
@@ -65,7 +73,9 @@ public struct AppConfig: Codable, Equatable {
         systemPrompt: String = AppConfig.promptPorDefecto,
         servidor: ServerConfig = ServerConfig(),
         topeAvisoCosto: Double? = nil,
-        herramientasSinAprobacion: [String]? = nil
+        herramientasSinAprobacion: [String]? = nil,
+        skills: [SkillLocal] = [],
+        gasto: ContadoresGasto = ContadoresGasto()
     ) {
         self.version = version
         self.proveedores = proveedores
@@ -74,6 +84,42 @@ public struct AppConfig: Codable, Equatable {
         self.servidor = servidor
         self.topeAvisoCosto = topeAvisoCosto
         self.herramientasSinAprobacion = herramientasSinAprobacion
+        self.skills = skills
+        self.gasto = gasto
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case proveedores
+        case proveedorActivo
+        case systemPrompt
+        case servidor
+        case topeAvisoCosto
+        case herramientasSinAprobacion
+        case skills
+        case gasto
+    }
+
+    /// Decodificacion tolerante con las configuraciones anteriores a la Fase 4.
+    ///
+    /// La v0.2.0 no tenia skills ni contadores de gasto. El Decodable
+    /// sintetizado exigiria esas claves y dejaria de abrir la configuracion
+    /// entera, asi que se leen como opcionales con su valor por defecto.
+    public init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: CodingKeys.self)
+        version = try contenedor.decode(Int.self, forKey: .version)
+        proveedores = try contenedor.decode([ProviderConfig].self, forKey: .proveedores)
+        proveedorActivo = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorActivo)
+        systemPrompt = try contenedor.decode(String.self, forKey: .systemPrompt)
+        servidor = try contenedor.decode(ServerConfig.self, forKey: .servidor)
+        topeAvisoCosto = try contenedor.decodeIfPresent(Double.self, forKey: .topeAvisoCosto)
+        herramientasSinAprobacion = try contenedor.decodeIfPresent(
+            [String].self,
+            forKey: .herramientasSinAprobacion
+        )
+        skills = try contenedor.decodeIfPresent([SkillLocal].self, forKey: .skills) ?? []
+        gasto = try contenedor.decodeIfPresent(ContadoresGasto.self, forKey: .gasto)
+            ?? ContadoresGasto()
     }
 
     /// Tope que se aplica de verdad: el guardado o un dolar si nunca se fijo.
