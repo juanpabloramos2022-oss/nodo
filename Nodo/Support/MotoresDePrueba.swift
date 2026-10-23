@@ -30,6 +30,18 @@ struct HerramientaDePrueba: Herramienta {
     }
 }
 
+/// Error determinista del motor de capturas.
+///
+/// El estado `error-en-linea` lo inyecta para que la app recorra su ruta normal
+/// de envio y pinte la burbuja de error con el mensaje del usuario intacto.
+enum ErrorMotorDePrueba: LocalizedError {
+    case falloDeEjemplo
+
+    var errorDescription: String? {
+        "No se pudo conectar con el proveedor de ejemplo."
+    }
+}
+
 /// Motor de chat determinista para las capturas del modo Tarea.
 ///
 /// No hace red ni gasta cuota: la primera respuesta pide la herramienta de
@@ -38,12 +50,22 @@ struct HerramientaDePrueba: Herramienta {
 /// herramientas ofrecidas) responde directamente el texto final.
 final class MotorDePrueba: ChatEngine {
     private var llamadas = 0
+    /// Cuando es true, el turno falla antes de producir texto.
+    private let falla: Bool
+
+    init(falla: Bool = false) {
+        self.falla = falla
+    }
 
     func responder(
         mensajes: [ChatMessage],
         herramientas: [ToolDefinition],
         alRecibirTexto: ((String) -> Void)?
     ) async throws -> RespuestaModelo {
+        if falla {
+            throw ErrorMotorDePrueba.falloDeEjemplo
+        }
+
         llamadas += 1
 
         let nombre = "accion_de_prueba"

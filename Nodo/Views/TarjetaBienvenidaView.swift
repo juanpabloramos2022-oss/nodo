@@ -72,7 +72,7 @@ struct TarjetaBienvenidaView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if faltaClave {
-                Text("⚠️ Falta la clave de este proveedor")
+                Text("⚠️ Falta tu clave de \(proveedorLimpio)")
                     .font(.footnote)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)

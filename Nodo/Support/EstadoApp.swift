@@ -317,7 +317,12 @@ final class EstadoApp: ObservableObject {
     }
 
     func clave(para proveedor: ProviderConfig) -> String? {
-        guard persistir else { return nil }
+        // En capturas no hay llavero real, pero algunos estados siembran una
+        // clave de ejemplo para que la Tarjeta de Bienvenida pueda ensenar su
+        // estado conectado sin tocar el almacenamiento del simulador.
+        if let estadoDePrueba {
+            return estadoDePrueba.claveDePrueba
+        }
         return llavero.leer(proveedor.claveKeychain)
     }
 
@@ -1287,8 +1292,8 @@ final class EstadoApp: ObservableObject {
 
     private func motorPara(proveedor: ProviderConfig, clave: String) -> ChatEngine {
         // Solo las capturas sustituyen el motor real; en produccion no cambia.
-        if estadoDePrueba != nil {
-            return MotorDePrueba()
+        if let estadoDePrueba {
+            return MotorDePrueba(falla: estadoDePrueba.motorFalla)
         }
 
         switch proveedor.protocolo {

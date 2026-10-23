@@ -8,6 +8,33 @@ struct EstadoPrueba {
     let config: AppConfig
     let conversacion: Conversation
     let conversaciones: [Conversation]
+    /// Clave de ejemplo que la Tarjeta de Bienvenida debe leer como guardada.
+    ///
+    /// En capturas no se escribe nada en el llavero del simulador: la clave
+    /// vive solo en memoria mientras dura el test. nil deja la tarjeta en su
+    /// estado honesto de "falta tu clave".
+    let claveDePrueba: String?
+    /// Si el motor determinista debe fallar al responder.
+    ///
+    /// Solo lo usa el estado `error-en-linea`: la app recorre su ruta normal de
+    /// envio y la burbuja de error se pinta como consecuencia real del fallo.
+    let motorFalla: Bool
+
+    init(
+        nombre: String,
+        config: AppConfig,
+        conversacion: Conversation,
+        conversaciones: [Conversation],
+        claveDePrueba: String? = nil,
+        motorFalla: Bool = false
+    ) {
+        self.nombre = nombre
+        self.config = config
+        self.conversacion = conversacion
+        self.conversaciones = conversaciones
+        self.claveDePrueba = claveDePrueba
+        self.motorFalla = motorFalla
+    }
 }
 
 /// Gancho de estados de prueba para la verificacion visual en CI (SPEC §6/H7).
@@ -34,6 +61,14 @@ enum EstadosDePrueba {
         /// Conversacion con historial, Memoria y los 4 combos del preset.
         case chat = "chat"
         case tarea = "tarea"
+        /// Chat vacio con la Tarjeta de Bienvenida y una clave de ejemplo.
+        case bienvenida = "bienvenida"
+        /// El mismo chat vacio, pero con la clave vacia (preset recien instalado).
+        case bienvenidaSinClave = "bienvenida-sin-clave"
+        /// Chat cuyo acumulado supera el tope, para la franja ambar.
+        case tope = "tope"
+        /// Chat vacio con un motor que falla al enviar, para el error en linea.
+        case errorEnLinea = "error-en-linea"
     }
 
     /// Devuelve el estado pedido por los argumentos de lanzamiento, o nil si la
@@ -161,17 +196,54 @@ enum EstadosDePrueba {
         actualizada: fechaFija.addingTimeInterval(3)
     )
 
+    /// Chat vacio de la Tarjeta de Bienvenida. El titulo coincide con el de los
+    /// demas estados para que el test lo abra con la misma ruta de navegacion.
+    private static let conversacionVaciaBienvenida: Conversation = Conversation(
+        id: id("00000000-0000-0000-0000-000000000030"),
+        titulo: "Chat de ejemplo",
+        mensajes: [],
+        creada: fechaFija,
+        actualizada: fechaFija
+    )
+
+    /// Chat con consumo alto: 2.000.000 de entrada y 1.000.000 de salida con
+    /// los precios del preset dan $0.18, por encima del tope de $0.10 del
+    /// estado `tope`. Las cifras son de ejemplo, no de una persona real.
+    private static let conversacionTope: Conversation = Conversation(
+        id: id("00000000-0000-0000-0000-000000000040"),
+        titulo: "Chat de ejemplo",
+        mensajes: [
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000041"),
+                rol: .usuario,
+                texto: "Mensaje de ejemplo para el tope.",
+                fecha: fechaFija
+            ),
+            ChatMessage(
+                id: id("00000000-0000-0000-0000-000000000042"),
+                rol: .asistente,
+                texto: "Respuesta de ejemplo con consumo alto.",
+                fecha: fechaFija.addingTimeInterval(1),
+                tokensEntrada: 2_000_000,
+                tokensSalida: 1_000_000
+            )
+        ],
+        creada: fechaFija,
+        actualizada: fechaFija.addingTimeInterval(1)
+    )
+
     /// Memoria de ejemplo que se inyecta en el estado `chat`.
     private static let memoriaDeEjemplo = """
     Memoria de ejemplo: responde en español, con frases cortas y sin tecnicismos.
     """
 
     /// Configuracion del estado `chat`: los 4 combos del preset InferHub, sin
-    /// clave, con precios de ejemplo y una Memoria con texto.
-    private static func configuracionChat() -> AppConfig {
+    /// clave, con precios de ejemplo y una Memoria con texto. El tope se puede
+    /// bajar para el estado de la franja ambar.
+    private static func configuracionChat(tope: Double = 1.00) -> AppConfig {
         var config = AppConfig.inicial()
         config.systemPrompt = memoriaDeEjemplo
-        config.topeAvisoCosto = 1.00
+        config.topeAvisoCosto = tope
         return config
     }
 
@@ -240,6 +312,36 @@ enum EstadosDePrueba {
                 config: configuracion(),
                 conversacion: conversacionTarea,
                 conversaciones: [conversacionTarea]
+            )
+        case .bienvenida:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(),
+                conversacion: conversacionVaciaBienvenida,
+                conversaciones: [conversacionVaciaBienvenida],
+                claveDePrueba: "clave-de-ejemplo"
+            )
+        case .bienvenidaSinClave:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(),
+                conversacion: conversacionVaciaBienvenida,
+                conversaciones: [conversacionVaciaBienvenida]
+            )
+        case .tope:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(tope: 0.10),
+                conversacion: conversacionTope,
+                conversaciones: [conversacionTope]
+            )
+        case .errorEnLinea:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(),
+                conversacion: conversacionVaciaBienvenida,
+                conversaciones: [conversacionVaciaBienvenida],
+                motorFalla: true
             )
         }
     }
