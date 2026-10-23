@@ -915,15 +915,28 @@ final class EstadoAppTests: XCTestCase {
 
     /// Ocho mensajes con cuatro respuestas ya selladas a los precios de su
     /// proveedor. Es la historia larga que /compact parte en dos.
+    ///
+    /// Por que el relleno: /compact solo aplica el resumen si este reduce de
+    /// verdad el contexto estimado (guarda de no-reduccion del plan firmado).
+    /// Con textos de juguete ("Pregunta 0", "Respuesta 0") el resumen que
+    /// devuelve el transporte nunca pesa menos que la historia original, la
+    /// guarda descarta la compactacion y los tests de HP4 fallan por el
+    /// fixture y no por el comportamiento. Cada texto lleva ~450 caracteres
+    /// de relleno, igual que `historiaLarga`, para que resumir ahorre contexto
+    /// medible. Los roles, el orden, los tokens y los sellos no cambian.
     private func historiaSellada(con proveedor: ProviderConfig) -> Conversation {
+        let relleno = String(
+            repeating: "Este mensaje forma parte de una conversacion larga que se va a resumir. ",
+            count: 6
+        )
         var mensajes: [ChatMessage] = []
         for vuelta in 0..<4 {
             mensajes.append(
-                ChatMessage(rol: .usuario, texto: "Pregunta \(vuelta)")
+                ChatMessage(rol: .usuario, texto: "Pregunta \(vuelta). \(relleno)")
             )
             var respuesta = ChatMessage(
                 rol: .asistente,
-                texto: "Respuesta \(vuelta)",
+                texto: "Respuesta \(vuelta). \(relleno)",
                 tokensEntrada: 1_000,
                 tokensSalida: 500,
                 proveedorID: proveedor.id
