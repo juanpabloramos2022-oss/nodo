@@ -64,9 +64,14 @@ final class EstadoApp: ObservableObject {
     /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
     /// presenta observando esta bandera.
     @Published var mostrarHojaModelos = false
-    /// Conversacion que /nuevo o Ramificar quieren abrir. ChatsRaizView la
-    /// empuja a su pila.
+    /// Conversacion que /nuevo quiere abrir. ChatsRaizView la empuja a su pila.
     @Published var idParaAbrir: UUID?
+    /// Conversacion que Ramificar quiere abrir con la pila reiniciada.
+    ///
+    /// La raiz deja la ruta como una apertura normal desde la lista
+    /// (raiz -> copia), en vez de apilar la copia sobre el chat original: asi
+    /// el boton de volver dice "Chats" y el gesto de borde no cambia.
+    @Published var idParaAbrirReiniciandoRuta: UUID?
     /// Texto que /exportar quiere compartir. ChatView lo recoge y presenta la
     /// hoja del sistema.
     @Published var textoParaCompartirSolicitado: String?
@@ -729,8 +734,9 @@ final class EstadoApp: ObservableObject {
         }
 
         abrir(nueva)
-        // La raiz observa este id y empuja la copia en la misma pila.
-        idParaAbrir = nueva.id
+        // La raiz observa este id y reinicia la pila: raiz -> copia, la misma
+        // profundidad que una apertura normal desde la lista.
+        idParaAbrirReiniciandoRuta = nueva.id
     }
 
     func borrar(_ otra: Conversation) {
@@ -771,6 +777,7 @@ final class EstadoApp: ObservableObject {
         mostrarHojaModelos = false
         textoParaCompartirSolicitado = nil
         idParaAbrir = nil
+        idParaAbrirReiniciandoRuta = nil
     }
 
     /// Cambia el proveedor activo y deja el divisor visual del cambio de modelo.

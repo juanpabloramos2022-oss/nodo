@@ -58,8 +58,8 @@ struct ChatsRaizView: View {
                 }
             }
         }
-        // /nuevo y Ramificar dejan aqui el id de la conversacion que hay que
-        // mostrar. La raiz la empuja a la misma pila que usa el boton + Nuevo.
+        // /nuevo deja aqui el id de la conversacion que hay que mostrar. La
+        // raiz la empuja a la misma pila que usa el boton + Nuevo.
         .onChange(of: estado.idParaAbrir) { _, id in
             guard let id else { return }
             estado.idParaAbrir = nil
@@ -68,6 +68,16 @@ struct ChatsRaizView: View {
             if ruta.last != id {
                 ruta.append(id)
             }
+        }
+        // Ramificar reinicia la pila a raiz -> copia, la misma profundidad que
+        // abrir un chat desde la lista. El boton de volver dice "Chats" (ley
+        // n. 1) y el gesto de borde funciona como siempre.
+        .onChange(of: estado.idParaAbrirReiniciandoRuta) { _, id in
+            guard let id else { return }
+            estado.idParaAbrirReiniciandoRuta = nil
+            bajarTeclado()
+            nuevas[id] = estado.conversacion
+            ruta = [id]
         }
         // La barra Listo se declara UNA sola vez en la raiz de esta jerarquia
         // (contrato §4): cubre el buscador de la lista y la caja del chat.
