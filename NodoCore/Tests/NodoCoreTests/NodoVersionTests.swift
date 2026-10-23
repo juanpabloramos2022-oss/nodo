@@ -9,11 +9,11 @@ import XCTest
 /// codigo.
 final class NodoVersionTests: XCTestCase {
     func testDescripcionIncluyeLaVersion() {
-        XCTAssertEqual(NodoVersion.descripcion, "Nodo v0.2.0")
+        XCTAssertEqual(NodoVersion.descripcion, "Nodo v0.3.0")
     }
 
     func testVersionYBuildNoEstanVacios() {
-        XCTAssertFalse(NodoVersion.version.isEmpty)
-        XCTAssertFalse(NodoVersion.build.isEmpty)
+        XCTAssertEqual(NodoVersion.version, "0.3.0")
+        XCTAssertEqual(NodoVersion.build, "4")
     }
 }
