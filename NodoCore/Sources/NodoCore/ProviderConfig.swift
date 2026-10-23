@@ -53,19 +53,28 @@ public struct ProviderConfig: Codable, Identifiable, Equatable {
     public var protocolo: ProtocoloProveedor
     public var baseURL: String
     public var modelo: String
+    /// Precio-tope de entrada por millon de tokens. nil = sin precio
+    /// configurado, y entonces no se estima costo.
+    public var precioEntradaPorMillon: Double?
+    /// Precio-tope de salida por millon de tokens.
+    public var precioSalidaPorMillon: Double?
 
     public init(
         id: UUID = UUID(),
         nombre: String,
         protocolo: ProtocoloProveedor = .chatCompletions,
         baseURL: String,
-        modelo: String
+        modelo: String,
+        precioEntradaPorMillon: Double? = nil,
+        precioSalidaPorMillon: Double? = nil
     ) {
         self.id = id
         self.nombre = nombre
         self.protocolo = protocolo
         self.baseURL = baseURL
         self.modelo = modelo
+        self.precioEntradaPorMillon = precioEntradaPorMillon
+        self.precioSalidaPorMillon = precioSalidaPorMillon
     }
 
     /// Clave con la que la credencial vive en el Keychain.

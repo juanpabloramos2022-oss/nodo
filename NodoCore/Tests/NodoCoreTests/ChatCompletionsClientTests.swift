@@ -30,6 +30,8 @@ final class ChatCompletionsClientTests: XCTestCase {
         let contenido = try cuerpo(peticion)
         XCTAssertEqual(contenido["model"] as? String, "modelo-x")
         XCTAssertEqual(contenido["stream"] as? Bool, true)
+        let opciones = try XCTUnwrap(contenido["stream_options"] as? [String: Any])
+        XCTAssertEqual(opciones["include_usage"] as? Bool, true)
         let mensajes = try XCTUnwrap(contenido["messages"] as? [[String: Any]])
         XCTAssertEqual(mensajes.first?["role"] as? String, "user")
         XCTAssertEqual(mensajes.first?["content"] as? String, "hola")
@@ -80,8 +82,21 @@ final class ChatCompletionsClientTests: XCTestCase {
         )
 
         let mensajes = try XCTUnwrap(try cuerpo(peticion)["messages"] as? [[String: Any]])
+        XCTAssertEqual(mensajes.count, 2)
         XCTAssertEqual(mensajes.first?["role"] as? String, "system")
         XCTAssertEqual(mensajes.first?["content"] as? String, "se breve")
+        XCTAssertEqual(mensajes.last?["role"] as? String, "user")
+    }
+
+    func testSinMensajeDeSistemaNoSeEnviaNinguno() throws {
+        let peticion = try cliente(TransporteFalso()).construirPeticion(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            herramientas: []
+        )
+
+        let mensajes = try XCTUnwrap(try cuerpo(peticion)["messages"] as? [[String: Any]])
+        XCTAssertFalse(mensajes.contains { $0["role"] as? String == "system" })
+        XCTAssertEqual(mensajes.first?["role"] as? String, "user")
     }
 
     func testStreamAcumulaTextoYReportaParciales() async throws {
@@ -130,6 +145,62 @@ final class ChatCompletionsClientTests: XCTestCase {
         )
 
         XCTAssertEqual(respuesta.texto, "a medias")
+    }
+
+    func testStreamConUsoGuardaLosTokensEnElMensaje() async throws {
+        // El stream termina en el trozo de consumo, sin [DONE]: el uso tiene
+        // que viajar tambien por el retorno de cierre del parser.
+        let transporte = TransporteFalso(trozos: [
+            Ayudas.trozoTexto("Hola"),
+            Ayudas.trozoUso(entrada: 12, salida: 7)
+        ])
+        let bucle = ToolLoop(motor: cliente(transporte), herramientas: [])
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "saluda")]
+        )
+
+        let mensaje = try XCTUnwrap(resultado.mensajesNuevos.last)
+        XCTAssertEqual(mensaje.rol, .asistente)
+        XCTAssertEqual(mensaje.texto, "Hola")
+        XCTAssertEqual(mensaje.tokensEntrada, 12)
+        XCTAssertEqual(mensaje.tokensSalida, 7)
+        XCTAssertEqual(resultado.usoTotal, UsoTokens(entrada: 12, salida: 7))
+    }
+
+    func testStreamConUsoYConDoneTambienGuardaLosTokens() async throws {
+        let transporte = TransporteFalso(trozos: [
+            Ayudas.trozoTexto("Hola"),
+            Ayudas.trozoUso(entrada: 3, salida: 2),
+            "data: [DONE]\n\n"
+        ])
+
+        let respuesta = try await cliente(transporte).responder(
+            mensajes: [ChatMessage(rol: .usuario, texto: "saluda")],
+            herramientas: [],
+            alRecibirTexto: nil
+        )
+
+        XCTAssertEqual(respuesta.texto, "Hola")
+        XCTAssertEqual(respuesta.uso, UsoTokens(entrada: 3, salida: 2))
+    }
+
+    func testStreamSinUsoDejaElMensajeSinCifras() async throws {
+        let transporte = TransporteFalso(trozos: [
+            Ayudas.trozoTexto("Hola"),
+            "data: [DONE]\n\n"
+        ])
+        let bucle = ToolLoop(motor: cliente(transporte), herramientas: [])
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "saluda")]
+        )
+
+        let mensaje = try XCTUnwrap(resultado.mensajesNuevos.last)
+        XCTAssertEqual(mensaje.texto, "Hola")
+        XCTAssertNil(mensaje.tokensEntrada)
+        XCTAssertNil(mensaje.tokensSalida)
+        XCTAssertNil(resultado.usoTotal)
     }
 
     func testTrozoIlegibleNoRompeElStream() async throws {

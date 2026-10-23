@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import UIKit
 
@@ -7,6 +8,7 @@ import NodoCore
 struct SettingsView: View {
     @EnvironmentObject private var estado: EstadoApp
     @State private var aviso: String?
+    @State private var topeAviso = ""
 
     var body: some View {
         NavigationStack {
@@ -64,13 +66,45 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextEditor(text: $estado.config.systemPrompt)
-                        .frame(minHeight: 110)
-                        .foregroundStyle(.white)
+                    NavigationLink {
+                        MemoriaView()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Memoria")
+                                    .foregroundStyle(.white)
+                                Text(vistaPreviaMemoria)
+                                    .font(.caption)
+                                    .foregroundStyle(Tema.textoSuave)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                    }
                 } header: {
-                    Text("Instrucciones permanentes")
+                    Text("Contexto")
                 } footer: {
-                    Text("Se envia al principio de cada conversacion.")
+                    Text("Esto se incluye en todos tus chats.")
+                }
+
+                Section {
+                    HStack {
+                        Text("Tope de aviso por chat")
+                            .foregroundStyle(.white)
+                        Spacer()
+                        TextField("1.00", text: $topeAviso)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: 120)
+                            .onChange(of: topeAviso) { _, nuevo in
+                                actualizarTope(nuevo)
+                            }
+                    }
+                } header: {
+                    Text("Gasto")
+                } footer: {
+                    Text("Dolares estimados. 0 = sin aviso.")
                 }
 
                 Section {
@@ -99,6 +133,9 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(Tema.fondo.ignoresSafeArea())
             .navigationTitle("Ajustes")
+            .onAppear {
+                topeAviso = Self.textoDe(estado.config.topeAvisoCostoEfectivo)
+            }
             .alert(
                 "Nodo",
                 isPresented: Binding(
@@ -111,6 +148,38 @@ struct SettingsView: View {
                 Text(aviso ?? "")
             }
         }
+    }
+
+    /// Primera linea de la memoria, para asomarla en la fila de Ajustes.
+    private var vistaPreviaMemoria: String {
+        let limpio = estado.config.systemPrompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return limpio.isEmpty ? "vacia" : limpio
+    }
+
+    private static func textoDe(_ valor: Double) -> String {
+        // Sin redondear: el valor guardado puede tener mas decimales que los
+        // que se ven en el campo, y no queremos pisarlo al abrir Ajustes.
+        if valor == valor.rounded() {
+            return String(format: "%.0f", valor)
+        }
+        return String(valor)
+    }
+
+    /// Guarda el tope mientras se escribe. Un texto invalido no pisa el valor
+    /// anterior; vacio vuelve al tope por defecto.
+    private func actualizarTope(_ texto: String) {
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        if limpio.isEmpty {
+            estado.config.topeAvisoCosto = nil
+            return
+        }
+
+        let normalizado = limpio.replacingOccurrences(of: ",", with: ".")
+        guard let valor = Double(normalizado), valor.isFinite, valor >= 0 else {
+            return
+        }
+        estado.config.topeAvisoCosto = valor
     }
 
     private func copiarConfig() {
@@ -127,8 +196,11 @@ struct SettingsView: View {
             aviso = "El portapapeles esta vacio."
             return
         }
-        aviso = estado.importarConfig(texto)
-            ? "Configuracion importada."
-            : "El texto del portapapeles no es una configuracion."
+        if estado.importarConfig(texto) {
+            topeAviso = Self.textoDe(estado.config.topeAvisoCostoEfectivo)
+            aviso = "Configuracion importada."
+        } else {
+            aviso = "El texto del portapapeles no es una configuracion."
+        }
     }
 }

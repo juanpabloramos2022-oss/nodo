@@ -118,4 +118,207 @@ final class ConversationStoreTests: XCTestCase {
     func testTituloSugeridoSinMensajes() {
         XCTAssertEqual(Conversation().tituloSugerido, "Conversacion")
     }
+
+    func testDescartarUltimoTurnoSimple() {
+        var conversacion = Conversation(mensajes: [
+            ChatMessage(rol: .usuario, texto: "hola"),
+            ChatMessage(rol: .asistente, texto: "buenas")
+        ])
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertEqual(conversacion.mensajes.map(\.rol), [.usuario])
+        XCTAssertEqual(conversacion.mensajes.first?.texto, "hola")
+        XCTAssertEqual(descartado.map(\.rol), [.asistente])
+        XCTAssertEqual(descartado.first?.texto, "buenas")
+    }
+
+    func testDescartarUltimoTurnoConHerramientas() {
+        var conversacion = Conversation(mensajes: [
+            ChatMessage(rol: .usuario, texto: "busca el precio"),
+            ChatMessage(
+                rol: .asistente,
+                texto: "",
+                toolCalls: [ToolCall(id: "llamada-1", nombre: "red", argumentos: "{}")]
+            ),
+            ChatMessage(rol: .herramienta, texto: "42", toolCallId: "llamada-1"),
+            ChatMessage(rol: .asistente, texto: "Cuesta 42.")
+        ])
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertEqual(conversacion.mensajes.map(\.rol), [.usuario])
+        XCTAssertEqual(descartado.map(\.rol), [.asistente, .herramienta, .asistente])
+    }
+
+    func testDescartarUltimoTurnoSinRespuestaNoCambiaNada() {
+        let mensajes = [ChatMessage(rol: .usuario, texto: "hola")]
+        var conversacion = Conversation(mensajes: mensajes)
+
+        let descartado = conversacion.descartarUltimoTurno()
+
+        XCTAssertTrue(descartado.isEmpty)
+        XCTAssertEqual(conversacion.mensajes, mensajes)
+    }
+
+    // MARK: - Fijar, archivar y buscar
+
+    /// Un archivo tal como lo escribia v0.1.0, sin fijada ni archivada.
+    func testJSONDeV010SinCamposNuevosSigueAbriendo() throws {
+        let id = UUID()
+        let json = """
+        {
+          "id": "\(id.uuidString)",
+          "titulo": "Conversacion antigua",
+          "mensajes": [
+            {
+              "id": "\(UUID().uuidString)",
+              "rol": "usuario",
+              "texto": "hola desde la version anterior",
+              "fecha": "2024-01-01T10:00:00Z",
+              "toolCalls": []
+            }
+          ],
+          "creada": "2024-01-01T10:00:00Z",
+          "actualizada": "2024-01-01T10:05:00Z"
+        }
+        """
+        let ruta = directorio.appendingPathComponent("\(id.uuidString).json")
+        try Data(json.utf8).write(to: ruta)
+
+        XCTAssertEqual(store.listar().map(\.id), [id])
+        let cargada = try XCTUnwrap(store.cargar(id: id))
+
+        XCTAssertEqual(cargada.titulo, "Conversacion antigua")
+        XCTAssertEqual(cargada.mensajes.first?.texto, "hola desde la version anterior")
+        XCTAssertFalse(cargada.fijada)
+        XCTAssertFalse(cargada.archivada)
+        XCTAssertFalse(cargada.avisoCostoMostrado)
+        XCTAssertNil(cargada.mensajes.first?.tokensEntrada)
+        XCTAssertNil(cargada.mensajes.first?.tokensSalida)
+    }
+
+    func testAvisoCostoMostradoSobreviveAGuardarYCargar() throws {
+        let conversacion = Conversation(titulo: "Con aviso", avisoCostoMostrado: true)
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertTrue(cargada.avisoCostoMostrado)
+    }
+
+    func testTokensDelMensajeSobrevivenAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Con consumo",
+            mensajes: [
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "hola",
+                    tokensEntrada: 12,
+                    tokensSalida: 7
+                )
+            ]
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+        let mensaje = try XCTUnwrap(cargada.mensajes.first)
+
+        XCTAssertEqual(mensaje.tokensEntrada, 12)
+        XCTAssertEqual(mensaje.tokensSalida, 7)
+        XCTAssertEqual(mensaje.uso, UsoTokens(entrada: 12, salida: 7))
+    }
+
+    func testFijadaYArchivadaSobrevivenAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Con marcadores",
+            fijada: true,
+            archivada: true
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertTrue(cargada.fijada)
+        XCTAssertTrue(cargada.archivada)
+    }
+
+    func testSeccionesPoneFijadasPrimeroYDejaFueraLasArchivadas() {
+        let fijadaVieja = Conversation(
+            titulo: "fijada vieja",
+            actualizada: fecha(1_000),
+            fijada: true
+        )
+        let fijadaNueva = Conversation(
+            titulo: "fijada nueva",
+            actualizada: fecha(2_000),
+            fijada: true
+        )
+        let antigua = Conversation(titulo: "antigua", actualizada: fecha(3_000))
+        let reciente = Conversation(titulo: "reciente", actualizada: fecha(4_000))
+        let archivada = Conversation(
+            titulo: "archivada",
+            actualizada: fecha(5_000),
+            archivada: true
+        )
+
+        let secciones = HistorialConversaciones.secciones(
+            de: [antigua, archivada, reciente, fijadaVieja, fijadaNueva]
+        )
+
+        XCTAssertEqual(secciones.fijadas.map(\.titulo), ["fijada nueva", "fijada vieja"])
+        XCTAssertEqual(secciones.recientes.map(\.titulo), ["reciente", "antigua"])
+        XCTAssertEqual(secciones.archivadas.map(\.titulo), ["archivada"])
+        XCTAssertEqual(
+            secciones.principales.map(\.titulo),
+            ["fijada nueva", "fijada vieja", "reciente", "antigua"]
+        )
+        XCTAssertFalse(secciones.principales.contains { $0.id == archivada.id })
+    }
+
+    func testBusquedaEncuentraPorTextoDeMensajeYNoSoloPorTitulo() {
+        let porMensaje = Conversation(
+            titulo: "Receta",
+            mensajes: [ChatMessage(rol: .usuario, texto: "Como hago masa madre")]
+        )
+        let porTitulo = Conversation(
+            titulo: "Masa madre facil",
+            mensajes: [ChatMessage(rol: .usuario, texto: "otra cosa")]
+        )
+        let ajeno = Conversation(
+            titulo: "Viaje",
+            mensajes: [ChatMessage(rol: .usuario, texto: "billetes")]
+        )
+
+        let secciones = HistorialConversaciones.secciones(
+            de: [porMensaje, porTitulo, ajeno],
+            busqueda: "masa"
+        )
+
+        XCTAssertEqual(
+            Set(secciones.principales.map(\.id)),
+            Set([porMensaje.id, porTitulo.id])
+        )
+        XCTAssertFalse(secciones.principales.contains { $0.id == ajeno.id })
+    }
+
+    func testBusquedaDentroDeArchivadasNoLasDevuelveEnLaPrincipal() {
+        let archivada = Conversation(
+            titulo: "Vieja",
+            mensajes: [ChatMessage(rol: .usuario, texto: "un secreto de masa")],
+            archivada: true
+        )
+
+        let secciones = HistorialConversaciones.secciones(
+            de: [archivada],
+            busqueda: "secreto"
+        )
+
+        XCTAssertTrue(secciones.principales.isEmpty)
+        XCTAssertEqual(secciones.archivadas.map(\.id), [archivada.id])
+    }
+
+    private func fecha(_ segundos: TimeInterval) -> Date {
+        Date(timeIntervalSince1970: segundos)
+    }
 }

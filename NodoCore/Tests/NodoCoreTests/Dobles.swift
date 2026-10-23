@@ -123,6 +123,18 @@ enum Ayudas {
         trozoDelta(["tool_calls": llamadas])
     }
 
+    /// Trozo SSE final de consumo: llega sin choices, como en la API real.
+    static func trozoUso(entrada: Int, salida: Int) -> String {
+        "data: " + json([
+            "choices": [],
+            "usage": [
+                "prompt_tokens": entrada,
+                "completion_tokens": salida,
+                "total_tokens": entrada + salida
+            ]
+        ]) + "\n\n"
+    }
+
     static func directorioTemporal() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("nodo-pruebas-\(UUID().uuidString)", isDirectory: true)

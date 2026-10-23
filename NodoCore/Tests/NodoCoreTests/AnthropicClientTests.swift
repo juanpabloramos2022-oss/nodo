@@ -55,6 +55,15 @@ final class AnthropicClientTests: XCTestCase {
         XCTAssertEqual(mensajes.first?["role"] as? String, "user")
     }
 
+    func testSinMensajeDeSistemaNoHayCampoSystem() throws {
+        let peticion = try cliente(TransporteFalso()).construirPeticion(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            herramientas: []
+        )
+
+        XCTAssertNil(try cuerpo(peticion)["system"])
+    }
+
     func testResultadosDeHerramientaSeAgrupanEnUnMensajeDeUsuario() {
         let mensajes: [ChatMessage] = [
             ChatMessage(rol: .usuario, texto: "x"),
@@ -124,6 +133,40 @@ final class AnthropicClientTests: XCTestCase {
 
         XCTAssertEqual(respuesta.texto, "Hola adios")
         XCTAssertEqual(parciales, ["Hola", " adios"])
+    }
+
+    func testUsoRealLlegaEnMessageDeltaYSeGuardaEnElMensaje() async throws {
+        let transporte = TransporteFalso(trozos: [
+            trozo([
+                "type": "message_start",
+                "message": [
+                    "id": "msg_1",
+                    "usage": ["input_tokens": 0, "output_tokens": 0]
+                ]
+            ]),
+            trozo([
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": ["type": "text_delta", "text": "Hola"]
+            ]),
+            trozo([
+                "type": "message_delta",
+                "delta": ["stop_reason": "end_turn"],
+                "usage": ["input_tokens": 11, "output_tokens": 5]
+            ]),
+            trozo(["type": "message_stop"])
+        ])
+        let bucle = ToolLoop(motor: cliente(transporte), herramientas: [])
+
+        let resultado = try await bucle.ejecutar(
+            historial: [ChatMessage(rol: .usuario, texto: "saluda")]
+        )
+
+        XCTAssertEqual(resultado.usoTotal, UsoTokens(entrada: 11, salida: 5))
+        let mensaje = try XCTUnwrap(resultado.mensajesNuevos.last)
+        XCTAssertEqual(mensaje.texto, "Hola")
+        XCTAssertEqual(mensaje.tokensEntrada, 11)
+        XCTAssertEqual(mensaje.tokensSalida, 5)
     }
 
     func testToolUseSeAcumulaDesdePartialJSON() async throws {

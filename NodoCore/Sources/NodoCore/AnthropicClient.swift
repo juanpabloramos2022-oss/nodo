@@ -38,22 +38,35 @@ public final class AnthropicClient: ChatEngine {
         var parser = SSEParser()
         var texto = ""
         var bloques: [Int: BloqueHerramienta] = [:]
+        var uso: UsoTokens?
 
         for try await trozo in stream {
             for evento in parser.consumir(trozo) {
-                if procesar(evento: evento, texto: &texto, bloques: &bloques, alRecibirTexto: alRecibirTexto) {
-                    return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques))
+                if procesar(
+                    evento: evento,
+                    texto: &texto,
+                    bloques: &bloques,
+                    uso: &uso,
+                    alRecibirTexto: alRecibirTexto
+                ) {
+                    return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques), uso: uso)
                 }
             }
         }
 
         for evento in parser.terminar() {
-            if procesar(evento: evento, texto: &texto, bloques: &bloques, alRecibirTexto: alRecibirTexto) {
-                return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques))
+            if procesar(
+                evento: evento,
+                texto: &texto,
+                bloques: &bloques,
+                uso: &uso,
+                alRecibirTexto: alRecibirTexto
+            ) {
+                return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques), uso: uso)
             }
         }
 
-        return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques))
+        return RespuestaModelo(texto: texto, toolCalls: cerrar(bloques), uso: uso)
     }
 
     // MARK: - Peticion
@@ -172,6 +185,7 @@ public final class AnthropicClient: ChatEngine {
         evento: SSEEvent,
         texto: inout String,
         bloques: inout [Int: BloqueHerramienta],
+        uso: inout UsoTokens?,
         alRecibirTexto: ((String) -> Void)?
     ) -> Bool {
         let datos = evento.datos.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -181,6 +195,25 @@ public final class AnthropicClient: ChatEngine {
         let tipo = (objeto["type"] as? String) ?? evento.evento ?? ""
 
         switch tipo {
+        case "message_start":
+            // Aqui el usage suele venir en ceros, como aviso de que el real
+            // llegara en message_delta. Se ignora ese cero para no ensenar
+            // cifras falsas si el stream se corta antes del delta; si trae
+            // entrada de verdad (API nativa), se conserva.
+            if let mensaje = objeto["message"] as? [String: Any],
+               let usoJSON = mensaje["usage"] as? [String: Any],
+               let leido = Self.leerUso(usoJSON, anterior: uso),
+               leido.entrada > 0 || leido.salida > 0 {
+                uso = leido
+            }
+            return false
+
+        case "message_delta":
+            if let usoJSON = objeto["usage"] as? [String: Any] {
+                uso = Self.leerUso(usoJSON, anterior: uso)
+            }
+            return false
+
         case "content_block_start":
             let indice = (objeto["index"] as? NSNumber)?.intValue ?? 0
             if let bloque = objeto["content_block"] as? [String: Any],
@@ -214,6 +247,24 @@ public final class AnthropicClient: ChatEngine {
         default:
             return false
         }
+    }
+
+    /// Lee un bloque usage de Anthropic y lo mezcla con lo ya visto.
+    ///
+    /// message_start puede traer solo la entrada y message_delta la salida (o
+    /// ambos en ceros y ambos reales, segun el servidor). Se conserva el valor
+    /// anterior de cada campo que no venga en el evento.
+    private static func leerUso(
+        _ diccionario: [String: Any],
+        anterior: UsoTokens?
+    ) -> UsoTokens? {
+        let entrada = (diccionario["input_tokens"] as? NSNumber)?.intValue
+        let salida = (diccionario["output_tokens"] as? NSNumber)?.intValue
+        guard entrada != nil || salida != nil else { return anterior }
+        return UsoTokens(
+            entrada: entrada ?? anterior?.entrada ?? 0,
+            salida: salida ?? anterior?.salida ?? 0
+        )
     }
 
     private func cerrar(_ bloques: [Int: BloqueHerramienta]) -> [ToolCall] {

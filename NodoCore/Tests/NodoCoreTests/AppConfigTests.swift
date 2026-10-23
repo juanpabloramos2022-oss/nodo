@@ -65,6 +65,22 @@ final class ProviderConfigTests: XCTestCase {
         )
     }
 
+    func testPreciosDelProveedorSobrevivenAlJSON() throws {
+        let original = ProviderConfig(
+            nombre: "x",
+            baseURL: "https://a.test",
+            modelo: "m",
+            precioEntradaPorMillon: 1.5,
+            precioSalidaPorMillon: 2.5
+        )
+
+        let datos = try JSONEncoder().encode(original)
+        let vuelta = try JSONDecoder().decode(ProviderConfig.self, from: datos)
+
+        XCTAssertEqual(vuelta.precioEntradaPorMillon, 1.5)
+        XCTAssertEqual(vuelta.precioSalidaPorMillon, 2.5)
+    }
+
     func testClaveKeychainEsUnicaPorProveedor() {
         let uno = Ayudas.proveedor()
         let otro = Ayudas.proveedor()
@@ -90,6 +106,25 @@ final class AppConfigTests: XCTestCase {
         XCTAssertTrue(vuelta.servidor.activo)
     }
 
+    func testSystemPromptConservaSaltosDeLineaEnElJSON() throws {
+        let texto = "Primera linea\nSegunda linea\n\nUltima linea"
+        let original = AppConfig(proveedores: [], systemPrompt: texto)
+
+        let datos = try original.json()
+        let vuelta = try AppConfig.desde(json: datos)
+
+        XCTAssertTrue(String(decoding: datos, as: UTF8.self).contains("systemPrompt"))
+        XCTAssertEqual(vuelta.systemPrompt, texto)
+    }
+
+    func testSystemPromptVacioSeConservaEnElJSON() throws {
+        let original = AppConfig(proveedores: [], systemPrompt: "")
+
+        let vuelta = try AppConfig.desde(json: try original.json())
+
+        XCTAssertEqual(vuelta.systemPrompt, "")
+    }
+
     func testJSONExportadoNoContieneCredenciales() throws {
         let config = AppConfig(proveedores: [Ayudas.proveedor()])
         let texto = String(decoding: try config.json(), as: UTF8.self).lowercased()
@@ -111,6 +146,95 @@ final class AppConfigTests: XCTestCase {
         let proveedor = Ayudas.proveedor()
         let config = AppConfig(proveedores: [proveedor], proveedorActivo: UUID())
         XCTAssertEqual(config.proveedorSeleccionado?.id, proveedor.id)
+    }
+
+    func testCambiarProveedorActivoDevuelveElNuevo() {
+        let primero = Ayudas.proveedor(nombre: "Primero")
+        let segundo = Ayudas.proveedor(
+            nombre: "Segundo",
+            base: "https://api.otro.test/v1",
+            modelo: "modelo-y"
+        )
+        var config = AppConfig(proveedores: [primero, segundo], proveedorActivo: primero.id)
+
+        XCTAssertEqual(config.proveedorSeleccionado?.id, primero.id)
+
+        config.proveedorActivo = segundo.id
+
+        XCTAssertEqual(config.proveedorSeleccionado?.id, segundo.id)
+        XCTAssertEqual(config.proveedorSeleccionado?.nombre, "Segundo")
+        XCTAssertEqual(config.proveedorSeleccionado?.modelo, "modelo-y")
+    }
+
+    func testCambioDeProveedorSeConservaAlRecargarJSON() throws {
+        let primero = Ayudas.proveedor(nombre: "Primero")
+        let segundo = Ayudas.proveedor(
+            nombre: "Segundo",
+            base: "https://api.otro.test/v1",
+            modelo: "modelo-y"
+        )
+        var config = AppConfig(proveedores: [primero, segundo], proveedorActivo: primero.id)
+
+        config.proveedorActivo = segundo.id
+
+        let recargada = try AppConfig.desde(json: try config.json())
+
+        XCTAssertEqual(recargada.proveedorActivo, segundo.id)
+        XCTAssertEqual(recargada.proveedorSeleccionado?.id, segundo.id)
+        XCTAssertEqual(recargada.proveedorSeleccionado?.modelo, "modelo-y")
+    }
+
+    func testJSONDeV0_1_0SigueDecodificando() throws {
+        let id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let json = """
+        {
+          "version": 1,
+          "proveedores": [
+            {
+              "id": "\(id.uuidString)",
+              "nombre": "Ejemplo",
+              "protocolo": "chatCompletions",
+              "baseURL": "https://api.ejemplo.test/v1",
+              "modelo": "modelo-x"
+            }
+          ],
+          "proveedorActivo": "\(id.uuidString)",
+          "systemPrompt": "se breve",
+          "servidor": {
+            "nombre": "Servidor",
+            "url": "https://servidor.test/mcp",
+            "activo": false
+          }
+        }
+        """
+
+        let config = try AppConfig.desde(json: Data(json.utf8))
+
+        XCTAssertEqual(config.version, 1)
+        XCTAssertEqual(config.proveedorActivo, id)
+        XCTAssertEqual(config.proveedorSeleccionado?.id, id)
+        XCTAssertEqual(config.proveedorSeleccionado?.modelo, "modelo-x")
+        XCTAssertNil(config.proveedorSeleccionado?.precioEntradaPorMillon)
+        XCTAssertNil(config.proveedorSeleccionado?.precioSalidaPorMillon)
+        XCTAssertEqual(config.systemPrompt, "se breve")
+        XCTAssertEqual(config.servidor.url, "https://servidor.test/mcp")
+        XCTAssertNil(config.topeAvisoCosto)
+        XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)
+    }
+
+    func testTopeDeAvisoPorDefectoEsUnDolar() {
+        let config = AppConfig()
+        XCTAssertNil(config.topeAvisoCosto)
+        XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)
+    }
+
+    func testTopeDeAvisoGuardadoSobreviveAlJSON() throws {
+        let config = AppConfig(topeAvisoCosto: 0)
+
+        let vuelta = try AppConfig.desde(json: try config.json())
+
+        XCTAssertEqual(vuelta.topeAvisoCosto, 0.0)
+        XCTAssertEqual(vuelta.topeAvisoCostoEfectivo, 0, accuracy: 0.0001)
     }
 
     func testJSONCorruptoFalla() {
