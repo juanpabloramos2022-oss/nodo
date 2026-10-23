@@ -154,16 +154,20 @@ final class CapturasFase4Tests: XCTestCase {
             elemento(identifier: "memoria-editar").waitForExistence(timeout: 30),
             "Falta la salida para editar la Memoria"
         )
-        XCTAssertTrue(
-            elemento(identifier: "skill-nueva").waitForExistence(timeout: 30),
-            "Falta el boton para crear una skill"
-        )
         Thread.sleep(forTimeInterval: 0.4)
 
+        // Primera foto en el borde superior: Memoria, acumulador y tope.
         disparar("f4-mi-contexto")
 
-        // Segunda foto con scroll minimo: la lista de skills con su slug.
-        app.swipeUp()
+        // El bloque Skills queda por debajo del pliegue. En un Form las celdas
+        // que no estan cerca del viewport no se construyen y por eso no
+        // aparecen en el arbol de accesibilidad: hay que desplazar el
+        // contenedor ANTES de comprobar `exists`, no despues.
+        let nueva = elemento(identifier: "skill-nueva")
+        XCTAssertTrue(
+            asegurarVisible(nueva),
+            "Falta el boton para crear una skill"
+        )
         Thread.sleep(forTimeInterval: 0.4)
         disparar("f4-mi-contexto-skills")
     }
@@ -200,11 +204,10 @@ final class CapturasFase4Tests: XCTestCase {
 
         let nueva = elemento(identifier: "skill-nueva")
         XCTAssertTrue(
-            nueva.waitForExistence(timeout: 30),
+            asegurarVisible(nueva),
             "No aparecio [Nueva skill]"
         )
-        asegurarVisible(nueva)
-        nueva.tap()
+        tocarPorElCentro(nueva)
 
         let nombre = app.textFields["skill-nombre"]
         XCTAssertTrue(
@@ -236,14 +239,26 @@ final class CapturasFase4Tests: XCTestCase {
         XCTAssertTrue(guardar.isEnabled, "Guardar esta deshabilitado tras escribir el nombre")
         guardar.tap()
 
-        let slug = app.descendants(matching: .any).matching(
+        // Se espera a que la hoja termine de cerrarse: mientras esta abierta,
+        // el primer contenedor desplazable de la app es el de la hoja, no el
+        // Form de Mi Contexto.
+        let hojaCerrada = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"),
+            object: guardar
+        )
+        if XCTWaiter().wait(for: [hojaCerrada], timeout: 15) != .completed {
+            XCTFail("La hoja de skill no se cerro tras guardar")
+        }
+        // Deja terminar la animacion de cierre antes de buscar en el Form.
+        Thread.sleep(forTimeInterval: 0.3)
+
+        let slug = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "/soporte")
         ).firstMatch
         XCTAssertTrue(
-            slug.waitForExistence(timeout: 30),
+            asegurarVisible(slug),
             "La skill creada no muestra su slug /soporte en la lista"
         )
-        asegurarVisible(slug)
         Thread.sleep(forTimeInterval: 0.4)
 
         disparar("f4-mi-contexto-skill-nueva")
@@ -256,11 +271,10 @@ final class CapturasFase4Tests: XCTestCase {
 
         let nueva = elemento(identifier: "skill-nueva")
         XCTAssertTrue(
-            nueva.waitForExistence(timeout: 30),
+            asegurarVisible(nueva),
             "No aparecio [Nueva skill]"
         )
-        asegurarVisible(nueva)
-        nueva.tap()
+        tocarPorElCentro(nueva)
 
         let nombre = app.textFields["skill-nombre"]
         XCTAssertTrue(
@@ -421,21 +435,86 @@ final class CapturasFase4Tests: XCTestCase {
             .firstMatch
     }
 
-    /// Si el elemento quedo por debajo del pliegue, desplaza el formulario.
-    private func asegurarVisible(_ elemento: XCUIElement) {
-        let visible = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "hittable == true"),
-            object: elemento
-        )
-        if XCTWaiter().wait(for: [visible], timeout: 10) == .completed {
-            return
+    /// Desplaza el contenedor desplazable real hasta que el elemento exista y
+    /// se pueda tocar.
+    ///
+    /// En un `Form` (una `UICollectionView`) las celdas que no estan cerca del
+    /// viewport no se construyen y por eso no aparecen en el arbol de
+    /// accesibilidad: hay que desplazar ANTES de comprobar `exists`, no
+    /// despues. Cada pasada es corta y se comprueba el estado al terminarla;
+    /// el numero de pasadas es generoso pero acotado.
+    ///
+    /// Se arrastra desde el margen izquierdo del contenedor, una zona neutra
+    /// sin botones ni campos que puedan capturar el gesto, en lugar de usar
+    /// `app.swipeUp()` sobre la app en abstracto.
+    ///
+    /// - Returns: `true` si al terminar el elemento existe y es tocable.
+    @discardableResult
+    private func asegurarVisible(_ elemento: XCUIElement) -> Bool {
+        if elemento.exists && elemento.isHittable {
+            return true
         }
 
-        var intentos = 0
-        while !elemento.isHittable && intentos < 4 {
-            app.swipeUp()
-            intentos += 1
+        let contenedor = contenedorDesplazable()
+        let inicio = contenedor.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.08, dy: 0.72)
+        )
+        let fin = contenedor.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.08, dy: 0.52)
+        )
+
+        for _ in 0..<14 {
+            inicio.press(
+                forDuration: 0.05,
+                thenDragTo: fin,
+                withVelocity: .slow,
+                thenHoldForDuration: 0.1
+            )
+            // SwiftUI publica las celdas nuevas al asentar el scroll.
+            Thread.sleep(forTimeInterval: 0.25)
+
+            if elemento.exists && elemento.isHittable {
+                return true
+            }
         }
+
+        return elemento.exists && elemento.isHittable
+    }
+
+    /// Contenedor que de verdad se desplaza en la pantalla actual: el `Form`
+    /// de Mi Contexto es una `UICollectionView`; Conexiones usa un `ScrollView`.
+    private func contenedorDesplazable() -> XCUIElement {
+        let coleccion = app.collectionViews.firstMatch
+        if coleccion.exists {
+            return coleccion
+        }
+
+        let tabla = app.tables.firstMatch
+        if tabla.exists {
+            return tabla
+        }
+
+        let scroll = app.scrollViews.firstMatch
+        if scroll.exists {
+            return scroll
+        }
+
+        // La pestana puede estar terminando de montarse: se espera un instante
+        // acotado al contenedor principal, sin alargar la espera del scroll.
+        if coleccion.waitForExistence(timeout: 5) {
+            return coleccion
+        }
+        if scroll.waitForExistence(timeout: 5) {
+            return scroll
+        }
+        return app
+    }
+
+    /// Toca el centro geometrico del elemento, que ya esta visible.
+    private func tocarPorElCentro(_ elemento: XCUIElement) {
+        elemento.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
     }
 
     private func botonListo() -> XCUIElement {
