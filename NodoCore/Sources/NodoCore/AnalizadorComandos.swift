@@ -64,6 +64,10 @@ public enum ResultadoAnalisis: Equatable {
     case mensajeNormal(texto: String)
     /// La linea entera es un comando local; no se envia nada al modelo.
     case comando(ComandoIntegrado)
+    /// El PRIMER token es un comando conocido y habia texto detras (D1=A):
+    /// el comando se ejecuta y el resto se descarta. `descartado` es ese texto,
+    /// para que la app avise en el hilo que no se envio.
+    case comandoConTexto(comando: ComandoIntegrado, descartado: String)
     /// Skills resueltas y el mensaje limpio que queda tras quitarlas.
     case conSkills(skills: [SkillResuelta], mensaje: String)
     /// Tokens con "/" que no resolvieron a ninguna skill (sin la "/").
@@ -74,16 +78,15 @@ public enum ResultadoAnalisis: Equatable {
 
 /// La gramatica unica del parser de "/" (SPEC §4.5 / contrato §8).
 ///
-/// Decision documentada: un comando integrado SOLO se reconoce cuando la linea
-/// completa es exactamente "/nombre". Si lleva texto detras ("/compact ahora")
-/// pasa al analisis de skills; como "compact" es un slug reservado, no se
-/// resuelve como skill y cae en `.tokensDesconocidos`. Se eligio asi porque la
-/// SPEC solo define la accion local para el comando solo y nunca debe
-/// ejecutarse una accion por accidente mientras el usuario escribe un mensaje.
+/// Decision firmada D1=A: manda el PRIMER token. Si es un comando integrado
+/// conocido se ejecuta, aunque lleve texto detras ("/compact ahora" compacta);
+/// el resto se descarta y el llamador avisa en el hilo, nunca en silencio. Si
+/// el primer token no es comando ni skill conocida, el texto completo se manda
+/// como mensaje normal: un "/" delante no puede tragarse lo que se escribio.
 public enum AnalizadorComandos {
     /// Slugs que el almacen de skills no puede usar (§4.6). El parser tampoco
-    /// los resuelve como skill: un comando con texto detras ("/compact ahora")
-    /// cae en `.tokensDesconocidos` aunque un registro defectuoso los ofrezca.
+    /// los resuelve como skill: un token reservado que no sea el primero cae en
+    /// `.tokensDesconocidos` aunque un registro defectuoso lo ofrezca.
     public static let slugsReservados: Set<String> = [
         "compact", "costo", "modelos", "nuevo", "exportar", "plan", "boost"
     ]
@@ -129,11 +132,33 @@ public enum AnalizadorComandos {
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
 
-        // Comando integrado: solo si es el unico token de la linea.
-        if tokens.count == 1,
-           let primero = tokens.first,
-           let comando = comandoDeToken(primero) {
-            return .comando(comando)
+        // D1=A: el PRIMER token manda. Si es un comando integrado conocido se
+        // ejecuta aunque haya texto detras; el resto se descarta y el llamador
+        // avisa en el hilo. Un primer token que no es comando ni skill conocida
+        // se manda entero como mensaje normal en vez de tragarse el texto.
+        if let primero = tokens.first {
+            if let comando = comandoDeToken(primero) {
+                guard tokens.count > 1 else { return .comando(comando) }
+                // Se corta por longitud del token crudo, no por el normalizado:
+                // el aviso debe ensenar el texto tal como se escribio.
+                let resto = String(recortado.dropFirst(primero.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return .comandoConTexto(comando: comando, descartado: resto)
+            }
+
+            // Sin comando de primer token: solo se sigue con la gramatica de
+            // skills si el primero resuelve a una skill. Si no, el "/" delante
+            // no puede bloquear el envio.
+            let crudoPrimero = primero.hasPrefix("/")
+                ? String(primero.dropFirst())
+                : primero
+            let slugPrimero = normalizarSlug(crudoPrimero)
+            let primerTokenEsSkill = !slugPrimero.isEmpty
+                && !slugsReservados.contains(slugPrimero)
+                && resolvedor.skill(porSlug: slugPrimero) != nil
+            if !primerTokenEsSkill {
+                return .mensajeNormal(texto: recortado)
+            }
         }
 
         var skills: [SkillResuelta] = []

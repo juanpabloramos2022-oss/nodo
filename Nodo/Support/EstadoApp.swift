@@ -182,6 +182,12 @@ final class EstadoApp: ObservableObject {
     /// True mientras se esta pidiendo el resumen de /compact. Deshabilita la
     /// caja para que no se envie un turno a mitad de la compactacion.
     @Published private(set) var compactando = false
+    /// True mientras el microfono esta escuchando (dictado).
+    ///
+    /// Vive en el estado y no en ChatView para poder probar la logica sin
+    /// SwiftUI: el boton no puede quedarse pegado en "grabando" si el
+    /// reconocimiento falla o se cancela.
+    @Published private(set) var dictando = false
     /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
     /// presenta observando esta bandera.
     @Published var mostrarHojaModelos = false
@@ -205,10 +211,15 @@ final class EstadoApp: ObservableObject {
     @Published var error: String?
     /// Mensaje legible del ultimo turno fallido.
     ///
-    /// Se pinta en linea al final del hilo (§3.7) en vez de en el aviso
+    /// Se lee y escribe en la conversacion abierta (`Conversation.errorDeTurno`)
+    /// para que el fallo sobreviva a cerrar y reabrir el chat y a reiniciar la
+    /// app. Se pinta en linea al final del hilo (§3.7) en vez de en el aviso
     /// generico: asi el mensaje del usuario sigue a la vista y se puede
     /// reintentar sin volver a escribirlo.
-    @Published var errorDeTurno: String?
+    var errorDeTurno: String? {
+        get { conversacion.errorDeTurno }
+        set { conversacion.errorDeTurno = newValue }
+    }
 
     /// Ventana de contexto de cada modelo, en tokens.
     ///
@@ -294,6 +305,12 @@ final class EstadoApp: ObservableObject {
         case regeneracion
     }
     private var turnoFallido: TipoTurnoFallido?
+    /// Texto que ya habia en la caja al empezar a dictar: las parciales se
+    /// anaden a el y nunca se pierden si el dictado falla o se corta.
+    private var prefijoDictado = ""
+    /// Identifica la sesion de dictado vigente: un callback tardio de una sesion
+    /// vieja (parcial o fallo) no puede tocar la caja de la nueva.
+    private var generacionDictado = UUID()
     /// La carga inicial del diccionario no debe escribir nada: se activa al
     /// terminar el init normal y se queda apagada en modo de prueba.
     private var puedeGuardarVentanas = false
@@ -327,7 +344,8 @@ final class EstadoApp: ObservableObject {
         transporte: any HTTPStreaming & HTTPUnary = TransporteURLSession(),
         defaults: UserDefaults = .standard,
         directorioStore: URL? = nil,
-        directorioTareas: URL? = nil
+        directorioTareas: URL? = nil,
+        dictado: SpeechRecognizing? = nil
     ) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
@@ -336,8 +354,11 @@ final class EstadoApp: ObservableObject {
         self.defaults = defaults
         // En capturas el dictado es un doble que inyecta una transcripcion fija
         // sin pedir permisos ni tocar el microfono. El resto del flujo es el
-        // mismo que en el iPhone real.
-        if estadoDePrueba == nil {
+        // mismo que en el iPhone real. Un reconocedor inyectado (tests de la
+        // logica de estado) manda sobre los dos.
+        if let dictado {
+            self.dictado = dictado
+        } else if estadoDePrueba == nil {
             self.dictado = DictadoReconocimiento()
         } else {
             self.dictado = DictadoDePrueba()
@@ -3011,6 +3032,15 @@ final class EstadoApp: ObservableObject {
             borrador = ""
             ejecutar(comando)
 
+        case .comandoConTexto(let comando, let descartado):
+            // D1=A: el primer token manda. El comando se ejecuta y el resto se
+            // descarta, pero el dueno tiene que verlo en el hilo: se registra un
+            // evento visual despues de ejecutar (un comando como /nuevo limpia
+            // los eventos y el aviso tiene que sobrevivir en el chat nuevo).
+            borrador = ""
+            ejecutar(comando)
+            avisarTextoDescartado(descartado, para: comando)
+
         case .conSkills(let skills, let mensaje):
             borrador = mensaje
             enviar(mensaje, skills: skills)
@@ -3072,6 +3102,23 @@ final class EstadoApp: ObservableObject {
             // Tarea. Se avisa donde se usa en vez de fingir una accion.
             avisoComando = "El boost se activa en una Tarea: escribe /boost seguido del encargo."
         }
+    }
+
+    /// Deja constancia en el hilo de que un comando descarto el texto que le
+    /// seguia (D1=A).
+    ///
+    /// POR QUE un evento visual y no `avisoComando`: el requisito firmado pide
+    /// que el aviso quede VISIBLE EN EL HILO y no solo pegado a la caja. Ademas
+    /// los eventos no son mensajes: jamas viajan al modelo ni se persisten.
+    private func avisarTextoDescartado(
+        _ descartado: String,
+        para comando: ComandoIntegrado
+    ) {
+        registrarEventoVisual(
+            "El resto del texto no se envió: /\(comando.rawValue) se ejecutó solo. "
+                + "Se descartó: «\(descartado)».",
+            tras: conversacion.mensajes.last?.id
+        )
     }
 
     /// /plan dentro de un chat: mismo mecanismo que la tarea, sin ejecutar.
@@ -3444,6 +3491,18 @@ final class EstadoApp: ObservableObject {
         )
     }
 
+    /// True si esa respuesta es la UNICA que puede regenerarse (D2=B).
+    ///
+    /// La regla vive en el estado y no en la vista para poder probarla sin
+    /// SwiftUI: el pie solo ofrece ↻ bajo la ultima respuesta del asistente; en
+    /// las anteriores no hay ↻ y queda Ramificar, que ya existia.
+    func puedeRegenerar(_ mensaje: ChatMessage) -> Bool {
+        !enviando
+            && mensaje.rol == .asistente
+            && mensaje.uso != nil
+            && conversacion.idUltimaRespuestaAsistente == mensaje.id
+    }
+
     /// Descarta la ultima respuesta y la vuelve a generar con el proveedor y el
     /// modelo seleccionados ahora mismo.
     ///
@@ -3475,7 +3534,9 @@ final class EstadoApp: ObservableObject {
     /// Ruta comun de regeneracion con un proveedor y su clave ya resueltos.
     private func regenerar(con proveedor: ProviderConfig, clave: String) {
         guard !enviando else { return }
-        guard conversacion.mensajes.last?.rol == .asistente else { return }
+        // D2=B: solo hay regeneracion si existe una respuesta del asistente que
+        // descartar; `descartarUltimoTurno` decide el corte exacto.
+        guard conversacion.idUltimaRespuestaAsistente != nil else { return }
 
         adoptarProveedorDelChat(proveedor)
 
@@ -3504,7 +3565,13 @@ final class EstadoApp: ObservableObject {
     func reintentar() {
         guard errorDeTurno != nil, !enviando else { return }
 
+        // Tras reiniciar la app el tipo de turno fallido no viaja en el archivo
+        // (es estado vivo), asi que se infiere del hilo: si la ultima es del
+        // asistente, el turno era una regeneracion con su respuesta vieja
+        // restaurada; si la ultima es del usuario, era un envio. En los dos
+        // casos el mensaje del usuario ya esta y no se vuelve a escribir.
         let tipo = turnoFallido
+            ?? (conversacion.mensajes.last?.rol == .asistente ? .regeneracion : .envio)
         limpiarErrorDeTurno()
 
         switch tipo {
@@ -3665,14 +3732,22 @@ final class EstadoApp: ObservableObject {
         } catch let fallo {
             textoEnCurso = ""
             alFracasar()
-            errorDeTurno = (fallo as? LocalizedError)?.errorDescription
+            let detalle = (fallo as? LocalizedError)?.errorDescription
                 ?? fallo.localizedDescription
+            // El error se guarda CON la conversacion: tiene que seguir en el
+            // hilo tras reabrir el chat o reiniciar la app. El mensaje del
+            // usuario ya esta persistido, asi que reintentar no lo duplica.
+            conversacion.errorDeTurno = detalle
             turnoFallido = tipo
             persistirActual()
         }
     }
 
     func cancelar() {
+        // Cambiar de chat o cortar el turno tambien corta el dictado: el
+        // microfono no puede quedar escuchando en una conversacion que ya no
+        // esta en pantalla.
+        detenerDictado()
         tareaActual?.cancel()
         tareaActual = nil
         tareaCompactado?.cancel()
@@ -3684,6 +3759,97 @@ final class EstadoApp: ObservableObject {
         generandoPlanChat = false
         enviando = false
         textoEnCurso = ""
+    }
+
+    // MARK: - Dictado (§4.5)
+
+    /// Alterna el dictado: si esta grabando lo corta y, si no, lo arranca.
+    ///
+    /// El texto parcial se escribe en `borrador` conforme llega y se conserva
+    /// si el dictado falla o se cancela. Nunca se envia solo: el dueno decide
+    /// cuando pulsar Enviar, igual que con el texto tecleado.
+    func alternarDictado() async {
+        if dictando {
+            detenerDictado()
+            return
+        }
+        guard !compactando, !enviando, !generandoPlanChat else { return }
+
+        avisoComando = nil
+        // Se conserva lo que ya habia en la caja y solo se reemplaza la parte
+        // dictada en esta sesion.
+        prefijoDictado = borrador
+        let sesion = UUID()
+        generacionDictado = sesion
+
+        let permitido = await dictado.solicitarPermisos()
+        guard permitido else {
+            restablecerDictado(
+                aviso: "El dictado necesita permiso de micrófono y reconocimiento de voz."
+            )
+            return
+        }
+
+        do {
+            try dictado.empezar(
+                onParcial: { [weak self] texto in
+                    Task { @MainActor in
+                        self?.aplicarParcialDictado(texto, sesion: sesion)
+                    }
+                },
+                onFallo: { [weak self] error in
+                    Task { @MainActor in
+                        self?.fallarDictado(error, sesion: sesion)
+                    }
+                }
+            )
+            dictando = true
+        } catch {
+            restablecerDictado(
+                aviso: (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            )
+        }
+    }
+
+    /// Corta el dictado conservando lo dictado hasta ahora.
+    func detenerDictado() {
+        guard dictando else { return }
+        // Se invalida la sesion ANTES de cortar: si el reconocedor avisa del
+        // corte como error, ese aviso tardio ya no cuenta.
+        generacionDictado = UUID()
+        dictado.detener()
+        dictando = false
+        prefijoDictado = ""
+    }
+
+    /// Escribe una transcripcion parcial en la caja, conservando el prefijo.
+    private func aplicarParcialDictado(_ parcial: String, sesion: UUID) {
+        guard dictando, sesion == generacionDictado else { return }
+        let separador = prefijoDictado.isEmpty
+            || prefijoDictado.hasSuffix(" ")
+            || prefijoDictado.hasSuffix("\n") ? "" : " "
+        borrador = prefijoDictado + separador + parcial
+        avisoComando = nil
+    }
+
+    /// Cierra la sesion ante un fallo del reconocedor sin perder lo dictado.
+    private func fallarDictado(_ error: Error?, sesion: UUID) {
+        guard dictando, sesion == generacionDictado else { return }
+        dictado.detener()
+        let detalle = (error as? LocalizedError)?.errorDescription
+            ?? error?.localizedDescription
+        restablecerDictado(aviso: detalle)
+    }
+
+    /// Deja el dictado inactivo. NO toca el borrador a proposito: el texto
+    /// parcial ya escrito no se puede perder.
+    private func restablecerDictado(aviso: String?) {
+        dictando = false
+        prefijoDictado = ""
+        if let aviso {
+            avisoComando = aviso
+        }
     }
 
     /// Historial que se manda al modelo: el bloque de Memoria primero.

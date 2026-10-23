@@ -259,6 +259,24 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertEqual(cargada.usoTrasCompactar, UsoTokens(entrada: 30, salida: 12))
     }
 
+    /// INT.3: el error del ultimo turno fallido viaja CON la conversacion. Es
+    /// lo que permite verlo tras reabrir el chat o reiniciar la app, junto al
+    /// mensaje del usuario que ya quedo enviado.
+    func testElErrorDeTurnoSobreviveAGuardarYCargar() throws {
+        let conversacion = Conversation(
+            titulo: "Con error",
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            errorDeTurno: "No se pudo conectar."
+        )
+        try store.guardar(conversacion)
+
+        let cargada = try XCTUnwrap(store.cargar(id: conversacion.id))
+
+        XCTAssertEqual(cargada.errorDeTurno, "No se pudo conectar.")
+        XCTAssertEqual(cargada.mensajes.first?.rol, .usuario)
+        XCTAssertEqual(cargada.mensajes.first?.texto, "hola")
+    }
+
     func testMensajeSinSkillsAplicadasDecodificaConListaVacia() throws {
         let original = ChatMessage(rol: .usuario, texto: "hola")
         let datos = try JSONEncoder().encode(original)

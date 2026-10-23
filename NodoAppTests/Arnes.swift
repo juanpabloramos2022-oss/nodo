@@ -34,7 +34,10 @@ final class ArnesApp {
         return proveedor
     }
 
-    init(config: AppConfig = .inicial()) throws {
+    init(
+        config: AppConfig = .inicial(),
+        dictado: SpeechRecognizing? = nil
+    ) throws {
         let sufijo = UUID().uuidString
         let nombreSuite = "com.nodo.ios.apptests.\(sufijo)"
         guard let defaults = UserDefaults(suiteName: nombreSuite) else {
@@ -65,7 +68,11 @@ final class ArnesApp {
             transporte: transporte,
             defaults: defaults,
             directorioStore: directorio,
-            directorioTareas: directorioTareas
+            directorioTareas: directorioTareas,
+            // El dictado inyectado entra de verdad al estado: sin este paso el
+            // parametro se ignoraba y los tests de dictado no podian sustituir
+            // el reconocedor real (hardware) por el doble.
+            dictado: dictado
         )
         // El init normal arranca con `.inicial()` cuando la suite esta vacia;
         // se aplica la configuracion pedida por el test por la ruta publica,
@@ -467,4 +474,50 @@ final class LlaveroFalso: AlmacenClaves {
     }
 
     var cantidad: Int { valores.count }
+}
+
+/// Doble de dictado para probar la logica de estado sin microfono (INT.4).
+///
+/// POR QUE: `EstadoApp.alternarDictado()` no debe tocar hardware en CI. Este
+/// doble guarda los callbacks de parcial y fallo para que el test pueda
+/// dispararlos a voluntad y comprobar que el estado reacciona: boton que se
+/// apaga, texto parcial que se conserva y nada que se envie solo.
+final class DictadoGuionizado: SpeechRecognizing {
+    /// Si el permiso se concede (true) o se deniega (false).
+    var permiso = true
+    /// Error que lanza `empezar` para simular un arranque fallido.
+    var errorDeArranque: Error?
+
+    private(set) var vecesArrancado = 0
+    private(set) var vecesDetenido = 0
+    private var onParcial: ((String) -> Void)?
+    private var onFallo: ((Error?) -> Void)?
+
+    var disponible: Bool { true }
+
+    func solicitarPermisos() async -> Bool { permiso }
+
+    func empezar(
+        onParcial: @escaping (String) -> Void,
+        onFallo: @escaping (Error?) -> Void
+    ) throws {
+        if let errorDeArranque { throw errorDeArranque }
+        vecesArrancado += 1
+        self.onParcial = onParcial
+        self.onFallo = onFallo
+    }
+
+    func detener() {
+        vecesDetenido += 1
+    }
+
+    /// Simula una transcripcion parcial del reconocedor.
+    func emitir(_ texto: String) {
+        onParcial?(texto)
+    }
+
+    /// Simula un fallo del reconocimiento; `nil` representa una cancelacion.
+    func fallar(_ error: Error?) {
+        onFallo?(error)
+    }
 }

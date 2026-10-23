@@ -183,6 +183,13 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Consumo de la llamada de resumen de /compact. Solo se usa para el
     /// medidor cuando ningun mensaje del hilo trae su propio uso.
     public var usoTrasCompactar: UsoTokens?
+    /// Mensaje del ultimo turno fallido, guardado CON la conversacion.
+    ///
+    /// POR QUE se persiste y no vive solo en el estado de la app: un fallo de
+    /// red tiene que seguir visible al cerrar y reabrir el chat y al reiniciar
+    /// la app. Ademas deja claro que el mensaje del usuario ya quedo enviado:
+    /// reintentar relanza ese turno sin volver a escribir el mensaje.
+    public var errorDeTurno: String?
 
     public init(
         id: UUID = UUID(),
@@ -198,7 +205,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         topeIgnorado: Bool = false,
         resumenCompactado: String? = nil,
         usoTrasCompactar: UsoTokens? = nil,
-        proveedorID: UUID? = nil
+        proveedorID: UUID? = nil,
+        errorDeTurno: String? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -214,6 +222,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.topeIgnorado = topeIgnorado
         self.resumenCompactado = resumenCompactado
         self.usoTrasCompactar = usoTrasCompactar
+        self.errorDeTurno = errorDeTurno
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -231,6 +240,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case topeIgnorado
         case resumenCompactado
         case usoTrasCompactar
+        case errorDeTurno
     }
 
     /// Decodificacion tolerante con los archivos de v0.1.0.
@@ -256,6 +266,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         topeIgnorado = try contenedor.decodeIfPresent(Bool.self, forKey: .topeIgnorado) ?? false
         resumenCompactado = try contenedor.decodeIfPresent(String.self, forKey: .resumenCompactado)
         usoTrasCompactar = try contenedor.decodeIfPresent(UsoTokens.self, forKey: .usoTrasCompactar)
+        errorDeTurno = try contenedor.decodeIfPresent(String.self, forKey: .errorDeTurno)
     }
 
     /// Titulo derivado del primer mensaje del usuario, recortado a una linea.
@@ -272,6 +283,16 @@ public struct Conversation: Codable, Identifiable, Equatable {
         if limpio.isEmpty { return "Conversacion" }
         if limpio.count <= 48 { return limpio }
         return String(limpio.prefix(48)) + "..."
+    }
+
+    /// Id de la ULTIMA respuesta del asistente del hilo, o nil si no hay.
+    ///
+    /// POR QUE no basta `mensajes.last`: el ultimo mensaje puede ser de
+    /// herramienta o de usuario. Regenerar (D2=B) actua sobre la ultima
+    /// RESPUESTA del asistente, y solo esa ofrece el boton; esta propiedad es
+    /// la regla unica que comparten la vista y el estado.
+    public var idUltimaRespuestaAsistente: UUID? {
+        mensajes.last(where: { $0.rol == .asistente })?.id
     }
 
     /// Descarta lo que haya despues del ultimo mensaje del usuario y devuelve

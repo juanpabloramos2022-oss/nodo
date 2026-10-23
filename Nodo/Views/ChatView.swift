@@ -19,8 +19,6 @@ struct ChatView: View {
     /// de evento de MEM.3).
     let alVerMemoria: () -> Void
 
-    @State private var dictando = false
-    @State private var textoAntesDeDictar = ""
     @State private var textoParaCompartir: String?
     @FocusState private var escribiendo: Bool
     @State private var mostrarEstadoChat = false
@@ -62,7 +60,7 @@ struct ChatView: View {
         .conBarraTecladoListo()
         // Volver (boton o gesto) cierra el teclado y corta el dictado.
         .onDisappear {
-            detenerDictado()
+            estado.detenerDictado()
             bajarTeclado()
         }
         .onChange(of: estado.textoParaCompartirSolicitado) { _, nuevo in
@@ -483,18 +481,14 @@ struct ChatView: View {
             uso: uso,
             costo: costoDe(mensaje),
             textoParaCopiar: mensaje.texto,
-            puedeRegenerar: esUltimaRespuesta(mensaje) && !estado.enviando,
+            // D2=B: la regla de "solo la ultima respuesta" vive en EstadoApp,
+            // para poder probarla sin SwiftUI.
+            puedeRegenerar: estado.puedeRegenerar(mensaje),
             otrosProveedores: otrosProveedores,
             nombreDeProveedor: { nombreDeModelo($0) },
             alRegenerar: { estado.regenerar() },
             alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) }
         )
-    }
-
-    /// Regenerar actua siempre sobre la ultima respuesta del hilo; por eso el
-    /// pie de las respuestas anteriores no ofrece el boton.
-    private func esUltimaRespuesta(_ mensaje: ChatMessage) -> Bool {
-        estado.conversacion.mensajes.last?.id == mensaje.id
     }
 
     /// Los demas modelos configurados, para "Regenerar con…" y "Cambiar modelo".
@@ -841,16 +835,18 @@ struct ChatView: View {
             .accessibilityIdentifier("caja-mensaje")
 
             // Micrófono a la izquierda del botón Enviar. Rojo mientras dicta.
-            Button(action: alternarDictado) {
+            Button {
+                Task { await estado.alternarDictado() }
+            } label: {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 38, height: 38)
-                    .background(dictando ? Color.red : Tema.superficieAlta)
+                    .background(estado.dictando ? Color.red : Tema.superficieAlta)
                     .clipShape(Circle())
             }
             .disabled(estado.compactando || estado.enviando || estado.generandoPlanChat)
-            .accessibilityLabel(dictando ? "Detener dictado" : "Dictar")
+            .accessibilityLabel(estado.dictando ? "Detener dictado" : "Dictar")
             .accessibilityIdentifier("boton-dictado")
 
             Button(action: accion) {
@@ -885,60 +881,16 @@ struct ChatView: View {
 
         // Tocar Enviar tambien termina el dictado: el texto parcial ya esta en
         // la caja y se envia tal cual.
-        if dictando {
-            detenerDictado()
+        if estado.dictando {
+            estado.detenerDictado()
         }
         estado.enviarTextoActual()
     }
 
     // MARK: - Dictado
 
-    private func alternarDictado() {
-        if dictando {
-            detenerDictado()
-            return
-        }
-
-        Task { @MainActor in
-            let permitido = await estado.dictado.solicitarPermisos()
-            guard permitido else {
-                estado.avisoComando =
-                    "El dictado necesita permiso de micrófono y reconocimiento de voz."
-                return
-            }
-
-            // Se conserva lo que ya habia en la caja y solo se reemplaza la
-            // parte dictada en esta sesion.
-            textoAntesDeDictar = estado.borrador
-            do {
-                try estado.dictado.empezar { parcial in
-                    Task { @MainActor in
-                        aplicarDictado(parcial)
-                    }
-                }
-                dictando = true
-            } catch {
-                dictando = false
-                estado.avisoComando = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-            }
-        }
-    }
-
-    private func aplicarDictado(_ parcial: String) {
-        let prefijo = textoAntesDeDictar
-        let separador = prefijo.isEmpty
-            || prefijo.hasSuffix(" ")
-            || prefijo.hasSuffix("\n") ? "" : " "
-        estado.borrador = prefijo + separador + parcial
-        estado.avisoComando = nil
-    }
-
-    private func detenerDictado() {
-        guard dictando else { return }
-        estado.dictado.detener()
-        dictando = false
-    }
+    // El estado del dictado (grabando, parciales y fallos) vive en EstadoApp
+    // para poder probarlo sin SwiftUI ni hardware.
 }
 
 /// Burbuja de error en linea al final del hilo (§3.7).

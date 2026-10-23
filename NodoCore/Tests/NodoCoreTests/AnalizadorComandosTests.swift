@@ -50,10 +50,57 @@ final class AnalizadorComandosTests: XCTestCase {
         }
     }
 
-    func testComandoConTextoDetrasNoEsComando() {
+    /// D1=A: el primer token manda. Un comando con texto detras se ejecuta y el
+    /// resto se marca como descartado para que la app avise en el hilo.
+    func testComandoConTextoDetrasSeEjecutaYReportaElResto() {
         XCTAssertEqual(
             AnalizadorComandos.analizar("/compact ahora", resolvedor: resolvedor),
-            .tokensDesconocidos(["compact"])
+            .comandoConTexto(comando: .compact, descartado: "ahora")
+        )
+        XCTAssertEqual(
+            AnalizadorComandos.analizar(
+                "/exportar todo el hilo",
+                resolvedor: resolvedor
+            ),
+            .comandoConTexto(comando: .exportar, descartado: "todo el hilo")
+        )
+    }
+
+    /// El comando se normaliza igual que su slug: mayusculas y tildes no lo
+    /// convierten en un token desconocido.
+    func testComandoConMayusculasSeReconoce() {
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/COMPACT", resolvedor: resolvedor),
+            .comando(.compact)
+        )
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/Compact ahora", resolvedor: resolvedor),
+            .comandoConTexto(comando: .compact, descartado: "ahora")
+        )
+    }
+
+    /// Un "/" cuyo primer token no es comando ni skill conocida va entero como
+    /// mensaje normal: no se traga el texto por el hecho de empezar con "/".
+    func testPrimerTokenDesconocidoConBarraVaComoMensajeNormal() {
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/inventado hola", resolvedor: resolvedor),
+            .mensajeNormal(texto: "/inventado hola")
+        )
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/", resolvedor: resolvedor),
+            .mensajeNormal(texto: "/")
+        )
+    }
+
+    /// Una barra a mitad del texto nunca dispara un comando.
+    func testBarraAMitadDeTextoNoDisparaComando() {
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("hola /compact", resolvedor: resolvedor),
+            .mensajeNormal(texto: "hola /compact")
+        )
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("mira /resumen esto", resolvedor: resolvedor),
+            .mensajeNormal(texto: "mira /resumen esto")
         )
     }
 
@@ -95,10 +142,12 @@ final class AnalizadorComandosTests: XCTestCase {
             instrucciones: "No deberia existir."
         )
 
+        // El token reservado no puede resolverse como skill ni siquiera cuando
+        // el registro lo ofrece; aqui va despues de una skill real.
         XCTAssertEqual(
             AnalizadorComandos.analizar(
-                "/compact ahora",
-                resolvedor: ResolvedorDoble([reservada])
+                "/resumen /compact ahora",
+                resolvedor: ResolvedorDoble([resumen, reservada])
             ),
             .tokensDesconocidos(["compact"])
         )
@@ -117,6 +166,12 @@ final class AnalizadorComandosTests: XCTestCase {
         XCTAssertEqual(
             AnalizadorComandos.analizar("/plan", resolvedor: resolvedor),
             .comando(.plan)
+        )
+        // Bajo D1=A /plan con texto tambien dispara su flujo; el resto solo se
+        // descarta con aviso, no cambia de comando.
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/plan con texto", resolvedor: resolvedor),
+            .comandoConTexto(comando: .plan, descartado: "con texto")
         )
     }
 

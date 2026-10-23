@@ -1001,6 +1001,281 @@ final class EstadoAppTests: XCTestCase {
         )
     }
 
+    // MARK: - Comandos con texto (INT.1)
+
+    /// D1=A: "/exportar todo el hilo" ejecuta /exportar y deja en el hilo el
+    /// aviso de que el resto del texto no se envio. El aviso tiene que quedar
+    /// en `eventosVisuales` (el hilo), no solo en la caja.
+    func testComandoConTextoEjecutaYDejaElAvisoEnElHilo() throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        arnes.estado.borrador = "/exportar todo el hilo"
+        arnes.estado.enviarTextoActual()
+
+        // El comando se ejecuto: /exportar preparo el texto para compartir.
+        XCTAssertNotNil(arnes.estado.textoParaCompartirSolicitado)
+        XCTAssertEqual(arnes.estado.borrador, "")
+        // Nada salio al modelo: es una accion local.
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 0)
+        XCTAssertTrue(arnes.estado.conversacion.mensajes.isEmpty)
+
+        let avisos = arnes.estado.eventosVisuales.map(\.texto)
+        XCTAssertTrue(
+            avisos.contains {
+                $0.contains("no se envió") && $0.contains("todo el hilo")
+            },
+            "El texto descartado tiene que quedar visible en el hilo: \(avisos)"
+        )
+    }
+
+    /// Un primer token que no es comando ni skill no se traga: viaja entero
+    /// como mensaje normal y se manda al modelo.
+    func testPrimerTokenDesconocidoConBarraSeEnviaComoMensajeNormal() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta normal.",
+            uso: UsoTokens(entrada: 10, salida: 5)
+        )
+
+        arnes.estado.borrador = "/inventado hola"
+        arnes.estado.enviarTextoActual()
+        try await arnes.esperarTurno()
+
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.first?.texto,
+            "/inventado hola"
+        )
+    }
+
+    // MARK: - Regenerar solo la ultima (INT.2)
+
+    /// D2=B: en un hilo con tres respuestas solo la ultima ofrece regenerar, y
+    /// regenerarla no reescribe los sellos de las dos anteriores.
+    func testSoloLaUltimaRespuestaRegeneraYNoTocaSellosPrevios() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activo = arnes.proveedor
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: activo))
+
+        var mensajes: [ChatMessage] = []
+        for vuelta in 1...3 {
+            mensajes.append(
+                ChatMessage(rol: .usuario, texto: "Pregunta \(vuelta)")
+            )
+            mensajes.append(
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Respuesta \(vuelta)",
+                    tokensEntrada: 100 * vuelta,
+                    tokensSalida: 20 * vuelta,
+                    proveedorID: activo.id,
+                    costoSelladoUSD: Double(vuelta)
+                )
+            )
+        }
+        arnes.estado.conversacion = Conversation(
+            mensajes: mensajes,
+            proveedorID: activo.id
+        )
+
+        let respuestas = arnes.estado.conversacion.mensajes
+            .filter { $0.rol == .asistente }
+        XCTAssertEqual(respuestas.count, 3)
+        XCTAssertFalse(arnes.estado.puedeRegenerar(respuestas[0]))
+        XCTAssertFalse(arnes.estado.puedeRegenerar(respuestas[1]))
+        XCTAssertTrue(arnes.estado.puedeRegenerar(respuestas[2]))
+        // Un mensaje del usuario nunca ofrece regenerar.
+        XCTAssertFalse(
+            arnes.estado.puedeRegenerar(arnes.estado.conversacion.mensajes[0])
+        )
+
+        // La regeneracion descarta solo la ultima respuesta y sella la nueva.
+        arnes.transporte.guionar(
+            texto: "Respuesta regenerada.",
+            uso: UsoTokens(entrada: 5, salida: 2)
+        )
+        arnes.estado.regenerar()
+        try await arnes.esperarTurno()
+
+        let respuestasDespues = arnes.estado.conversacion.mensajes
+            .filter { $0.rol == .asistente }
+        XCTAssertEqual(respuestasDespues.count, 3)
+        XCTAssertEqual(respuestasDespues[0].id, respuestas[0].id)
+        XCTAssertEqual(respuestasDespues[1].id, respuestas[1].id)
+        XCTAssertEqual(
+            respuestasDespues[0].costoSelladoUSD,
+            respuestas[0].costoSelladoUSD,
+            "El sello de una respuesta vieja no puede reescribirse"
+        )
+        XCTAssertEqual(
+            respuestasDespues[1].costoSelladoUSD,
+            respuestas[1].costoSelladoUSD,
+            "El sello de una respuesta vieja no puede reescribirse"
+        )
+        XCTAssertEqual(respuestasDespues[2].texto, "Respuesta regenerada.")
+        XCTAssertNotNil(respuestasDespues[2].costoSelladoUSD)
+        XCTAssertFalse(arnes.estado.puedeRegenerar(respuestasDespues[0]))
+        XCTAssertFalse(arnes.estado.puedeRegenerar(respuestasDespues[1]))
+        XCTAssertTrue(arnes.estado.puedeRegenerar(respuestasDespues[2]))
+    }
+
+    // MARK: - Error de turno persistido (INT.3)
+
+    /// Un fallo de red viaja CON la conversacion: al recargarla desde el store
+    /// sigue visible y reintentar relanza el turno sin duplicar el mensaje del
+    /// usuario.
+    func testErrorDeTurnoPersisteYReintentarNoDuplicaElMensaje() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        // Sin guion el transporte falla: el turno no deja respuesta.
+        arnes.estado.enviar("Hola que tal")
+        try await arnes.esperarTurno()
+
+        let detalle = try XCTUnwrap(arnes.estado.errorDeTurno)
+        XCTAssertFalse(detalle.isEmpty)
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 1)
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.last?.rol,
+            ChatMessage.Rol.usuario
+        )
+
+        // Recarga desde el store: la conversacion persistida lleva el error.
+        let persistida = try XCTUnwrap(arnes.estado.conversaciones.first)
+        XCTAssertEqual(persistida.errorDeTurno, detalle)
+        arnes.estado.abrir(persistida)
+        XCTAssertEqual(arnes.estado.errorDeTurno, detalle)
+
+        // Reintentar usa el mensaje ya enviado y no lo vuelve a escribir.
+        arnes.transporte.guionar(
+            texto: "Ahora si.",
+            uso: UsoTokens(entrada: 10, salida: 5)
+        )
+        arnes.estado.reintentar()
+        try await arnes.esperarTurno()
+
+        XCTAssertNil(arnes.estado.errorDeTurno)
+        let usuarios = arnes.estado.conversacion.mensajes
+            .filter { $0.rol == .usuario }
+        XCTAssertEqual(
+            usuarios.count,
+            1,
+            "Reintentar no puede duplicar el mensaje del usuario"
+        )
+        XCTAssertEqual(usuarios.first?.texto, "Hola que tal")
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.last?.texto,
+            "Ahora si."
+        )
+    }
+
+    // MARK: - Dictado (INT.4)
+
+    /// El locale del dictado real es es-CO explicito, sin crear el
+    /// SFSpeechRecognizer (eso seria hardware).
+    func testLocaleDeDictadoEsColombiano() {
+        // `Locale.identifier` puede normalizar el guion a guion bajo segun la
+        // plataforma; se compara la forma canonica con guion.
+        let identificador = DictadoReconocimiento.localeDictado.identifier
+            .replacingOccurrences(of: "_", with: "-")
+        XCTAssertEqual(identificador, "es-CO")
+    }
+
+    /// Arrancar el dictado escribe la parcial en la caja conservando lo que ya
+    /// habia, sin enviar nada.
+    func testDictadoEscribeParcialEnLaCajaSinEnviar() async throws {
+        let dictado = DictadoGuionizado()
+        let arnes = try ArnesApp(dictado: dictado)
+        defer { arnes.limpiar() }
+
+        arnes.estado.borrador = "Hola"
+        await arnes.estado.alternarDictado()
+        XCTAssertTrue(arnes.estado.dictando)
+        XCTAssertEqual(dictado.vecesArrancado, 1)
+
+        dictado.emitir("mundo")
+        try await arnes.esperar { arnes.estado.borrador == "Hola mundo" }
+
+        XCTAssertFalse(arnes.estado.enviando)
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 0)
+    }
+
+    /// Un fallo del reconocimiento apaga el boton, conserva lo dictado y no lo
+    /// envia solo.
+    func testFalloDelDictadoRestableceElBotonYConservaElTexto() async throws {
+        let dictado = DictadoGuionizado()
+        let arnes = try ArnesApp(dictado: dictado)
+        defer { arnes.limpiar() }
+
+        await arnes.estado.alternarDictado()
+        dictado.emitir("texto a medias")
+        try await arnes.esperar { arnes.estado.borrador == "texto a medias" }
+
+        dictado.fallar(ErrorDictado.noDisponible)
+        try await arnes.esperar { !arnes.estado.dictando }
+
+        XCTAssertEqual(arnes.estado.borrador, "texto a medias")
+        XCTAssertEqual(dictado.vecesDetenido, 1)
+        XCTAssertNotNil(arnes.estado.avisoComando)
+        XCTAssertFalse(arnes.estado.enviando)
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 0)
+    }
+
+    /// Cancelar el dictado apaga el boton y conserva el texto parcial.
+    func testDetenerDictadoRestableceElBotonYConservaElTexto() async throws {
+        let dictado = DictadoGuionizado()
+        let arnes = try ArnesApp(dictado: dictado)
+        defer { arnes.limpiar() }
+
+        await arnes.estado.alternarDictado()
+        dictado.emitir("algo dictado")
+        try await arnes.esperar { arnes.estado.borrador == "algo dictado" }
+
+        arnes.estado.detenerDictado()
+        XCTAssertFalse(arnes.estado.dictando)
+        XCTAssertEqual(arnes.estado.borrador, "algo dictado")
+        XCTAssertEqual(dictado.vecesDetenido, 1)
+    }
+
+    /// Sin permiso no se arranca: el boton no queda grabando y se avisa.
+    func testDictadoSinPermisoNoQuedaGrabando() async throws {
+        let dictado = DictadoGuionizado()
+        dictado.permiso = false
+        let arnes = try ArnesApp(dictado: dictado)
+        defer { arnes.limpiar() }
+
+        await arnes.estado.alternarDictado()
+
+        XCTAssertFalse(arnes.estado.dictando)
+        XCTAssertEqual(dictado.vecesArrancado, 0)
+        XCTAssertNotNil(arnes.estado.avisoComando)
+    }
+
+    /// Si el reconocedor ni arranca, el estado tambien queda limpio.
+    func testDictadoQueNoArrancaNoQuedaGrabando() async throws {
+        let dictado = DictadoGuionizado()
+        dictado.errorDeArranque = ErrorDictado.noDisponible
+        let arnes = try ArnesApp(dictado: dictado)
+        defer { arnes.limpiar() }
+
+        await arnes.estado.alternarDictado()
+
+        XCTAssertFalse(arnes.estado.dictando)
+        XCTAssertNotNil(arnes.estado.avisoComando)
+    }
+
     /// Cuerpo UTF-8 de la ultima peticion grabada por el transporte.
     ///
     /// Se lee como texto y no como JSON porque lo que importa es que el
