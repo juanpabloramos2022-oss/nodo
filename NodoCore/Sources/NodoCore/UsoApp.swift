@@ -1,11 +1,12 @@
 import Foundation
 
-/// Consumo y costo de un tramo del libro: un dia o un mes.
+/// Consumo y costo sellado de UN modelo dentro de un tramo del libro.
 ///
-/// `usd` es el dolar SELLADO de las llamadas del tramo, no una valoracion con
-/// los precios de hoy. Si una llamada no se pudo valorar, sus tokens suman
-/// igual y su USD no se inventa: queda en cero.
-public struct TramoDeGasto: Codable, Equatable {
+/// POR QUE se guarda por modelo: la vista Gasto tiene que ensenar en que se fue
+/// el mes sin volver a valorar nada. El nombre es el identificador crudo que
+/// tenia el proveedor cuando se cerro la llamada; si luego se renombra el
+/// modelo, la historia no cambia.
+public struct TramoDeModelo: Codable, Equatable {
     public var uso: UsoTokens
     public var usd: Double
 
@@ -14,10 +15,100 @@ public struct TramoDeGasto: Codable, Equatable {
         self.usd = usd
     }
 
-    /// Suma una llamada real al tramo.
     public mutating func registrar(uso: UsoTokens, usd: Double) {
         self.uso = self.uso.sumando(uso)
         self.usd += usd
+    }
+}
+
+/// Consumo y costo de un tramo del libro: un dia o un mes.
+///
+/// `usd` es el dolar SELLADO de las llamadas del tramo, no una valoracion con
+/// los precios de hoy. Si una llamada no se pudo valorar, sus tokens suman
+/// igual y su USD no se inventa: queda en cero y se anotan aparte en
+/// `sinPrecio`.
+public struct TramoDeGasto: Codable, Equatable {
+    public var uso: UsoTokens
+    public var usd: Double
+    /// Desglose por modelo. La suma de sus USD es `usd`: los usos sin precio
+    /// no entran aqui porque no tienen dolares que repartir.
+    public var porModelo: [String: TramoDeModelo]
+    /// Tokens de llamadas cuyo proveedor no tenia precios configurados.
+    ///
+    /// POR QUE aparte: son tokens reales, pero su dolar es desconocido. Meterlos
+    /// en el desglose con USD cero haria creer que ese modelo costo cero.
+    public var sinPrecio: UsoTokens
+
+    public init(
+        uso: UsoTokens = UsoTokens(),
+        usd: Double = 0,
+        porModelo: [String: TramoDeModelo] = [:],
+        sinPrecio: UsoTokens = UsoTokens()
+    ) {
+        self.uso = uso
+        self.usd = usd
+        self.porModelo = porModelo
+        self.sinPrecio = sinPrecio
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case uso
+        case usd
+        case porModelo
+        case sinPrecio
+    }
+
+    /// Lectura tolerante: los tramos guardados antes del desglose no traen las
+    /// claves nuevas y se leen como un tramo sin reparto por modelo.
+    public init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: CodingKeys.self)
+        uso = try contenedor.decodeIfPresent(UsoTokens.self, forKey: .uso) ?? UsoTokens()
+        usd = try contenedor.decodeIfPresent(Double.self, forKey: .usd) ?? 0
+        porModelo = try contenedor.decodeIfPresent(
+            [String: TramoDeModelo].self,
+            forKey: .porModelo
+        ) ?? [:]
+        sinPrecio = try contenedor.decodeIfPresent(
+            UsoTokens.self,
+            forKey: .sinPrecio
+        ) ?? UsoTokens()
+    }
+
+    /// Suma una llamada real a los totales del tramo.
+    public mutating func registrar(uso: UsoTokens, usd: Double) {
+        self.uso = self.uso.sumando(uso)
+        self.usd += usd
+    }
+
+    /// Suma una llamada ya valorada al total y a su modelo.
+    ///
+    /// El modelo vacio agrupa las llamadas de proveedores sin identificador de
+    /// modelo (por ejemplo, la generacion de un plan): es preferible un cajon
+    /// "Sin modelo" honesto a repartir ese gasto entre modelos al azar.
+    public mutating func registrar(uso: UsoTokens, usd: Double, modelo: String) {
+        registrar(uso: uso, usd: usd)
+        var tramo = porModelo[modelo] ?? TramoDeModelo()
+        tramo.registrar(uso: uso, usd: usd)
+        porModelo[modelo] = tramo
+    }
+
+    /// Suma una llamada cuyo proveedor no tiene precios configurados.
+    ///
+    /// Los tokens son un hecho y se conservan; el USD no se inventa.
+    public mutating func registrarSinPrecio(uso: UsoTokens) {
+        registrar(uso: uso, usd: 0)
+        sinPrecio = sinPrecio.sumando(uso)
+    }
+
+    /// Fusiona otro tramo completo, con su desglose y sus usos sin precio.
+    public mutating func fusionar(_ otro: TramoDeGasto) {
+        registrar(uso: otro.uso, usd: otro.usd)
+        sinPrecio = sinPrecio.sumando(otro.sinPrecio)
+        for (modelo, tramo) in otro.porModelo {
+            var actual = porModelo[modelo] ?? TramoDeModelo()
+            actual.registrar(uso: tramo.uso, usd: tramo.usd)
+            porModelo[modelo] = actual
+        }
     }
 
     /// True si el tramo no tiene ni tokens ni dolares.
@@ -104,17 +195,56 @@ public struct UsoApp: Codable, Equatable {
     /// Anota una llamada real en su dia y en su mes.
     ///
     /// La fecha la pasa quien llama; el libro no lee el reloj, para que las
-    /// pruebas sean deterministas.
-    public mutating func registrar(uso: UsoTokens, usd: Double, fecha: Date) {
+    /// pruebas sean deterministas. `modelo` es el identificador del proveedor
+    /// que genero la llamada y `conPrecio` dice si su USD se pudo sellar: sin
+    /// precio, los tokens se guardan pero el dolar no se inventa.
+    public mutating func registrar(
+        uso: UsoTokens,
+        usd: Double,
+        fecha: Date,
+        modelo: String? = nil,
+        conPrecio: Bool = true
+    ) {
         let dia = Self.claveDia(fecha)
         var tramoDia = dias[dia] ?? TramoDeGasto()
-        tramoDia.registrar(uso: uso, usd: usd)
+        Self.anotar(
+            en: &tramoDia,
+            uso: uso,
+            usd: usd,
+            modelo: modelo,
+            conPrecio: conPrecio
+        )
         dias[dia] = tramoDia
 
         let mes = Self.claveMes(fecha)
         var tramoMes = meses[mes] ?? TramoDeGasto()
-        tramoMes.registrar(uso: uso, usd: usd)
+        Self.anotar(
+            en: &tramoMes,
+            uso: uso,
+            usd: usd,
+            modelo: modelo,
+            conPrecio: conPrecio
+        )
         meses[mes] = tramoMes
+    }
+
+    /// Reparte una llamada dentro de un tramo segun se haya podido valorar.
+    ///
+    /// Vive en un helper para que el dia y el mes apliquen exactamente la misma
+    /// regla: si se separan, los totales de la vista Gasto dejarian de cuadrar
+    /// con sus barras.
+    private static func anotar(
+        en tramo: inout TramoDeGasto,
+        uso: UsoTokens,
+        usd: Double,
+        modelo: String?,
+        conPrecio: Bool
+    ) {
+        if conPrecio {
+            tramo.registrar(uso: uso, usd: usd, modelo: modelo ?? "")
+        } else {
+            tramo.registrarSinPrecio(uso: uso)
+        }
     }
 
     // MARK: - Migracion
@@ -131,7 +261,10 @@ public struct UsoApp: Codable, Equatable {
 
         let mes = Self.claveMes(fecha)
         var tramoMes = meses[mes] ?? TramoDeGasto()
-        tramoMes.registrar(uso: uso, usd: usd)
+        // La migracion no sabe que modelo genero cada llamada vieja, pero si
+        // sabe su dolar sellado. Se guarda bajo el cajon "Sin modelo" para que
+        // la suma del desglose siga cuadrando con el total del mes.
+        tramoMes.registrar(uso: uso, usd: usd, modelo: "")
         meses[mes] = tramoMes
 
         let dia = Self.claveDia(fecha)
@@ -158,7 +291,7 @@ public struct UsoApp: Codable, Equatable {
     public var totalDias: TramoDeGasto {
         dias.values.reduce(TramoDeGasto()) { total, tramo in
             var acumulado = total
-            acumulado.registrar(uso: tramo.uso, usd: tramo.usd)
+            acumulado.fusionar(tramo)
             return acumulado
         }
     }
@@ -167,7 +300,7 @@ public struct UsoApp: Codable, Equatable {
     public var totalMeses: TramoDeGasto {
         meses.values.reduce(TramoDeGasto()) { total, tramo in
             var acumulado = total
-            acumulado.registrar(uso: tramo.uso, usd: tramo.usd)
+            acumulado.fusionar(tramo)
             return acumulado
         }
     }

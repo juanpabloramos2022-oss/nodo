@@ -1078,12 +1078,26 @@ final class EstadoApp: ObservableObject {
         config.gasto.fechaDelDia == Self.hoyComoClave() ? config.gasto.delDia : 0
     }
 
+    /// Resumen completo de la vista Gasto (SPEND.1/SPEND.2).
+    ///
+    /// Se arma SOLO con el libro de sellos: no consulta al proveedor activo ni
+    /// sus precios, asi que cambiar de modelo no mueve ninguna cifra. La fecha
+    /// se puede pasar para que las pruebas sean deterministas.
+    func resumenDeGasto(ahora: Date = Date()) -> ResumenGasto {
+        ResumenGasto.desde(libro: config.usoApp, ahora: ahora)
+    }
+
     /// Suma a los contadores y al libro de gasto el costo de un uso recibido.
     ///
     /// Es el punto UNICO de alimentacion: lo llaman los turnos normales
     /// (envios y regeneraciones) y la llamada de resumen de /compact. El
     /// contador vive en `AppConfig`, asi que borrar un chat no lo resta; el
-    /// libro de COST.2 anota la misma llamada en su dia y su mes.
+    /// libro de COST.2 anota la misma llamada en su dia, su mes y su modelo.
+    ///
+    /// El USD que entra al libro es el mismo que se sella en el mensaje: se
+    /// calcula con los precios del proveedor que genero ESTA llamada. Si no
+    /// tiene precios, el libro guarda los tokens y marca el uso como "sin
+    /// precio" en vez de inventar un dolar.
     private func registrarGasto(
         uso: UsoTokens?,
         proveedor: ProviderConfig,
@@ -1102,8 +1116,15 @@ final class EstadoApp: ObservableObject {
         }
 
         // El libro anota la llamada real aunque no se pueda valorar: los tokens
-        // son un hecho. Sin precios, el USD queda en cero en vez de inventarse.
-        config.usoApp.registrar(uso: uso, usd: costo ?? 0, fecha: fecha)
+        // son un hecho. Sin precios, el USD queda en cero y el uso se marca
+        // como "sin precio" para que la vista Gasto lo declare aparte.
+        config.usoApp.registrar(
+            uso: uso,
+            usd: costo ?? 0,
+            fecha: fecha,
+            modelo: proveedor.modelo,
+            conPrecio: costo != nil
+        )
     }
 
     /// Fecha local de `fecha` en el formato que guarda `ContadoresGasto`.

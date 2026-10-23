@@ -207,17 +207,46 @@ struct MiContextoView: View {
         }
     }
 
-    /// Linea del acumulador global, encima de los botones (§3.5).
+    /// Linea del acumulador global, encima de los botones (§3.5), y puerta de
+    /// entrada a la vista Gasto (SPEND.2).
+    ///
+    /// POR QUE es un NavigationLink y no una tarjeta nueva: asi el acumulador
+    /// que ya existia se vuelve la tarjeta de gasto sin sumar otra fila al
+    /// formulario, que empujaria el tope fuera de la primera pantalla.
     private var acumulador: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(
-                "Gasto acumulado: Hoy \(importe(estado.gastoDelDiaVisible)) · "
-                    + "Desde el último reinicio: \(importe(estado.config.gasto.desdeReinicio))"
-            )
-            .font(.footnote)
-            .foregroundStyle(.white)
-            .fixedSize(horizontal: false, vertical: true)
+        // El "Hoy" sale del libro sellado, la misma fuente que la vista Gasto.
+        // "Desde el último reinicio" sigue siendo el contador manual, que no es
+        // un periodo historico.
+        let hoy = estado.config.usoApp.dia(Date()).usd
+        let desdeReinicio = estado.config.gasto.desdeReinicio
+
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            NavigationLink {
+                GastoView()
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(
+                        "Gasto acumulado: Hoy \(importe(hoy)) · "
+                            + "Desde el último reinicio: \(importe(desdeReinicio))"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+
+                    // Senal de navegacion: esta linea es la tarjeta de gasto.
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityHidden(true)
+                }
+            }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("gasto-acumulado")
+            .accessibilityLabel(
+                "Ver gasto. Gasto acumulado: Hoy \(importe(hoy)) · "
+                    + "Desde el último reinicio: \(importe(desdeReinicio))"
+            )
 
             Spacer(minLength: 4)
 
@@ -343,7 +372,7 @@ struct MiContextoView: View {
         "$" + String(format: "%.4f", valor)
     }
 
-    // MARK: - Bloque 3: Skills
+    // MARK: - Bloque 4: Skills
 
     private var seccionSkills: some View {
         Section {

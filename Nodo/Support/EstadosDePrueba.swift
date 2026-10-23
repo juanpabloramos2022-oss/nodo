@@ -309,6 +309,45 @@ enum EstadosDePrueba {
             fechaDelDia: hoyComoClave(),
             desdeReinicio: 0.4321
         )
+
+        // Libro de sellos de ejemplo para que la tarjeta y la vista Gasto
+        // tengan algo que ensenar en las capturas. No toca los contadores:
+        // estos siguen siendo la cifra del acumulador de siempre.
+        let ahora = Date()
+        var libro = UsoApp()
+        libro.registrar(
+            uso: UsoTokens(entrada: 420_000, salida: 80_000),
+            usd: 0.0894,
+            fecha: ahora,
+            modelo: proveedorEjemplo.modelo
+        )
+        libro.registrar(
+            uso: UsoTokens(entrada: 260_000, salida: 40_000),
+            usd: 0.034,
+            fecha: ahora,
+            modelo: "otro-modelo-de-ejemplo"
+        )
+        if let antes = Calendar(identifier: .gregorian).date(
+            byAdding: .day,
+            value: -1,
+            to: ahora
+        ) {
+            libro.registrar(
+                uso: UsoTokens(entrada: 900_000, salida: 150_000),
+                usd: 0.12,
+                fecha: antes,
+                modelo: proveedorEjemplo.modelo
+            )
+        }
+        // Un uso sin precio: tokens reales, dolar desconocido.
+        libro.registrar(
+            uso: UsoTokens(entrada: 12_000, salida: 3_000),
+            usd: 0,
+            fecha: ahora,
+            modelo: "modelo-sin-precios",
+            conPrecio: false
+        )
+        config.usoApp = libro
         return config
     }
 
