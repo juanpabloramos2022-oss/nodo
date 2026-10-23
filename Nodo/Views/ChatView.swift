@@ -24,6 +24,9 @@ struct ChatView: View {
             .navigationTitle(estado.conversacion.titulo)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    selectorDeProveedor
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         estado.nuevaConversacion()
@@ -33,6 +36,62 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    /// Etiqueta con el proveedor activo.
+    ///
+    /// En la barra solo cabe el nombre; el modelo completo se lee al abrir el
+    /// menu. Con un unico proveedor no hay menu: no hay nada que cambiar.
+    @ViewBuilder
+    private var selectorDeProveedor: some View {
+        if let activo = estado.config.proveedorSeleccionado {
+            if estado.config.proveedores.count > 1 {
+                Menu {
+                    ForEach(estado.config.proveedores) { proveedor in
+                        Button {
+                            estado.config.proveedorActivo = proveedor.id
+                        } label: {
+                            if proveedor.id == activo.id {
+                                Label(textoDe(proveedor), systemImage: "checkmark")
+                            } else {
+                                Text(textoDe(proveedor))
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(nombreDe(activo))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+                .accessibilityLabel("Proveedor \(textoDe(activo))")
+                .accessibilityHint("Cambia el proveedor para el proximo mensaje")
+            } else {
+                Text(nombreDe(activo))
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
+                    .accessibilityLabel("Proveedor \(textoDe(activo))")
+            }
+        } else {
+            Text("Sin proveedor")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Nombre del proveedor, con un texto de reserva si esta sin poner.
+    private func nombreDe(_ proveedor: ProviderConfig) -> String {
+        let nombre = proveedor.nombre.trimmingCharacters(in: .whitespacesAndNewlines)
+        return nombre.isEmpty ? "Proveedor" : nombre
+    }
+
+    /// Nombre y modelo completos, solo para las filas del menu.
+    private func textoDe(_ proveedor: ProviderConfig) -> String {
+        let modelo = proveedor.modelo.trimmingCharacters(in: .whitespacesAndNewlines)
+        return modelo.isEmpty ? nombreDe(proveedor) : "\(nombreDe(proveedor)) · \(modelo)"
     }
 
     @ViewBuilder
