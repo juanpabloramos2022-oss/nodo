@@ -46,6 +46,9 @@ public final class MCPClient {
     private var sesion: String?
     private var siguienteId = 1
     private let versionProtocolo = "2025-06-18"
+    /// Version que acepto el servidor en `initialize`. Se manda en las
+    /// peticiones siguientes, como exige el transporte streamable HTTP.
+    private var protocoloNegociado: String?
 
     public init(transporte: HTTPUnary, config: ServerConfig, token: String?) throws {
         guard config.estaConfigurado || !config.url.isEmpty else {
@@ -70,15 +73,20 @@ public final class MCPClient {
             ]
         )
 
+        let info = resultado["serverInfo"] as? [String: Any] ?? [:]
+        let protocolo = resultado["protocolVersion"] as? String ?? versionProtocolo
+        // Se guarda antes de la notificacion para que esa peticion ya lleve la
+        // version negociada que exige el transporte streamable HTTP.
+        protocoloNegociado = protocolo
+
         // La notificacion de que ya estamos listos no espera respuesta; si
         // falla no es grave, muchos servidores la ignoran.
         await notificar(metodo: "notifications/initialized", parametros: [:])
 
-        let info = resultado["serverInfo"] as? [String: Any] ?? [:]
         return InfoServidor(
             nombre: info["name"] as? String ?? "servidor",
             version: info["version"] as? String ?? "",
-            protocolo: resultado["protocolVersion"] as? String ?? versionProtocolo
+            protocolo: protocolo
         )
     }
 
@@ -182,6 +190,9 @@ public final class MCPClient {
         if let sesion {
             cabeceras["Mcp-Session-Id"] = sesion
         }
+        if let protocoloNegociado {
+            cabeceras["MCP-Protocol-Version"] = protocoloNegociado
+        }
 
         let datos = try JSONSerialization.data(withJSONObject: cuerpo)
         let respuesta = try await transporte.enviar(
@@ -241,16 +252,42 @@ public final class MCPClient {
 }
 
 /// Adapta una herramienta remota al protocolo que usa el bucle.
+///
+/// El nombre visible puede llevar el prefijo del servidor para que dos
+/// servidores (o una remota y una local) no choquen en el mismo bucle. El
+/// `tools/call` sigue usando el nombre remoto original.
 public final class HerramientaMCP: Herramienta {
     private let cliente: MCPClient
     private let base: ToolDefinition
+    private let nombreVisible: String
 
-    public init(cliente: MCPClient, definicion: ToolDefinition) {
+    public init(
+        cliente: MCPClient,
+        definicion: ToolDefinition,
+        prefijo: String = ""
+    ) {
         self.cliente = cliente
         self.base = definicion
+        self.nombreVisible = prefijo + definicion.nombre
     }
 
-    public var definicion: ToolDefinition { base }
+    /// Prefijo estable a partir del nombre del servidor configurado.
+    ///
+    /// Se queda solo con letras y numeros porque los nombres de herramienta
+    /// viajan en un JSON y algunos proveedores rechazan caracteres raros. Si el
+    /// servidor no tiene nombre util, "mcp" sigue siendo un prefijo claro.
+    public static func prefijo(servidor: String) -> String {
+        let base = servidor.lowercased().filter { $0.isLetter || $0.isNumber }
+        return (base.isEmpty ? "mcp" : base) + "__"
+    }
+
+    public var definicion: ToolDefinition {
+        ToolDefinition(
+            nombre: nombreVisible,
+            descripcion: base.descripcion,
+            parametros: base.parametros
+        )
+    }
 
     public func ejecutar(argumentos: String) async throws -> String {
         try await cliente.llamar(nombre: base.nombre, argumentos: argumentos)

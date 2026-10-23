@@ -94,6 +94,37 @@ final class TareaTests: XCTestCase {
         XCTAssertEqual(tarea.titulo, "Sin ejecutar")
     }
 
+    func testElLibroConservaHerramientaResultadoAprobacionYCosto() throws {
+        let tarea = Tarea(
+            instruccion: "Guardar un dato",
+            estado: .completada,
+            pasos: [
+                Paso(
+                    descripcion: "Guardar en Memoria: Prefiere informes breves",
+                    estado: .denegado,
+                    herramienta: Memoria.nombreHerramientaTarea,
+                    argumentos: "{\"accion\":\"guardar\"}",
+                    resultado: "denegado por el dueno",
+                    llamadaID: "c1",
+                    aprobacion: .denegada,
+                    fechaInicio: Date(timeIntervalSince1970: 1_000),
+                    fechaFin: Date(timeIntervalSince1970: 1_001)
+                )
+            ],
+            costoAcumuladoUSD: 0.00042
+        )
+
+        let datos = try JSONEncoder().encode(tarea)
+        let cargada = try JSONDecoder().decode(Tarea.self, from: datos)
+        let paso = try XCTUnwrap(cargada.pasos.first)
+
+        XCTAssertEqual(paso.herramienta, Memoria.nombreHerramientaTarea)
+        XCTAssertEqual(paso.estado, .denegado)
+        XCTAssertEqual(paso.aprobacion, .denegada)
+        XCTAssertEqual(paso.resultado, "denegado por el dueno")
+        XCTAssertEqual(cargada.costoAcumuladoUSD, 0.00042)
+    }
+
     // MARK: - Store
 
     func testStoreGuardaListaYOrdenaPorActualizacion() throws {

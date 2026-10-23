@@ -130,6 +130,28 @@ final class MCPClientTests: XCTestCase {
         XCTAssertFalse(conSesion.isEmpty, "las peticiones posteriores deben llevar la sesion")
     }
 
+    func testMandaLaVersionNegociadaEnLasPeticionesSiguientes() async throws {
+        let transporte = TransporteMCP()
+        transporte.respuestas["initialize"] = respuestaJSON([
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": [
+                "protocolVersion": "2025-06-18",
+                "serverInfo": ["name": "s", "version": "1"]
+            ]
+        ])
+
+        let cliente = try MCPClient(transporte: transporte, config: configurado(), token: nil)
+        _ = try await cliente.inicializar()
+        _ = try await cliente.listarHerramientas()
+
+        let peticion = try XCTUnwrap(transporte.peticiones.last)
+        XCTAssertEqual(
+            peticion.cabeceras["MCP-Protocol-Version"],
+            "2025-06-18"
+        )
+    }
+
     func testLeeRespuestaEnFormatoSSE() async throws {
         let cuerpo = """
         event: message
@@ -265,5 +287,68 @@ final class MCPClientTests: XCTestCase {
 
         let texto = try await herramienta.ejecutar(argumentos: "{\"a\":1}")
         XCTAssertEqual(texto, "hecho")
+    }
+
+    // MARK: - Context7 v4 y prefijo del servidor
+
+    func testParseaLasHerramientasVigentesDeContext7YNoLaMuerta() async throws {
+        let transporte = TransporteMCP()
+        transporte.respuestas["tools/list"] = respuestaJSON([
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": [
+                "tools": [
+                    [
+                        "name": "resolve-library-id",
+                        "description": "Resuelve el id de una libreria",
+                        "inputSchema": ["type": "object"]
+                    ],
+                    [
+                        "name": "query-docs",
+                        "description": "Consulta la documentacion",
+                        "inputSchema": ["type": "object"]
+                    ]
+                ]
+            ]
+        ])
+
+        let cliente = try MCPClient(transporte: transporte, config: configurado(), token: nil)
+        let herramientas = try await cliente.listarHerramientas()
+        let nombres = herramientas.map(\.nombre)
+
+        XCTAssertEqual(nombres, ["resolve-library-id", "query-docs"])
+    }
+
+    func testElPrefijoDelServidorEvitaChoquesYElLlamadoUsaElNombreRemoto() async throws {
+        XCTAssertEqual(HerramientaMCP.prefijo(servidor: "Context7"), "context7__")
+        XCTAssertEqual(HerramientaMCP.prefijo(servidor: "  "), "mcp__")
+
+        let transporte = TransporteMCP()
+        transporte.respuestas["tools/call"] = respuestaJSON([
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": ["content": [["type": "text", "text": "ok"]]]
+        ])
+
+        let cliente = try MCPClient(transporte: transporte, config: configurado(), token: nil)
+        let base = ToolDefinition(
+            nombre: "query-docs",
+            descripcion: "Consulta",
+            parametros: JSONSchema()
+        )
+        let herramienta = HerramientaMCP(
+            cliente: cliente,
+            definicion: base,
+            prefijo: HerramientaMCP.prefijo(servidor: "Context7")
+        )
+
+        XCTAssertEqual(herramienta.definicion.nombre, "context7__query-docs")
+        _ = try await herramienta.ejecutar(argumentos: "{}")
+
+        let peticion = try XCTUnwrap(transporte.peticiones.last)
+        let cuerpo = try XCTUnwrap(peticion.cuerpo)
+        let objeto = try XCTUnwrap(JSONSerialization.jsonObject(with: cuerpo) as? [String: Any])
+        let parametros = try XCTUnwrap(objeto["params"] as? [String: Any])
+        XCTAssertEqual(parametros["name"] as? String, "query-docs")
     }
 }

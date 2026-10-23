@@ -209,7 +209,7 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertEqual(mensajeHerramienta.rol, .herramienta)
         XCTAssertEqual(
             mensajeHerramienta.texto,
-            "El usuario rechazo esta accion antes de que se ejecutara."
+            "denegado por el dueno"
         )
         XCTAssertEqual(mensajeHerramienta.toolCallId, "c1")
     }

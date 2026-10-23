@@ -104,6 +104,32 @@ final class ArnesApp {
         )
     }
 
+    /// Espera a que se cumpla una condicion del estado sin bloquear el actor.
+    func esperar(
+        _ condicion: @escaping () -> Bool,
+        timeout: TimeInterval = 5,
+        mensaje: String = "La condición no se cumplió dentro del tiempo del test"
+    ) async throws {
+        let limite = Date().addingTimeInterval(timeout)
+        while !condicion(), Date() < limite {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(condicion(), mensaje)
+    }
+
+    /// Espera a que una tarea llegue al estado pedido.
+    func esperarTarea(
+        id: UUID,
+        estado: EstadoTarea,
+        timeout: TimeInterval = 5
+    ) async throws {
+        try await esperar(
+            { self.estado.tareas.first(where: { $0.id == id })?.estado == estado },
+            timeout: timeout,
+            mensaje: "La tarea no llegó a \(estado.titulo)"
+        )
+    }
+
     /// Borra la suite y la carpeta temporales al terminar el test.
     func limpiar() {
         defaults.removePersistentDomain(forName: nombreSuite)
@@ -134,6 +160,16 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     private var guiones: [GuionRespuesta] = []
     private var peticiones: [HTTPRequest] = []
     private var respuestasUnarias: [HTTPRespuesta] = []
+    private var streamsContados = 0
+    private var unariasContadas = 0
+    /// Numero de peticion (1-based) que se queda esperando hasta que el test
+    /// la libere. Sirve para mirar el disco a mitad de una tarea.
+    private var retenerStreamEn: Int?
+    private var retenerUnariaEn: Int?
+    private var continuacionStream: CheckedContinuation<Void, Never>?
+    private var continuacionUnaria: CheckedContinuation<Void, Never>?
+    private var streamYaLiberado = false
+    private var unariaYaLiberada = false
 
     /// Encola una respuesta de chat completions con su consumo.
     ///
@@ -158,6 +194,40 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
         respuestasUnarias.append(respuesta)
     }
 
+    /// Retiene la respuesta de streaming numero `numero` (1-based).
+    func retenerStream(en numero: Int) {
+        candado.lock()
+        defer { candado.unlock() }
+        retenerStreamEn = numero
+        streamYaLiberado = false
+    }
+
+    func liberarStreamRetenido() {
+        candado.lock()
+        let continuacion = continuacionStream
+        continuacionStream = nil
+        if continuacion == nil { streamYaLiberado = true }
+        candado.unlock()
+        continuacion?.resume()
+    }
+
+    /// Retiene la respuesta unaria numero `numero` (1-based).
+    func retenerUnaria(en numero: Int) {
+        candado.lock()
+        defer { candado.unlock() }
+        retenerUnariaEn = numero
+        unariaYaLiberada = false
+    }
+
+    func liberarUnariaRetenida() {
+        candado.lock()
+        let continuacion = continuacionUnaria
+        continuacionUnaria = nil
+        if continuacion == nil { unariaYaLiberada = true }
+        candado.unlock()
+        continuacion?.resume()
+    }
+
     var peticionesRegistradas: [HTTPRequest] {
         candado.lock()
         defer { candado.unlock() }
@@ -171,10 +241,15 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func abrirStream(_ peticion: HTTPRequest) async throws -> AsyncThrowingStream<Data, Error> {
+        let numero = siguienteNumeroDeStream()
         guard let guion = registrarStream(peticion) else {
             throw ErrorAPI.respuestaInvalida(
                 "El transporte de prueba recibio una peticion sin guion."
             )
+        }
+
+        if debeRetenerStream(numero) {
+            await esperarLiberacionDeStream()
         }
 
         let datos = Self.cuerpoSSE(guion)
@@ -185,7 +260,107 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func enviar(_ peticion: HTTPRequest) async throws -> HTTPRespuesta {
-        registrarUnaria(peticion)
+        let numero = siguienteNumeroUnaria()
+        let respuesta = registrarUnaria(peticion)
+
+        if debeRetenerUnaria(numero) {
+            await esperarLiberacionDeUnaria()
+        }
+
+        return respuesta
+    }
+
+    private func siguienteNumeroDeStream() -> Int {
+        candado.lock()
+        defer { candado.unlock() }
+        streamsContados += 1
+        return streamsContados
+    }
+
+    private func siguienteNumeroUnaria() -> Int {
+        candado.lock()
+        defer { candado.unlock() }
+        unariasContadas += 1
+        return unariasContadas
+    }
+
+    private func debeRetenerStream(_ numero: Int) -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard retenerStreamEn == numero else { return false }
+        retenerStreamEn = nil
+        return true
+    }
+
+    private func debeRetenerUnaria(_ numero: Int) -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard retenerUnariaEn == numero else { return false }
+        retenerUnariaEn = nil
+        return true
+    }
+
+    private func esperarLiberacionDeStream() async {
+        if tomarLiberacionDeStream() { return }
+
+        await withCheckedContinuation { (continuacion: CheckedContinuation<Void, Never>) in
+            if instalarContinuacionDeStream(continuacion) {
+                continuacion.resume()
+            }
+        }
+    }
+
+    private func esperarLiberacionDeUnaria() async {
+        if tomarLiberacionDeUnaria() { return }
+
+        await withCheckedContinuation { (continuacion: CheckedContinuation<Void, Never>) in
+            if instalarContinuacionDeUnaria(continuacion) {
+                continuacion.resume()
+            }
+        }
+    }
+
+    /// Helpers sincronos: `NSLock.lock()` no se llama desde un contexto async.
+    private func tomarLiberacionDeStream() -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard streamYaLiberado else { return false }
+        streamYaLiberado = false
+        return true
+    }
+
+    private func instalarContinuacionDeStream(
+        _ continuacion: CheckedContinuation<Void, Never>
+    ) -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard !streamYaLiberado else {
+            streamYaLiberado = false
+            return true
+        }
+        continuacionStream = continuacion
+        return false
+    }
+
+    private func tomarLiberacionDeUnaria() -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard unariaYaLiberada else { return false }
+        unariaYaLiberada = false
+        return true
+    }
+
+    private func instalarContinuacionDeUnaria(
+        _ continuacion: CheckedContinuation<Void, Never>
+    ) -> Bool {
+        candado.lock()
+        defer { candado.unlock() }
+        guard !unariaYaLiberada else {
+            unariaYaLiberada = false
+            return true
+        }
+        continuacionUnaria = continuacion
+        return false
     }
 
     /// Saca el guion de la siguiente peticion de streaming.

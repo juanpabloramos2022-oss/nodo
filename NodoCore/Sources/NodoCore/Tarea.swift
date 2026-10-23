@@ -52,15 +52,16 @@ public enum EstadoTarea: String, Codable, CaseIterable, Identifiable {
 
 /// Estado de un paso del LIBRO de ejecucion.
 ///
-/// TASK.1/TASK.2 reservan el tipo y el campo `Tarea.pasos`; la estructura
-/// completa del libro (herramienta, resultado, aprobacion) llega en TASK.3.
-/// Este minimo permite que la fila de la lista calcule el progreso sin fingir
-/// pasos que todavia no existen.
-public enum EstadoPaso: String, Codable, CaseIterable, Identifiable {
+/// TASK.3 lo usa como el diario real de la tarea: cada evento del ToolLoop
+/// nace como pendiente/en curso y termina como terminado, fallido o denegado.
+public enum EstadoPaso: String, Codable, CaseIterable, Identifiable, Equatable {
     case pendiente
     case enCurso
     case terminado
     case fallido
+    /// El dueno rechazo la escritura propuesta. El paso queda en el libro como
+    /// constancia y la herramienta NO se ejecuto.
+    case denegado
 
     public var id: String { rawValue }
 
@@ -70,44 +71,130 @@ public enum EstadoPaso: String, Codable, CaseIterable, Identifiable {
         case .enCurso: return "En curso"
         case .terminado: return "Terminado"
         case .fallido: return "Fallido"
+        case .denegado: return "Denegado"
+        }
+    }
+
+    /// True cuando el paso ya no puede cambiar por si solo: es historia.
+    public var estaResuelto: Bool {
+        self == .terminado || self == .fallido || self == .denegado
+    }
+}
+
+/// Resultado de la hoja de aprobacion para un paso concreto.
+///
+/// Se guarda aparte de `EstadoPaso` porque un paso puede estar pendiente de
+/// aprobacion sin estar todavia en ejecucion, y una denegacion es un estado del
+/// paso distinto de un fallo tecnico.
+public enum EstadoAprobacion: String, Codable, CaseIterable, Equatable {
+    case pendiente
+    case aprobada
+    case denegada
+
+    public var titulo: String {
+        switch self {
+        case .pendiente: return "Esperando aprobación"
+        case .aprobada: return "Aprobada"
+        case .denegada: return "Denegada"
         }
     }
 }
 
 /// Un paso del libro de ejecucion.
 ///
-/// Decision de TASK.1: el campo existe desde ahora para que el progreso de la
-/// lista tenga una forma estable, pero se deja vacio y con lo minimo. TASK.3
-/// anade herramienta, resultado y aprobacion sobre este mismo tipo sin migrar
-/// los archivos: la decodificacion tolerante de abajo rellena lo que falte.
+/// TASK.3 lo completa: cada evento real del ToolLoop crea o actualiza un paso y
+/// lo persiste en el acto. Los campos nuevos tienen decodificacion tolerante
+/// para que un archivo escrito por TASK.1/TASK.2 siga abriendo sin migrarlo.
 public struct Paso: Codable, Identifiable, Equatable {
     public var id: UUID
     public var descripcion: String
     public var estado: EstadoPaso
+    /// Nombre de la herramienta que se ejecuto (nil en pasos de error final).
+    public var herramienta: String?
+    /// Argumentos JSON crudos que pidio el modelo. Se guardan para poder
+    /// reanudar sin repetir la llamada y para mostrar el detalle en la hoja.
+    public var argumentos: String?
+    /// Resultado que recibio el modelo. Es la prueba de lo que paso.
+    public var resultado: String?
+    /// Id de la llamada del modelo. Es lo que enlaza el evento del ToolLoop con
+    /// su paso aunque el orden de la lista cambie.
+    public var llamadaID: String?
+    /// URL cuando la herramienta fue `traer_url`; el panel de enlaces la usa.
+    public var url: String?
+    /// Estado de la hoja de aprobacion, o nil si la herramienta no la pidio.
+    public var aprobacion: EstadoAprobacion?
+    public var fechaInicio: Date?
+    public var fechaFin: Date?
 
     public init(
         id: UUID = UUID(),
         descripcion: String = "",
-        estado: EstadoPaso = .pendiente
+        estado: EstadoPaso = .pendiente,
+        herramienta: String? = nil,
+        argumentos: String? = nil,
+        resultado: String? = nil,
+        llamadaID: String? = nil,
+        url: String? = nil,
+        aprobacion: EstadoAprobacion? = nil,
+        fechaInicio: Date? = nil,
+        fechaFin: Date? = nil
     ) {
         self.id = id
         self.descripcion = descripcion
         self.estado = estado
+        self.herramienta = herramienta
+        self.argumentos = argumentos
+        self.resultado = resultado
+        self.llamadaID = llamadaID
+        self.url = url
+        self.aprobacion = aprobacion
+        self.fechaInicio = fechaInicio
+        self.fechaFin = fechaFin
     }
 
     private enum CodingKeys: String, CodingKey {
         case id
         case descripcion
         case estado
+        case herramienta
+        case argumentos
+        case resultado
+        case llamadaID
+        case url
+        case aprobacion
+        case fechaInicio
+        case fechaFin
     }
 
     /// Decodificacion tolerante con los pasos escritos por una version
-    /// intermedia: un archivo sin estado se lee como pendiente.
+    /// intermedia: un archivo sin estado se lee como pendiente y los campos
+    /// nuevos se leen como vacios.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         descripcion = try contenedor.decodeIfPresent(String.self, forKey: .descripcion) ?? ""
         estado = try contenedor.decodeIfPresent(EstadoPaso.self, forKey: .estado) ?? .pendiente
+        herramienta = try contenedor.decodeIfPresent(String.self, forKey: .herramienta)
+        argumentos = try contenedor.decodeIfPresent(String.self, forKey: .argumentos)
+        resultado = try contenedor.decodeIfPresent(String.self, forKey: .resultado)
+        llamadaID = try contenedor.decodeIfPresent(String.self, forKey: .llamadaID)
+        url = try contenedor.decodeIfPresent(String.self, forKey: .url)
+        aprobacion = try contenedor.decodeIfPresent(EstadoAprobacion.self, forKey: .aprobacion)
+        fechaInicio = try contenedor.decodeIfPresent(Date.self, forKey: .fechaInicio)
+        fechaFin = try contenedor.decodeIfPresent(Date.self, forKey: .fechaFin)
+    }
+
+    /// Resumen corto del resultado para el panel. El libro conserva el texto
+    /// completo; la vista no necesita pintar una pagina entera.
+    public func resultadoResumido(limite: Int = 240) -> String? {
+        guard let resultado else { return nil }
+        let limpio = resultado
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty else { return nil }
+        if limpio.count <= limite { return limpio }
+        return String(limpio.prefix(limite)) + "…"
     }
 }
 
@@ -115,7 +202,7 @@ public struct Paso: Codable, Identifiable, Equatable {
 ///
 /// Es distinto de `Paso` a proposito: el plan es texto visible y editable por
 /// el dueno; el libro es lo que de verdad ocurrio. TASK.2 guarda el plan en la
-/// tarea y deja el libro vacio hasta que TASK.3 conecte la ejecucion.
+/// tarea y TASK.3 lo ejecuta y llena el libro.
 public struct PasoPlan: Codable, Identifiable, Equatable {
     public var id: UUID
     /// Numero visible, empezando en 1.
@@ -317,7 +404,7 @@ public struct Tarea: Codable, Identifiable, Equatable {
     public var id: UUID
     public var instruccion: String
     public var estado: EstadoTarea
-    /// Libro de ejecucion. Vacio en TASK.1/TASK.2: la ejecucion llega en TASK.3.
+    /// Libro de ejecucion: lo que de verdad ocurrio, persistido paso a paso.
     public var pasos: [Paso]
     /// Plan por pasos que el dueno revisa antes de pulsar Empezar.
     public var plan: PlanTarea?
@@ -327,6 +414,13 @@ public struct Tarea: Codable, Identifiable, Equatable {
     /// Proveedor con el que se genera el plan y, en TASK.3, se ejecutara.
     /// nil cae al proveedor activo de la app.
     public var proveedorID: UUID?
+    /// Costo sellado de las llamadas al modelo hechas DENTRO de la tarea.
+    ///
+    /// Se acumula llamada a llamada con el mecanismo COST (precios del
+    /// proveedor en el momento de la respuesta). nil significa que aun no hay
+    /// consumo valorable; no se escribe cero porque un costo desconocido no es
+    /// un costo gratis.
+    public var costoAcumuladoUSD: Double?
     public var fechaCreacion: Date
     public var fechaActualizacion: Date
 
@@ -338,6 +432,7 @@ public struct Tarea: Codable, Identifiable, Equatable {
         plan: PlanTarea? = nil,
         conversacionID: UUID? = nil,
         proveedorID: UUID? = nil,
+        costoAcumuladoUSD: Double? = nil,
         fechaCreacion: Date = Date(),
         fechaActualizacion: Date = Date()
     ) {
@@ -348,6 +443,7 @@ public struct Tarea: Codable, Identifiable, Equatable {
         self.plan = plan
         self.conversacionID = conversacionID
         self.proveedorID = proveedorID
+        self.costoAcumuladoUSD = costoAcumuladoUSD
         self.fechaCreacion = fechaCreacion
         self.fechaActualizacion = fechaActualizacion
     }
@@ -374,6 +470,32 @@ public struct Tarea: Codable, Identifiable, Equatable {
 
     public var admiteEdicion: Bool { estado.admiteEdicion }
 
+    /// Instruccion de sistema del turno de EJECUCION de una tarea.
+    ///
+    /// El plan ya esta aprobado: el modelo no vuelve a planificar, ejecuta. Se
+    /// le dice que el libro manda y que no repita lo ya terminado para que una
+    /// reanudacion no empiece de cero.
+    public static let instruccionesEjecucion = """
+    Estás ejecutando una tarea autorizada por el dueño. No vuelvas a planificar: ejecuta la instrucción con las herramientas disponibles. Cada herramienta que llames queda registrada en el libro de la tarea. Si una herramienta devuelve un error, corrígelo o explica el bloqueo; no inventes resultados. Cuando termines, da una respuesta final breve en español.
+    """
+
+    /// Texto del mensaje de usuario que abre la ejecucion.
+    public static func mensajeDeEjecucion(_ tarea: Tarea) -> String {
+        var lineas: [String] = [
+            "Instrucción:",
+            tarea.instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+
+        if let plan = tarea.plan, !plan.pasos.isEmpty {
+            lineas.append("")
+            lineas.append("Plan aprobado:")
+            for paso in plan.pasos {
+                lineas.append("\(paso.orden). \(paso.texto)")
+            }
+        }
+        return lineas.joined(separator: "\n")
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case instruccion
@@ -382,13 +504,14 @@ public struct Tarea: Codable, Identifiable, Equatable {
         case plan
         case conversacionID
         case proveedorID
+        case costoAcumuladoUSD
         case fechaCreacion
         case fechaActualizacion
     }
 
     /// Decodificacion tolerante: una tarea escrita por una version anterior de
-    /// la partida puede no traer plan, libro, proveedor o conversacion. Se leen
-    /// como vacios en vez de impedir que arranque toda la lista.
+    /// la partida puede no traer plan, libro, proveedor, costo o conversacion.
+    /// Se leen como vacios en vez de impedir que arranque toda la lista.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -398,6 +521,10 @@ public struct Tarea: Codable, Identifiable, Equatable {
         plan = try contenedor.decodeIfPresent(PlanTarea.self, forKey: .plan)
         conversacionID = try contenedor.decodeIfPresent(UUID.self, forKey: .conversacionID)
         proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
+        costoAcumuladoUSD = try contenedor.decodeIfPresent(
+            Double.self,
+            forKey: .costoAcumuladoUSD
+        )
         let creada = try contenedor.decodeIfPresent(Date.self, forKey: .fechaCreacion) ?? Date()
         fechaCreacion = creada
         fechaActualizacion = try contenedor.decodeIfPresent(

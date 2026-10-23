@@ -93,7 +93,7 @@ public enum Memoria {
     /// - Chat: `memoria_chat`, escribe directo porque el dueno lo pidio en el
     ///   propio turno.
     /// - Tarea: `proponer_memoria`, NO escribe: propone el cambio y espera la
-    ///   aprobacion del dueno. No se crea aqui; TASK la conecta.
+    ///   aprobacion del dueno (TASK.4 la conecta con la hoja).
     /// - `proponer_memoria` no debe ofrecerse nunca en un chat normal, y
     ///   `memoria_chat` no se ofrece en chats sin memoria.
     public static let nombreHerramientaTarea = "proponer_memoria"
@@ -299,6 +299,18 @@ public enum Memoria {
             requeridos: ["accion"]
         )
     )
+
+    /// Esquema de `proponer_memoria` (Modo Tarea).
+    ///
+    /// Misma forma que la de Chat porque la accion es la misma; lo que cambia
+    /// es el contrato: en Tarea NADA se escribe hasta que el dueno aprueba. El
+    /// nombre distinto es la frontera HP1: la app decide por contexto y
+    /// herramienta, nunca por el texto del mensaje.
+    public static let herramientaTarea = ToolDefinition(
+        nombre: nombreHerramientaTarea,
+        descripcion: "Propone guardar, actualizar o borrar una entrada de la Memoria del usuario. La app pedira aprobacion al dueno y solo escribira si la concede.",
+        parametros: herramientaChat.parametros
+    )
 }
 
 /// Herramienta de Memoria del turno de Chat.
@@ -330,6 +342,37 @@ public struct HerramientaMemoriaChat: Herramienta {
         switch await ejecutor(accion) {
         case .aplicada(let cambio):
             return cambio.resultadoHerramienta
+        case .rechazada(let motivo):
+            return "Error: \(motivo)"
+        }
+    }
+}
+
+/// Herramienta de Memoria del Modo Tarea (HP1).
+///
+/// Se llama `proponer_memoria` y NUNCA escribe por su cuenta: el ToolLoop la
+/// clasifica siempre como herramienta con aprobacion, la hoja del dueno decide
+/// y solo si aprueba se llega a `ejecutar`. La aplicacion real la hace la capa
+/// app con `Memoria.aplicar` (MEM), igual que en Chat, para no duplicar reglas.
+public struct HerramientaProponerMemoria: Herramienta {
+    public typealias Ejecutor = (AccionMemoria) async -> ResultadoAccionMemoria
+
+    private let ejecutor: Ejecutor
+
+    public init(ejecutor: @escaping Ejecutor) {
+        self.ejecutor = ejecutor
+    }
+
+    public var definicion: ToolDefinition {
+        Memoria.herramientaTarea
+    }
+
+    public func ejecutar(argumentos: String) async throws -> String {
+        let accion = try Memoria.accion(desdeArgumentos: argumentos)
+        switch await ejecutor(accion) {
+        case .aplicada(let cambio):
+            // La tarjeta/registro del libro es el texto del cambio aplicado.
+            return cambio.textoDeTarjeta
         case .rechazada(let motivo):
             return "Error: \(motivo)"
         }

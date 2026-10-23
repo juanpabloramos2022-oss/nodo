@@ -42,10 +42,19 @@ public final class ToolLoop {
 
     /// Se llama justo antes de ejecutar una herramienta, con la llamada que
     /// pidio el modelo. Sin gancho no cambia nada.
-    public var alIniciarHerramienta: ((ToolCall) -> Void)?
+    ///
+    /// Es async a proposito: la app persiste el paso en ese mismo instante y no
+    /// puede hacerlo desde un ejecutor arbitrario sin saltar al MainActor.
+    public var alIniciarHerramienta: ((ToolCall) async -> Void)?
     /// Se llama justo despues de ejecutar una herramienta, con el resultado
     /// que se le devolvera al modelo (tambien si fue un error).
-    public var alTerminarHerramienta: ((ToolCall, String) -> Void)?
+    public var alTerminarHerramienta: ((ToolCall, String) async -> Void)?
+    /// Se llama cuando el dueno deniega una herramienta. El paso se marca
+    /// Denegado y el bucle sigue con el texto del rechazo.
+    public var alDenegarHerramienta: ((ToolCall, String) async -> Void)?
+    /// Se llama con el consumo de CADA llamada al modelo. La tarea lo sella con
+    /// los precios del proveedor y lo acumula en su libro de gasto.
+    public var alTerminarLlamadaModelo: ((UsoTokens) async -> Void)?
     /// Pregunta al usuario si una herramienta puede ejecutarse. Solo se usa
     /// cuando `requiereAprobacion` devuelve true.
     public var aprobador: ((ToolCall) async -> Bool)?
@@ -56,8 +65,10 @@ public final class ToolLoop {
         motor: ChatEngine,
         herramientas: [Herramienta],
         maxIteraciones: Int = 8,
-        alIniciarHerramienta: ((ToolCall) -> Void)? = nil,
-        alTerminarHerramienta: ((ToolCall, String) -> Void)? = nil,
+        alIniciarHerramienta: ((ToolCall) async -> Void)? = nil,
+        alTerminarHerramienta: ((ToolCall, String) async -> Void)? = nil,
+        alDenegarHerramienta: ((ToolCall, String) async -> Void)? = nil,
+        alTerminarLlamadaModelo: ((UsoTokens) async -> Void)? = nil,
         aprobador: ((ToolCall) async -> Bool)? = nil,
         requiereAprobacion: ((ToolCall) -> Bool)? = nil
     ) {
@@ -66,6 +77,8 @@ public final class ToolLoop {
         self.maxIteraciones = maxIteraciones
         self.alIniciarHerramienta = alIniciarHerramienta
         self.alTerminarHerramienta = alTerminarHerramienta
+        self.alDenegarHerramienta = alDenegarHerramienta
+        self.alTerminarLlamadaModelo = alTerminarLlamadaModelo
         self.aprobador = aprobador
         self.requiereAprobacion = requiereAprobacion
     }
@@ -102,6 +115,10 @@ public final class ToolLoop {
         }
 
         while iteraciones < maxIteraciones {
+            // Detener tiene que cortar tambien entre vueltas, no solo durante
+            // una peticion de red: si el modelo ya respondio, no se le vuelve a
+            // llamar con la tarea cancelada.
+            try Task.checkCancellation()
             iteraciones += 1
 
             let respuesta = try await motor.responder(
@@ -109,9 +126,14 @@ public final class ToolLoop {
                 herramientas: definiciones,
                 alRecibirTexto: alRecibirTexto
             )
+            try Task.checkCancellation()
 
             if let uso = respuesta.uso {
                 usoTotal = usoTotal?.sumando(uso) ?? uso
+                // COST: cada llamada se sella por separado, antes de seguir.
+                // Asi el panel de la tarea tiene el costo vivo y no solo el
+                // total al cerrar el turno.
+                await alTerminarLlamadaModelo?(uso)
             }
 
             if !respuesta.texto.isEmpty {
@@ -131,7 +153,7 @@ public final class ToolLoop {
             }
 
             for llamada in respuesta.toolCalls {
-                let resultado = await ejecutarConAprobacion(llamada)
+                let resultado = try await ejecutarConAprobacion(llamada)
                 let mensajeHerramienta = ChatMessage(
                     rol: .herramienta,
                     texto: resultado,
@@ -151,7 +173,7 @@ public final class ToolLoop {
     /// Si el usuario rechaza (o no hay aprobador), la herramienta no corre: el
     /// modelo recibe el texto del rechazo y decide si sigue o cierra el turno.
     /// Los ganchos de inicio y fin solo envuelven una ejecucion real.
-    private func ejecutarConAprobacion(_ llamada: ToolCall) async -> String {
+    private func ejecutarConAprobacion(_ llamada: ToolCall) async throws -> String {
         if requiereAprobacion?(llamada) == true {
             let aprobada: Bool
             if let aprobador {
@@ -160,14 +182,24 @@ public final class ToolLoop {
                 aprobada = false
             }
 
+            // Detener mientras la hoja esta abierta cancela la tarea: no se
+            // ejecuta nada aunque la continuacion se haya resuelto.
+            try Task.checkCancellation()
+
             guard aprobada else {
-                return "El usuario rechazo esta accion antes de que se ejecutara."
+                let motivo = "denegado por el dueno"
+                await alDenegarHerramienta?(llamada, motivo)
+                return motivo
             }
         }
 
-        alIniciarHerramienta?(llamada)
-        let resultado = await ejecutar(llamada)
-        alTerminarHerramienta?(llamada, resultado)
+        try Task.checkCancellation()
+        await alIniciarHerramienta?(llamada)
+        let resultado = try await ejecutar(llamada)
+        // Si Detener llego mientras la herramienta trabajaba, el resultado ya
+        // no se publica como terminado: el paso queda como lo dejo Detener.
+        try Task.checkCancellation()
+        await alTerminarHerramienta?(llamada, resultado)
         return resultado
     }
 
@@ -175,8 +207,9 @@ public final class ToolLoop {
     ///
     /// Un fallo no se propaga: se convierte en texto de error para el modelo.
     /// Asi puede corregir los argumentos o probar otra cosa en vez de que el
-    /// turno entero se caiga por un nombre mal escrito.
-    private func ejecutar(_ llamada: ToolCall) async -> String {
+    /// turno entero se caiga por un nombre mal escrito. La cancelacion si se
+    /// propaga: es una orden del dueno, no un error de la herramienta.
+    private func ejecutar(_ llamada: ToolCall) async throws -> String {
         guard let herramienta = herramientas.first(where: { $0.definicion.nombre == llamada.nombre }) else {
             return "Error: no existe la herramienta \(llamada.nombre)."
         }
@@ -184,8 +217,10 @@ public final class ToolLoop {
         do {
             return try await herramienta.ejecutar(argumentos: llamada.argumentos)
         } catch let error as ErrorHerramienta {
+            if Task.isCancelled { throw CancellationError() }
             return "Error: \(error.errorDescription ?? "no se pudo ejecutar")"
         } catch {
+            if Task.isCancelled { throw CancellationError() }
             return "Error: \(error.localizedDescription)"
         }
     }

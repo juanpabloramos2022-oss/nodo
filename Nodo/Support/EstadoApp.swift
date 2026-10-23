@@ -106,6 +106,33 @@ private struct UsoResumido: Codable, Equatable {
     }
 }
 
+/// Peticion viva de aprobacion del Modo Tarea.
+///
+/// La hoja no guarda la continuacion: el estado la resuelve con
+/// `aprobarSolicitud()` o `denegarSolicitud()` y el ToolLoop recibe el booleano.
+/// Asi la vista solo pinta y el motor no conoce SwiftUI.
+struct SolicitudAprobacion: Identifiable, Equatable {
+    let id: UUID
+    let tareaID: UUID
+    let herramienta: String
+    let descripcion: String
+    let detalle: String
+
+    init(
+        id: UUID = UUID(),
+        tareaID: UUID,
+        herramienta: String,
+        descripcion: String,
+        detalle: String = ""
+    ) {
+        self.id = id
+        self.tareaID = tareaID
+        self.herramienta = herramienta
+        self.descripcion = descripcion
+        self.detalle = detalle
+    }
+}
+
 /// Estado central de la app.
 ///
 /// Aqui vive todo lo que cambia: la configuracion, las conversaciones y el texto
@@ -135,6 +162,11 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var generandoPlanChat = false
     /// Error propio de la pantalla de Tareas, separado del error del chat.
     @Published var errorTarea: String?
+    /// Aprobacion pendiente del Modo Tarea, si hay una.
+    ///
+    /// La hoja de TareaView la presenta; los tests la resuelven llamando a
+    /// `aprobarSolicitud()` o `denegarSolicitud()`.
+    @Published var solicitudAprobacion: SolicitudAprobacion?
 
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
@@ -235,6 +267,16 @@ final class EstadoApp: ObservableObject {
     /// Almacen de tareas, independiente del de conversaciones.
     private var storeTareas: TareaStore?
     private var tareaActual: Task<Void, Never>?
+    /// Ejecucion de la tarea abierta, separada del turno de chat.
+    ///
+    /// Se guarda aparte para que Detener corte SOLO la tarea y para que una
+    /// ejecucion vieja que termina tarde no escriba en una reanudacion nueva.
+    private var ejecucionTarea: Task<Void, Never>?
+    private var idTareaEjecutando: UUID?
+    private var generacionEjecucionTarea = UUID()
+    /// Continuacion que espera la hoja de aprobacion. Se resuelve una sola vez.
+    private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
+    private var idSolicitudAprobacion: UUID?
     /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
     private var tareaCompactado: Task<Void, Never>?
     /// Tarea de /plan en el chat, para cancelarla al cambiar de conversacion.
@@ -1491,6 +1533,11 @@ final class EstadoApp: ObservableObject {
 
     /// Borra una tarea y su archivo. El plan y el libro se van con ella.
     func borrarTarea(id: UUID) {
+        // Una ejecucion viva no puede seguir escribiendo un archivo que se va a
+        // borrar: primero se detiene y se resuelve cualquier aprobacion abierta.
+        if idTareaEjecutando == id {
+            detenerTarea(id: id)
+        }
         do {
             try storeTareas?.borrar(id: id)
         } catch {
@@ -1592,6 +1639,20 @@ final class EstadoApp: ObservableObject {
             // acumulador global aunque no pertenezca a una conversacion.
             registrarGasto(uso: respuesta.uso, proveedor: proveedor)
 
+            // COST de la tarea: la planificacion tambien es una llamada al
+            // modelo dentro de la tarea y su sello forma parte del acumulado.
+            var costoDeLaLlamada: Double?
+            if let uso = respuesta.uso {
+                var mensaje = ChatMessage(
+                    rol: .asistente,
+                    texto: "",
+                    tokensEntrada: uso.entrada,
+                    tokensSalida: uso.salida
+                )
+                SellosDeCosto.sellar(&mensaje, proveedor: proveedor)
+                costoDeLaLlamada = mensaje.costoSelladoUSD
+            }
+
             let plan = PlanTarea.desde(
                 texto: respuesta.texto,
                 proveedorID: proveedor.id
@@ -1612,6 +1673,10 @@ final class EstadoApp: ObservableObject {
             tareas[actual].plan = plan
             tareas[actual].estado = .esperandoInicio
             tareas[actual].proveedorID = proveedor.id
+            if let costoDeLaLlamada {
+                tareas[actual].costoAcumuladoUSD =
+                    (tareas[actual].costoAcumuladoUSD ?? 0) + costoDeLaLlamada
+            }
             tareas[actual].fechaActualizacion = Date()
             guardarTarea(tareas[actual])
         } catch is CancellationError {
@@ -1623,10 +1688,11 @@ final class EstadoApp: ObservableObject {
         }
     }
 
-    /// Autoriza la ejecucion: deja la tarea `enCurso` y nada mas.
+    /// Autoriza la ejecucion y arranca el ToolLoop de la tarea.
     ///
-    /// TASK.2 termina aqui. TASK.3 conecta el libro de pasos y las herramientas;
-    /// hasta entonces Empezar no inventa pasos ni llama a ninguna herramienta.
+    /// Empezar ya no deja la tarea "en curso" sin hacer nada: TASK.3 conecta el
+    /// mismo bucle que usa el chat, con las herramientas DE TAREA. La llamada
+    /// vuelve enseguida; el trabajo corre en `ejecucionTarea`.
     @discardableResult
     func empezarTarea(id: UUID) -> Bool {
         guard let indice = tareas.firstIndex(where: { $0.id == id }) else {
@@ -1640,10 +1706,585 @@ final class EstadoApp: ObservableObject {
             return false
         }
 
-        tareas[indice].estado = .enCurso
-        tareas[indice].fechaActualizacion = Date()
-        guardarTarea(tareas[indice])
+        var tarea = tareas[indice]
+        tarea.estado = .enCurso
+        tarea.fechaActualizacion = Date()
+        // Una tarea que empieza de cero no arrastra un libro de otra corrida.
+        // El costo de planificacion si se conserva: ya se gasto en esta tarea.
+        tarea.pasos = []
+        guardarTarea(tarea)
+        errorTarea = nil
+        lanzarEjecucionTarea(id: id)
         return true
+    }
+
+    /// Reanuda una tarea detenida o interrumpida desde su libro.
+    ///
+    /// No borra ni repite los pasos resueltos: se reinyectan como historial de
+    /// herramientas para que el modelo sepa que ya se hizo. Los pasos que
+    /// quedaron "en curso" al cerrar la app se marcan fallidos antes de seguir.
+    @discardableResult
+    func reanudarTarea(id: UUID) -> Bool {
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        guard tareas[indice].estado == .detenida
+            || tareas[indice].estado == .interrumpida
+        else {
+            return false
+        }
+        guard tareas[indice].plan != nil else {
+            errorTarea = "La tarea no tiene plan para reanudar."
+            return false
+        }
+
+        var tarea = tareas[indice]
+        for paso in tarea.pasos.indices {
+            if tarea.pasos[paso].estado == .enCurso
+                || tarea.pasos[paso].estado == .pendiente {
+                tarea.pasos[paso].estado = .fallido
+                tarea.pasos[paso].resultado = "Interrumpida antes de terminar."
+                tarea.pasos[paso].fechaFin = Date()
+            }
+        }
+
+        tarea.estado = .enCurso
+        tarea.fechaActualizacion = Date()
+        guardarTarea(tarea)
+        errorTarea = nil
+        lanzarEjecucionTarea(id: id)
+        return true
+    }
+
+    /// Detiene la ejecucion en curso sin tocar los pasos ya resueltos.
+    ///
+    /// La generacion se invalida ANTES de cancelar: los ganchos de una tarea
+    /// vieja que despierta tarde no pueden escribir en el libro que el dueno
+    /// acaba de congelar.
+    func detenerTarea(id: UUID) {
+        let enCursoSinEjecucion = idTareaEjecutando == nil
+            && tareas.first(where: { $0.id == id })?.estado == .enCurso
+        guard idTareaEjecutando == id || enCursoSinEjecucion else {
+            return
+        }
+
+        generacionEjecucionTarea = UUID()
+        ejecucionTarea?.cancel()
+        ejecucionTarea = nil
+        idTareaEjecutando = nil
+        resolverAprobacion(false)
+
+        modificarTarea(id: id) { tarea in
+            tarea.estado = .detenida
+            for indice in tarea.pasos.indices {
+                if tarea.pasos[indice].estado == .enCurso
+                    || tarea.pasos[indice].estado == .pendiente {
+                    tarea.pasos[indice].estado = .fallido
+                    tarea.pasos[indice].resultado = "Detenida por el dueño."
+                    tarea.pasos[indice].fechaFin = Date()
+                }
+            }
+        }
+    }
+
+    /// Resuelve la hoja a favor: la herramienta se ejecuta y el paso sigue.
+    func aprobarSolicitud() {
+        resolverAprobacion(true)
+    }
+
+    /// Resuelve la hoja en contra: no se escribe nada y el paso queda Denegado.
+    func denegarSolicitud() {
+        resolverAprobacion(false)
+    }
+
+    private func resolverAprobacion(_ aprobada: Bool) {
+        guard let continuacion = continuacionAprobacion else {
+            solicitudAprobacion = nil
+            idSolicitudAprobacion = nil
+            return
+        }
+        continuacionAprobacion = nil
+        solicitudAprobacion = nil
+        idSolicitudAprobacion = nil
+        continuacion.resume(returning: aprobada)
+    }
+
+    // MARK: - Ejecucion de la tarea (TASK.3)
+
+    /// Lanza el bucle en una tarea propia y sella la generacion.
+    ///
+    /// `generacion` es la frontera entre una ejecucion y la siguiente: Detener
+    /// la cambia para que los ganchos que despiertan tarde no toquen el libro.
+    private func lanzarEjecucionTarea(id: UUID) {
+        // Solo se ejecuta una tarea a la vez. Si habia otra viva, se detiene
+        // con su libro intacto antes de empezar esta.
+        if let anterior = idTareaEjecutando, anterior != id {
+            detenerTarea(id: anterior)
+        }
+        ejecucionTarea?.cancel()
+        let generacion = UUID()
+        generacionEjecucionTarea = generacion
+        idTareaEjecutando = id
+        ejecucionTarea = Task { [weak self] in
+            guard let self else { return }
+            await self.ejecutarTarea(id: id, generacion: generacion)
+        }
+    }
+
+    private func ejecutarTarea(id: UUID, generacion: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }),
+              let (proveedor, clave) = proveedorYClaveParaTarea(tarea)
+        else {
+            if generacion == generacionEjecucionTarea {
+                finalizarTareaConError(
+                    id: id,
+                    mensaje: errorTarea ?? "No se pudo preparar la ejecución."
+                )
+                ejecucionTarea = nil
+                idTareaEjecutando = nil
+            }
+            return
+        }
+
+        let (herramientas, nombresMCP) = await herramientasDeTarea()
+        guard generacion == generacionEjecucionTarea else { return }
+
+        let motor = motorPara(proveedor: proveedor, clave: clave)
+        let bucle = ToolLoop(
+            motor: motor,
+            herramientas: herramientas,
+            maxIteraciones: 8
+        )
+
+        // La politica vive en NodoCore (deuda DEM reconectada aqui). La lista
+        // de exentas del dueno se respeta para lo que no es Memoria; una
+        // escritura propuesta SIEMPRE pasa por la hoja.
+        let exentas = config.herramientasSinAprobacion ?? []
+        bucle.requiereAprobacion = { llamada in
+            if llamada.nombre == Memoria.nombreHerramientaTarea {
+                return true
+            }
+            let esMCP = nombresMCP.contains(llamada.nombre)
+            // traer_url es la unica HTTP propia y su metodo es GET.
+            let metodo = llamada.nombre == "traer_url" ? "GET" : nil
+            return PoliticaAprobacion.requiereAprobacion(
+                esMCP: esMCP,
+                metodoHTTP: metodo,
+                nombreHerramienta: llamada.nombre,
+                exentas: exentas
+            )
+        }
+
+        bucle.aprobador = { [weak self] llamada in
+            guard let self else { return false }
+            return await self.pedirAprobacion(
+                llamada,
+                idTarea: id,
+                generacion: generacion
+            )
+        }
+
+        bucle.alIniciarHerramienta = { [weak self] llamada in
+            guard let self else { return }
+            await self.pasoIniciado(
+                llamada,
+                idTarea: id,
+                generacion: generacion
+            )
+        }
+        bucle.alTerminarHerramienta = { [weak self] llamada, resultado in
+            guard let self else { return }
+            await self.pasoTerminado(
+                llamada,
+                resultado: resultado,
+                idTarea: id,
+                generacion: generacion
+            )
+        }
+        bucle.alDenegarHerramienta = { [weak self] llamada, motivo in
+            guard let self else { return }
+            await self.pasoDenegado(
+                llamada,
+                motivo: motivo,
+                idTarea: id,
+                generacion: generacion
+            )
+        }
+        bucle.alTerminarLlamadaModelo = { [weak self] uso in
+            guard let self else { return }
+            await self.registrarUsoDeTarea(
+                uso,
+                idTarea: id,
+                proveedor: proveedor,
+                generacion: generacion
+            )
+        }
+
+        do {
+            let resultado = try await bucle.ejecutar(
+                historial: historialDeTarea(tarea)
+            )
+            guard generacion == generacionEjecucionTarea else { return }
+
+            if resultado.seAgotoElLimite {
+                finalizarTareaConError(
+                    id: id,
+                    mensaje: "Se alcanzó el límite de \(bucle.maxIteraciones) vueltas de herramientas."
+                )
+            } else {
+                modificarTarea(id: id) { tarea in
+                    tarea.estado = .completada
+                }
+            }
+        } catch is CancellationError {
+            // Detener ya dejo el estado Detenida y los pasos previos intactos.
+            // Si la cancelacion vino de otro sitio, se declara igual.
+            guard generacion == generacionEjecucionTarea else { return }
+            modificarTarea(id: id) { tarea in
+                tarea.estado = .detenida
+            }
+        } catch {
+            guard generacion == generacionEjecucionTarea else { return }
+            let detalle = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            finalizarTareaConError(id: id, mensaje: detalle)
+        }
+
+        if generacion == generacionEjecucionTarea {
+            ejecucionTarea = nil
+            idTareaEjecutando = nil
+        }
+    }
+
+    /// Herramientas que existen DENTRO de una tarea, nunca en Chat.
+    ///
+    /// `traer_url` es la de fetch HTTP que ya traia la app. `proponer_memoria`
+    /// es la unica via de escritura en Memoria dentro de Tarea (HP1). Las MCP
+    /// solo aparecen si hay servidor configurado en Conexiones.
+    private func herramientasDeTarea() async -> (
+        herramientas: [Herramienta],
+        mcp: Set<String>
+    ) {
+        var herramientas: [Herramienta] = [
+            HttpFetchTool(transporte: transporte),
+            HerramientaProponerMemoria { [weak self] accion in
+                guard let self else {
+                    return .rechazada("la Memoria no está disponible en esta tarea.")
+                }
+                return await self.aplicarAccionDeMemoriaTarea(accion)
+            }
+        ]
+        var nombresMCP: Set<String> = []
+
+        guard config.servidor.estaConfigurado else {
+            return (herramientas, nombresMCP)
+        }
+
+        do {
+            let cliente = try MCPClient(
+                transporte: transporte,
+                config: config.servidor,
+                token: tokenServidor
+            )
+            _ = try await cliente.inicializar()
+            let definiciones = try await cliente.listarHerramientas()
+            let prefijo = HerramientaMCP.prefijo(servidor: config.servidor.nombre)
+            for definicion in definiciones {
+                let remota = HerramientaMCP(
+                    cliente: cliente,
+                    definicion: definicion,
+                    prefijo: prefijo
+                )
+                nombresMCP.insert(remota.definicion.nombre)
+                herramientas.append(remota)
+            }
+        } catch {
+            // Un servidor caido no puede dejar la tarea sin sus herramientas
+            // locales: se avisa y se sigue con lo que hay.
+            let detalle = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            errorTarea = "No se pudieron cargar las herramientas MCP: \(detalle)"
+        }
+
+        return (herramientas, nombresMCP)
+    }
+
+    /// Historial de ejecucion. En una reanudacion reinyecta los pasos resueltos
+    /// como llamadas y resultados reales, para no repetirlos.
+    private func historialDeTarea(_ tarea: Tarea) -> [ChatMessage] {
+        var mensajes = [
+            ChatMessage(rol: .sistema, texto: Tarea.instruccionesEjecucion),
+            ChatMessage(rol: .usuario, texto: Tarea.mensajeDeEjecucion(tarea))
+        ]
+
+        let resueltos = tarea.pasos.compactMap { paso -> (Paso, ToolCall)? in
+            guard paso.estado.estaResuelto,
+                  let herramienta = paso.herramienta,
+                  let llamadaID = paso.llamadaID
+            else {
+                return nil
+            }
+            return (
+                paso,
+                ToolCall(
+                    id: llamadaID,
+                    nombre: herramienta,
+                    argumentos: paso.argumentos ?? "{}"
+                )
+            )
+        }
+
+        guard !resueltos.isEmpty else { return mensajes }
+
+        mensajes.append(
+            ChatMessage(
+                rol: .sistema,
+                texto: "Libro previo: estos pasos ya están resueltos. No los repitas; continúa desde aquí."
+            )
+        )
+        for (paso, llamada) in resueltos {
+            mensajes.append(
+                ChatMessage(rol: .asistente, texto: "", toolCalls: [llamada])
+            )
+            mensajes.append(
+                ChatMessage(
+                    rol: .herramienta,
+                    texto: paso.resultado ?? "",
+                    toolCallId: llamada.id
+                )
+            )
+        }
+        return mensajes
+    }
+
+    /// Crea el paso Pendiente y abre la hoja ANTES de ejecutar nada.
+    private func pedirAprobacion(
+        _ llamada: ToolCall,
+        idTarea: UUID,
+        generacion: UUID
+    ) async -> Bool {
+        guard generacion == generacionEjecucionTarea else { return false }
+
+        crearOActualizarPaso(
+            llamada,
+            idTarea: idTarea,
+            generacion: generacion,
+            estado: .pendiente,
+            aprobacion: .pendiente,
+            descripcion: descripcionDeLlamada(llamada)
+        )
+
+        guard generacion == generacionEjecucionTarea else { return false }
+
+        let solicitud = SolicitudAprobacion(
+            tareaID: idTarea,
+            herramienta: llamada.nombre,
+            descripcion: descripcionDeLlamada(llamada),
+            detalle: llamada.argumentos
+        )
+        idSolicitudAprobacion = solicitud.id
+        solicitudAprobacion = solicitud
+
+        let aprobada = await withCheckedContinuation {
+            (continuacion: CheckedContinuation<Bool, Never>) in
+            self.continuacionAprobacion = continuacion
+        }
+
+        if idSolicitudAprobacion == solicitud.id {
+            idSolicitudAprobacion = nil
+            solicitudAprobacion = nil
+        }
+        return aprobada
+    }
+
+    private func pasoIniciado(
+        _ llamada: ToolCall,
+        idTarea: UUID,
+        generacion: UUID
+    ) async {
+        crearOActualizarPaso(
+            llamada,
+            idTarea: idTarea,
+            generacion: generacion,
+            estado: .enCurso,
+            fechaInicio: Date()
+        )
+    }
+
+    private func pasoTerminado(
+        _ llamada: ToolCall,
+        resultado: String,
+        idTarea: UUID,
+        generacion: UUID
+    ) async {
+        let fallo = resultado.hasPrefix("Error")
+        crearOActualizarPaso(
+            llamada,
+            idTarea: idTarea,
+            generacion: generacion,
+            estado: fallo ? .fallido : .terminado,
+            resultado: resultado,
+            fechaFin: Date()
+        )
+    }
+
+    private func pasoDenegado(
+        _ llamada: ToolCall,
+        motivo: String,
+        idTarea: UUID,
+        generacion: UUID
+    ) async {
+        crearOActualizarPaso(
+            llamada,
+            idTarea: idTarea,
+            generacion: generacion,
+            estado: .denegado,
+            aprobacion: .denegada,
+            resultado: motivo,
+            fechaFin: Date()
+        )
+    }
+
+    /// COST dentro de la tarea: cada llamada al modelo se sella y se acumula.
+    private func registrarUsoDeTarea(
+        _ uso: UsoTokens,
+        idTarea: UUID,
+        proveedor: ProviderConfig,
+        generacion: UUID
+    ) async {
+        guard generacion == generacionEjecucionTarea else { return }
+
+        registrarGasto(uso: uso, proveedor: proveedor)
+
+        // Se usa el mismo sello inmutable que los mensajes del chat: si el
+        // proveedor no tiene precios, el costo queda desconocido (nil) en vez
+        // de inventarse.
+        var mensaje = ChatMessage(
+            rol: .asistente,
+            texto: "",
+            tokensEntrada: uso.entrada,
+            tokensSalida: uso.salida
+        )
+        SellosDeCosto.sellar(&mensaje, proveedor: proveedor)
+        guard let costo = mensaje.costoSelladoUSD else { return }
+
+        modificarTarea(id: idTarea) { tarea in
+            tarea.costoAcumuladoUSD = (tarea.costoAcumuladoUSD ?? 0) + costo
+        }
+    }
+
+    private func aplicarAccionDeMemoriaTarea(
+        _ accion: AccionMemoria
+    ) -> ResultadoAccionMemoria {
+        var entradas = config.memoria
+        let resultado = Memoria.aplicar(accion, en: &entradas)
+        if case .aplicada = resultado {
+            config.memoria = entradas
+        }
+        return resultado
+    }
+
+    private func crearOActualizarPaso(
+        _ llamada: ToolCall,
+        idTarea: UUID,
+        generacion: UUID,
+        estado: EstadoPaso,
+        aprobacion: EstadoAprobacion? = nil,
+        resultado: String? = nil,
+        descripcion: String? = nil,
+        fechaInicio: Date? = nil,
+        fechaFin: Date? = nil
+    ) {
+        guard generacion == generacionEjecucionTarea else { return }
+
+        modificarTarea(id: idTarea) { tarea in
+            if let indice = tarea.pasos.firstIndex(where: {
+                $0.llamadaID == llamada.id
+            }) {
+                var paso = tarea.pasos[indice]
+                paso.estado = estado
+                if let aprobacion {
+                    paso.aprobacion = aprobacion
+                } else if paso.aprobacion == .pendiente {
+                    // Llego a ejecutarse: la hoja se aprobo.
+                    paso.aprobacion = .aprobada
+                }
+                if let resultado { paso.resultado = resultado }
+                if let descripcion { paso.descripcion = descripcion }
+                if let fechaInicio { paso.fechaInicio = fechaInicio }
+                if let fechaFin { paso.fechaFin = fechaFin }
+                if paso.herramienta == nil { paso.herramienta = llamada.nombre }
+                if paso.argumentos == nil { paso.argumentos = llamada.argumentos }
+                if paso.url == nil { paso.url = urlDeLlamada(llamada) }
+                tarea.pasos[indice] = paso
+            } else {
+                tarea.pasos.append(
+                    Paso(
+                        descripcion: descripcion ?? descripcionDeLlamada(llamada),
+                        estado: estado,
+                        herramienta: llamada.nombre,
+                        argumentos: llamada.argumentos,
+                        resultado: resultado,
+                        llamadaID: llamada.id,
+                        url: urlDeLlamada(llamada),
+                        aprobacion: aprobacion,
+                        fechaInicio: fechaInicio,
+                        fechaFin: fechaFin
+                    )
+                )
+            }
+        }
+    }
+
+    private func descripcionDeLlamada(_ llamada: ToolCall) -> String {
+        if llamada.nombre == Memoria.nombreHerramientaTarea,
+           let accion = try? Memoria.accion(desdeArgumentos: llamada.argumentos) {
+            switch accion {
+            case .guardar(let texto):
+                return "Guardar en Memoria: \(texto)"
+            case .actualizar(let id, let texto):
+                return "Actualizar en Memoria \(id.uuidString): \(texto)"
+            case .borrar(let id):
+                return "Borrar de Memoria \(id.uuidString)"
+            }
+        }
+
+        if llamada.nombre == "traer_url", let url = urlDeLlamada(llamada) {
+            return "Traer \(url)"
+        }
+        return llamada.nombre
+    }
+
+    private func urlDeLlamada(_ llamada: ToolCall) -> String? {
+        guard llamada.nombre == "traer_url",
+              let argumentos = try? Argumentos.diccionario(llamada.argumentos)
+        else {
+            return nil
+        }
+        return Argumentos.texto(argumentos, clave: "url")
+    }
+
+    private func modificarTarea(id: UUID, _ cambio: (inout Tarea) -> Void) {
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else { return }
+        var tarea = tareas[indice]
+        cambio(&tarea)
+        tarea.fechaActualizacion = Date()
+        guardarTarea(tarea)
+    }
+
+    private func finalizarTareaConError(id: UUID, mensaje: String) {
+        modificarTarea(id: id) { tarea in
+            tarea.estado = .fallida
+            tarea.pasos.append(
+                Paso(
+                    descripcion: "Error: \(mensaje)",
+                    estado: .fallido,
+                    resultado: mensaje,
+                    fechaFin: Date()
+                )
+            )
+        }
+        errorTarea = mensaje
     }
 
     /// Guarda una tarea en el almacen y refresca la lista.
