@@ -69,4 +69,59 @@ final class MetricasChatTests: XCTestCase {
             UsoTokens(entrada: 200, salida: 80)
         )
     }
+
+    func testLaOcupacionDeUnaConversacionUsaElUltimoMensajeConUso() {
+        let conversacion = Conversation(mensajes: [
+            ChatMessage(rol: .asistente, texto: "vieja", tokensEntrada: 100, tokensSalida: 50),
+            ChatMessage(rol: .usuario, texto: "sigue"),
+            ChatMessage(rol: .asistente, texto: "nueva", tokensEntrada: 200, tokensSalida: 80)
+        ])
+
+        let medida = MetricasChat.ocupacionVentana(de: conversacion)
+
+        XCTAssertEqual(medida.tokens, 280)
+        XCTAssertNil(medida.mensaje)
+    }
+
+    func testSinUsoEnLosMensajesSeUsaElUsoTrasCompactar() {
+        let conversacion = Conversation(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            usoTrasCompactar: UsoTokens(entrada: 30, salida: 12)
+        )
+
+        let medida = MetricasChat.ocupacionVentana(de: conversacion)
+
+        XCTAssertEqual(medida.tokens, 42)
+        XCTAssertEqual(medida.mensaje, "Ocupación medida tras compactar")
+    }
+
+    func testElUsoDeUnMensajeMandaSobreElUsoTrasCompactar() {
+        let conversacion = Conversation(
+            mensajes: [
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "respuesta",
+                    tokensEntrada: 20,
+                    tokensSalida: 5
+                )
+            ],
+            usoTrasCompactar: UsoTokens(entrada: 300, salida: 100)
+        )
+
+        XCTAssertEqual(
+            MetricasChat.ocupacionVentana(de: conversacion).tokens,
+            25
+        )
+    }
+
+    func testSinUsoNiCompactacionLaOcupacionEsCero() {
+        let conversacion = Conversation(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")]
+        )
+
+        let medida = MetricasChat.ocupacionVentana(de: conversacion)
+
+        XCTAssertEqual(medida.tokens, 0)
+        XCTAssertNil(medida.mensaje)
+    }
 }

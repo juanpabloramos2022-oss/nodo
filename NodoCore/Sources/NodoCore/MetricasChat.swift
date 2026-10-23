@@ -18,6 +18,25 @@ public enum MetricasChat {
         return nil
     }
 
+    /// Ocupacion de la ventana de una conversacion, con el respaldo de /compact.
+    ///
+    /// Manda el uso del ultimo mensaje que lo traiga. Si ningun mensaje tiene
+    /// cifras, se usa el consumo de la llamada de resumen (`usoTrasCompactar`),
+    /// que es lo que hace bajar el medidor tras compactar sin tocar el
+    /// acumulado facturable. `mensaje` solo se rellena en ese respaldo, para
+    /// que la vista pueda explicar de donde sale la cifra.
+    public static func ocupacionVentana(
+        de conversacion: Conversation
+    ) -> (tokens: Int, mensaje: String?) {
+        for mensaje in conversacion.mensajes.reversed() {
+            if let uso = mensaje.uso { return (uso.total, nil) }
+        }
+        if let uso = conversacion.usoTrasCompactar {
+            return (uso.total, "Ocupación medida tras compactar")
+        }
+        return (0, nil)
+    }
+
     /// Fraccion de la ventana ocupada, o nil si no hay ventana definida.
     ///
     /// No se recorta a 1.0: pasarse de la ventana es informacion que la vista
