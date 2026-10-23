@@ -3,30 +3,31 @@ import SwiftUI
 
 import NodoCore
 
-/// Aprobacion que espera la decision del usuario antes de ejecutar una
-/// herramienta con consecuencias en modo Tarea.
+/// Consumo que /compact saco del hilo, agrupado por el proveedor que lo genero.
 ///
-/// Lleva la llamada original (para devolverla al bucle) y un resumen legible
-/// con el nombre y los argumentos recortados, que es lo unico que se pinta en
-/// la hoja de aprobacion.
-struct AprobacionPendiente: Identifiable, Equatable {
-    let id: UUID
-    let llamada: ToolCall
-    let nombreHerramienta: String
-    let resumenArgumentos: String
+/// POR QUE no basta un `UsoTokens`: la factura de esos mensajes ya no puede
+/// revaluarse cuando el usuario cambia de modelo. Se guarda el uso de cada
+/// proveedor por separado y, en datos viejos sin atribucion, la clave vacia se
+/// valora con el proveedor registrado del chat.
+private struct UsoResumido: Codable, Equatable {
+    /// Uso por proveedor, con su UUID en texto. La clave "" es el respaldo de
+    /// los archivos escritos antes de existir esta atribucion.
+    var porProveedor: [String: UsoTokens] = [:]
 
-    init(id: UUID = UUID(), llamada: ToolCall) {
-        self.id = id
-        self.llamada = llamada
-        self.nombreHerramienta = llamada.nombre
+    static let sinProveedor = ""
 
-        let plano = llamada.argumentos
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if plano.count > 160 {
-            self.resumenArgumentos = String(plano.prefix(160)) + "…"
-        } else {
-            self.resumenArgumentos = plano
+    var total: UsoTokens {
+        porProveedor.values.reduce(UsoTokens()) { $0.sumando($1) }
+    }
+
+    mutating func sumar(_ uso: UsoTokens, proveedorID: UUID?) {
+        let clave = proveedorID?.uuidString ?? Self.sinProveedor
+        porProveedor[clave] = porProveedor[clave]?.sumando(uso) ?? uso
+    }
+
+    mutating func fusionar(_ otro: UsoResumido) {
+        for (clave, uso) in otro.porProveedor {
+            porProveedor[clave] = porProveedor[clave]?.sumando(uso) ?? uso
         }
     }
 }
@@ -75,11 +76,6 @@ final class EstadoApp: ObservableObject {
     /// Texto que /exportar quiere compartir. ChatView lo recoge y presenta la
     /// hoja del sistema.
     @Published var textoParaCompartirSolicitado: String?
-    /// Aprobacion pendiente del usuario, o nil si no hay ninguna.
-    @Published var aprobacionPendiente: AprobacionPendiente?
-    /// Nombre de la herramienta que se esta ejecutando ahora mismo. nil fuera
-    /// de una ejecucion; alimenta la fila "Ejecutando..." de la conversacion.
-    @Published private(set) var herramientaEnCurso: String?
     /// Divisores y avisos del hilo abierto (SPEC §2.6).
     ///
     /// Viven fuera de `mensajes` a proposito: son metadatos de interfaz y jamas
@@ -110,7 +106,7 @@ final class EstadoApp: ObservableObject {
     /// salen del hilo, pero su consumo se conserva aqui y se suma al de los
     /// mensajes que quedan. Vive fuera de `Conversation` para no tocar el
     /// modelo de NodoCore.
-    private var usoResumidoPorConversacion: [String: UsoTokens] = [:] {
+    private var usoResumidoPorConversacion: [String: UsoResumido] = [:] {
         didSet { guardarUsosResumidos() }
     }
 
@@ -153,9 +149,6 @@ final class EstadoApp: ObservableObject {
         case regeneracion
     }
     private var turnoFallido: TipoTurnoFallido?
-    /// Continuacion que mantiene el turno suspendido mientras la hoja de
-    /// aprobacion espera. Se resuelve una sola vez por aprobacion.
-    private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
     /// La carga inicial del diccionario no debe escribir nada: se activa al
     /// terminar el init normal y se queda apagada en modo de prueba.
     private var puedeGuardarVentanas = false
@@ -374,13 +367,27 @@ final class EstadoApp: ObservableObject {
         defaults.set(datos, forKey: Self.claveUsosResumidos)
     }
 
-    private static func usosResumidosGuardados(de defaults: UserDefaults) -> [String: UsoTokens] {
-        guard let datos = defaults.data(forKey: claveUsosResumidos),
-              let usos = try? JSONDecoder().decode([String: UsoTokens].self, from: datos)
+    private static func usosResumidosGuardados(de defaults: UserDefaults) -> [String: UsoResumido] {
+        guard let datos = defaults.data(forKey: claveUsosResumidos) else {
+            return [:]
+        }
+
+        // Formato nuevo: uso atribuido a cada proveedor.
+        if let usos = try? JSONDecoder().decode([String: UsoResumido].self, from: datos) {
+            return usos
+        }
+
+        // Formato viejo: solo tokens. Se conserva como respaldo sin proveedor
+        // para no perder la factura ya compactada al actualizar la app.
+        guard let viejos = try? JSONDecoder().decode([String: UsoTokens].self, from: datos)
         else {
             return [:]
         }
-        return usos
+        return viejos.mapValues { uso in
+            var atribuido = UsoResumido()
+            atribuido.sumar(uso, proveedorID: nil)
+            return atribuido
+        }
     }
 
     /// El identificador crudo se recorta, pero no se transforma: la tabla debe
@@ -478,25 +485,85 @@ final class EstadoApp: ObservableObject {
     var usoAcumuladoDelChat: UsoTokens? {
         var total = CostoEstimado.usoAcumulado(de: conversacion.mensajes)
         if let resumido = usoResumidoPorConversacion[conversacion.id.uuidString] {
-            total = total?.sumando(resumido) ?? resumido
+            let usoDelResumen = resumido.total
+            total = total?.sumando(usoDelResumen) ?? usoDelResumen
         }
         return total
     }
 
-    /// Costo acumulado del chat abierto, con los precios del proveedor activo.
+    /// Proveedor registrado del chat abierto, el que genero sus mensajes.
     ///
-    /// Sin precios configurados no hay cifra: no se inventa un costo.
-    var costoAcumuladoDelChat: Double? {
-        guard let proveedor = config.proveedorSeleccionado,
-              let uso = usoAcumuladoDelChat
-        else {
-            return nil
-        }
-        return CostoEstimado.costo(
-            uso: uso,
-            precioEntrada: proveedor.precioEntradaPorMillon,
-            precioSalida: proveedor.precioSalidaPorMillon
+    /// Es solo el respaldo de los mensajes viejos: cada respuesta nueva lleva
+    /// su propio proveedor. Nunca se usa el activo global para valorar historia.
+    private var proveedorDelChat: ProviderConfig? {
+        let id = conversacion.proveedorID
+            ?? conversacion.mensajes.last(where: { $0.proveedorID != nil })?.proveedorID
+        guard let id else { return nil }
+        return config.proveedores.first { $0.id == id }
+    }
+
+    /// Costo de un mensaje con el proveedor que lo genero.
+    ///
+    /// Lo usa el pie de cada respuesta; sin precios de ESE proveedor no hay
+    /// cifra, aunque el activo tenga otros precios.
+    func costo(de mensaje: ChatMessage) -> Double? {
+        CostoEstimado.costo(
+            de: mensaje,
+            proveedores: config.proveedores,
+            proveedorDelChat: conversacion.proveedorID
         )
+    }
+
+    /// Costo acumulado del chat abierto, valorando cada mensaje con SU proveedor.
+    ///
+    /// Sin precios configurados no hay cifra: no se inventa un costo. Cambiar
+    /// el proveedor activo no puede alterar este numero.
+    var costoAcumuladoDelChat: Double? {
+        var total: Double?
+
+        if CostoEstimado.usoAcumulado(de: conversacion.mensajes) != nil {
+            guard let deMensajes = CostoEstimado.acumulado(
+                mensajes: conversacion.mensajes,
+                proveedores: config.proveedores,
+                proveedorDelChat: conversacion.proveedorID
+            ) else {
+                return nil
+            }
+            total = deMensajes
+        }
+
+        if let resumido = usoResumidoPorConversacion[conversacion.id.uuidString] {
+            guard let deResumen = costoDeResumido(resumido) else { return nil }
+            total = (total ?? 0) + deResumen
+        }
+
+        return total
+    }
+
+    /// Costo del consumo que /compact saco del hilo, proveedor a proveedor.
+    private func costoDeResumido(_ resumido: UsoResumido) -> Double? {
+        guard !resumido.porProveedor.isEmpty else { return nil }
+
+        var total = 0.0
+        for clave in resumido.porProveedor.keys.sorted() {
+            guard let uso = resumido.porProveedor[clave] else { continue }
+
+            let id = clave.isEmpty
+                ? conversacion.proveedorID
+                : UUID(uuidString: clave)
+            guard let id,
+                  let proveedor = config.proveedores.first(where: { $0.id == id }),
+                  let parcial = CostoEstimado.costo(
+                      uso: uso,
+                      precioEntrada: proveedor.precioEntradaPorMillon,
+                      precioSalida: proveedor.precioSalidaPorMillon
+                  )
+            else {
+                return nil
+            }
+            total += parcial
+        }
+        return total
     }
 
     // MARK: - Memoria
@@ -589,8 +656,8 @@ final class EstadoApp: ObservableObject {
 
     /// Suma a los contadores globales el costo de un uso recibido.
     ///
-    /// Es el punto unico de alimentacion: lo llaman los turnos normales (envios,
-    /// regeneraciones y modo Tarea) y la llamada de resumen de /compact. El
+    /// Es el punto unico de alimentacion: lo llaman los turnos normales
+    /// (envios y regeneraciones) y la llamada de resumen de /compact. El
     /// contador vive en `AppConfig`, asi que borrar un chat no lo resta.
     private func registrarGasto(uso: UsoTokens?, proveedor: ProviderConfig) {
         guard let uso,
@@ -638,6 +705,29 @@ final class EstadoApp: ObservableObject {
               let clave = clave(para: proveedor)
         else {
             error = "Falta la configuracion del proveedor."
+            return nil
+        }
+        return (proveedor, clave)
+    }
+
+    /// Proveedor y clave de un combo concreto, sin mirar cual es el activo.
+    ///
+    /// Lo usa "Regenerar con...": el combo elegido solo alimenta el motor de
+    /// esa regeneracion puntual, no cambia la configuracion global.
+    private func proveedorYClave(para proveedor: ProviderConfig) -> (ProviderConfig, String)? {
+        if estadoDePrueba != nil {
+            return (proveedor, "")
+        }
+
+        do {
+            try proveedor.validar()
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+
+        guard let clave = clave(para: proveedor), !clave.isEmpty else {
+            error = "Falta la clave de API de \(proveedor.nombre)."
             return nil
         }
         return (proveedor, clave)
@@ -829,6 +919,32 @@ final class EstadoApp: ObservableObject {
         registrarEventoVisual("── Ahora responde \(nombre) ──", tras: ultimo)
     }
 
+    /// Adopta el proveedor del turno sin reescribir la historia.
+    ///
+    /// Antes de cambiar el id del chat, los mensajes viejos que no traen
+    /// proveedor propio se anclan al que tenia el chat: si no, al enviar con
+    /// otro modelo quedarian valorados con los precios nuevos.
+    private func adoptarProveedorDelChat(_ proveedor: ProviderConfig) {
+        let anterior = conversacion.proveedorID
+        if let anterior, anterior != proveedor.id {
+            for indice in conversacion.mensajes.indices
+            where conversacion.mensajes[indice].proveedorID == nil {
+                conversacion.mensajes[indice].proveedorID = anterior
+            }
+
+            // El consumo de /compact guardado con el formato viejo tampoco
+            // puede quedar apuntando al proveedor nuevo.
+            let clave = conversacion.id.uuidString
+            if var resumido = usoResumidoPorConversacion[clave],
+               let sinProveedor = resumido.porProveedor
+                   .removeValue(forKey: UsoResumido.sinProveedor) {
+                resumido.sumar(sinProveedor, proveedorID: anterior)
+                usoResumidoPorConversacion[clave] = resumido
+            }
+        }
+        conversacion.proveedorID = proveedor.id
+    }
+
     /// Activa o desactiva la Memoria en el chat abierto y lo persiste.
     ///
     /// Al apagarla con mensajes ya enviados se deja el divisor del punto exacto
@@ -845,13 +961,6 @@ final class EstadoApp: ObservableObject {
             )
         }
 
-        guardarActual()
-    }
-
-    /// Cambia el modo Chat/Tarea. En esta fase solo se persiste el flag.
-    func cambiarModoTarea(_ activo: Bool) {
-        guard conversacion.modoTarea != activo else { return }
-        conversacion.modoTarea = activo
         guardarActual()
     }
 
@@ -1029,7 +1138,7 @@ final class EstadoApp: ObservableObject {
     /// Si no hay precios configurados no se inventa un costo; si el tope es 0
     /// (aviso desactivado) se omite la frase del tope.
     private func textoDeCosto() -> String {
-        let proveedor = config.proveedorSeleccionado
+        let proveedor = proveedorDelChat
         let usoReal = usoAcumuladoDelChat
         let uso = usoReal ?? UsoTokens()
 
@@ -1050,12 +1159,7 @@ final class EstadoApp: ObservableObject {
             + "(\(Self.tokensTexto(uso.entrada)) de entrada + "
             + "\(Self.tokensTexto(uso.salida)) de salida)"
 
-        if let usoReal,
-           let costo = CostoEstimado.costo(
-               uso: usoReal,
-               precioEntrada: proveedor?.precioEntradaPorMillon,
-               precioSalida: proveedor?.precioSalidaPorMillon
-           ) {
+        if usoReal != nil, let costo = costoAcumuladoDelChat {
             // Mismo formato que el pie y el subtitulo de la pildora.
             texto += " · ≈ $\(String(format: "%.4f", costo)) con \(modelo)"
         } else {
@@ -1145,18 +1249,26 @@ final class EstadoApp: ObservableObject {
                 )
                 // La factura conserva el consumo de los mensajes que salen y
                 // tambien el de la propia llamada de resumen.
-                var usoHistorico = CostoEstimado.usoAcumulado(
-                    de: mensajesResumidos
-                ) ?? UsoTokens()
-                if let usoResumen = respuesta.uso {
-                    usoHistorico = usoHistorico.sumando(usoResumen)
+                var usoHistorico = UsoResumido()
+                for mensaje in mensajesResumidos {
+                    guard let uso = mensaje.uso else { continue }
+                    // El mensaje conserva el proveedor que lo genero; los
+                    // viejos sin anotacion caen al proveedor del chat.
+                    let id = mensaje.proveedorID
+                        ?? self.conversacion.proveedorID
+                    usoHistorico.sumar(uso, proveedorID: id)
                 }
-                if usoHistorico.total > 0 {
+                if let usoResumen = respuesta.uso {
+                    usoHistorico.sumar(usoResumen, proveedorID: proveedor.id)
+                }
+                if usoHistorico.total.total > 0 {
                     let acumulado = self.usoResumidoPorConversacion[
                         idConversacion.uuidString
-                    ] ?? UsoTokens()
+                    ] ?? UsoResumido()
+                    var fusionado = acumulado
+                    fusionado.fusionar(usoHistorico)
                     self.usoResumidoPorConversacion[idConversacion.uuidString] =
-                        acumulado.sumando(usoHistorico)
+                        fusionado
                 }
 
                 let idsResumidos = Set(mensajesResumidos.map(\.id))
@@ -1215,7 +1327,7 @@ final class EstadoApp: ObservableObject {
 
         // El chat conserva el proveedor con el que se habla: la fila del
         // historial saca de ahi su ultimo modelo y sus precios.
-        conversacion.proveedorID = proveedor.id
+        adoptarProveedorDelChat(proveedor)
 
         // La etiqueta ⚡ y las instrucciones viajan juntas: una skill sin
         // instrucciones no se pinta como aplicada ni se inyecta.
@@ -1249,11 +1361,33 @@ final class EstadoApp: ObservableObject {
     /// no puede costar una respuesta buena.
     func regenerar() {
         guard !enviando else { return }
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+        regenerar(con: proveedor, clave: clave)
+    }
+
+    /// Regenera la ultima respuesta con otro proveedor configurado.
+    ///
+    /// El combo elegido se usa SOLO para construir el motor de esta
+    /// regeneracion: no se asigna `config.proveedorActivo` ni se llama a
+    /// `cambiarProveedor`, asi que el proveedor global y su divisor visual
+    /// quedan como estaban. El mensaje nuevo si conserva ese proveedor para
+    /// que su costo futuro sea honesto.
+    func regenerarCon(proveedorID: UUID) {
+        guard !enviando else { return }
+        guard let proveedor = config.proveedores.first(where: { $0.id == proveedorID }),
+              let (elegido, clave) = proveedorYClave(para: proveedor)
+        else {
+            return
+        }
+        regenerar(con: elegido, clave: clave)
+    }
+
+    /// Ruta comun de regeneracion con un proveedor y su clave ya resueltos.
+    private func regenerar(con proveedor: ProviderConfig, clave: String) {
+        guard !enviando else { return }
         guard conversacion.mensajes.last?.rol == .asistente else { return }
 
-        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
-
-        conversacion.proveedorID = proveedor.id
+        adoptarProveedorDelChat(proveedor)
 
         let turnoDescartado = conversacion.descartarUltimoTurno()
         guard !turnoDescartado.isEmpty else { return }
@@ -1269,20 +1403,6 @@ final class EstadoApp: ObservableObject {
                 self?.conversacion.mensajes.append(contentsOf: turnoDescartado)
             }
         )
-    }
-
-    /// Regenera la ultima respuesta con otro proveedor configurado.
-    ///
-    /// Primero cambia el activo por la ruta normal —con su divisor de cambio de
-    /// modelo— y despues reutiliza la maquinaria de `regenerar()`. Si el
-    /// proveedor ya era el activo, el cambio no hace nada y se regenera igual.
-    func regenerarCon(proveedorID: UUID) {
-        guard !enviando else { return }
-        guard let proveedor = config.proveedores.first(where: { $0.id == proveedorID }) else {
-            return
-        }
-        cambiarProveedor(proveedor)
-        regenerar()
     }
 
     /// Reintenta el ultimo turno fallido sin perder el texto del usuario.
@@ -1328,12 +1448,10 @@ final class EstadoApp: ObservableObject {
     ) {
         // Cubre tambien los reintentos: el proveedor del chat es el que se
         // esta usando ahora, no el activo global de otro momento.
-        conversacion.proveedorID = proveedor.id
+        adoptarProveedorDelChat(proveedor)
 
         enviando = true
         textoEnCurso = ""
-        herramientaEnCurso = nil
-        aprobacionPendiente = nil
         error = nil
 
         var historial = historialParaEnviar()
@@ -1343,8 +1461,6 @@ final class EstadoApp: ObservableObject {
                 instrucciones: instrucciones
             )
         }
-        let modoTarea = conversacion.modoTarea
-
         tareaActual = Task { [weak self] in
             guard let self else { return }
 
@@ -1352,7 +1468,6 @@ final class EstadoApp: ObservableObject {
                 proveedor: proveedor,
                 clave: clave,
                 historial: historial,
-                modoTarea: modoTarea,
                 tipo: tipo,
                 alFracasar: alFracasar
             )
@@ -1372,23 +1487,15 @@ final class EstadoApp: ObservableObject {
         proveedor: ProviderConfig,
         clave: String,
         historial: [ChatMessage],
-        modoTarea: Bool,
         tipo: TipoTurnoFallido,
         alFracasar: () -> Void
     ) async {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
-            let herramientas: [Herramienta]
-            if modoTarea {
-                herramientas = await herramientasDisponibles()
-            } else {
-                herramientas = []
-            }
-            let bucle = buclePara(
-                motor: motor,
-                herramientas: herramientas,
-                modoTarea: modoTarea
-            )
+            // Un chat normal va SIN herramientas: la demolucion del modo Tarea
+            // quito la unica bandera que las ofrecia. El bucle sigue siendo el
+            // mismo, solo que sin definiciones ni ganchos de aprobacion.
+            let bucle = ToolLoop(motor: motor, herramientas: [])
 
             let resultado = try await bucle.ejecutar(
                 historial: historial,
@@ -1403,13 +1510,19 @@ final class EstadoApp: ObservableObject {
             // usuario pulso Detener justo despues de que llegara la respuesta.
             registrarGasto(uso: resultado.usoTotal, proveedor: proveedor)
 
-            // Si el usuario pulso Detener mientras esperaba una aprobacion o
-            // una herramienta, el turno no se publica aunque el bucle haya
-            // alcanzado a devolver un resultado.
+            // Si el usuario pulso Detener justo despues de recibir la
+            // respuesta, el turno no se publica aunque el bucle ya haya
+            // devuelto un resultado.
             try Task.checkCancellation()
 
             textoEnCurso = ""
-            conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
+            // Cada mensaje generado conserva su proveedor para que el costo
+            // historico no dependa del activo del momento.
+            var nuevos = resultado.mensajesNuevos
+            for indice in nuevos.indices {
+                nuevos[indice].proveedorID = proveedor.id
+            }
+            conversacion.mensajes.append(contentsOf: nuevos)
             // La respuesta nueva pasa a ser la medida de la ventana; el uso de
             // la compactacion deja de ser el numerador.
             conversacion.usoTrasCompactar = nil
@@ -1434,91 +1547,6 @@ final class EstadoApp: ObservableObject {
         }
     }
 
-    /// Monta el bucle del turno segun el modo.
-    ///
-    /// En Chat no se ofrece ninguna herramienta y no hay ganchos: el turno es
-    /// solo streaming y consumo, igual que antes. En Tarea se ofrecen las
-    /// herramientas reales y se cablea la aprobacion por llamada.
-    private func buclePara(
-        motor: ChatEngine,
-        herramientas: [Herramienta],
-        modoTarea: Bool
-    ) -> ToolLoop {
-        guard modoTarea else {
-            return ToolLoop(motor: motor, herramientas: herramientas)
-        }
-
-        let exentas = config.herramientasSinAprobacion ?? []
-
-        return ToolLoop(
-            motor: motor,
-            herramientas: herramientas,
-            alIniciarHerramienta: { [weak self] llamada in
-                Task { @MainActor [weak self] in
-                    guard let self, self.enviando else { return }
-                    self.herramientaEnCurso = llamada.nombre
-                }
-            },
-            alTerminarHerramienta: { [weak self] _, _ in
-                Task { @MainActor [weak self] in
-                    self?.herramientaEnCurso = nil
-                }
-            },
-            aprobador: { [weak self] llamada in
-                guard let self else { return false }
-                return await self.pedirAprobacion(llamada)
-            },
-            requiereAprobacion: { llamada in
-                // Hoy la unica herramienta propia es "traer_url" y solo hace
-                // GET. Todo lo demas llega envuelto desde MCP.
-                let esTraerURL = llamada.nombre == "traer_url"
-                return PoliticaAprobacion.requiereAprobacion(
-                    esMCP: !esTraerURL,
-                    metodoHTTP: esTraerURL ? "GET" : nil,
-                    nombreHerramienta: llamada.nombre,
-                    exentas: exentas
-                )
-            }
-        )
-    }
-
-    /// Suspende el turno hasta que el usuario decida en la hoja.
-    ///
-    /// La continuacion se guarda para que `resolverAprobacion` la cierre
-    /// exactamente una vez; si ya habia otra pendiente, se rechaza para no
-    /// dejar nunca un turno colgado.
-    private func pedirAprobacion(_ llamada: ToolCall) async -> Bool {
-        // Si Detener llego justo antes de pedir la aprobacion, no se abre una
-        // hoja que ya nadie va a poder resolver.
-        guard !Task.isCancelled else { return false }
-
-        if let anterior = continuacionAprobacion {
-            continuacionAprobacion = nil
-            aprobacionPendiente = nil
-            anterior.resume(returning: false)
-        }
-
-        return await withCheckedContinuation { continuacion in
-            continuacionAprobacion = continuacion
-            aprobacionPendiente = AprobacionPendiente(llamada: llamada)
-        }
-    }
-
-    /// Cierra la aprobacion pendiente con la decision del usuario.
-    ///
-    /// Tambien limpia el estado que pinta la hoja, de modo que la vista se
-    /// cierra sola. Sin continuacion pendiente solo se limpia la hoja.
-    func resolverAprobacion(_ aprobada: Bool) {
-        guard let continuacion = continuacionAprobacion else {
-            aprobacionPendiente = nil
-            return
-        }
-
-        continuacionAprobacion = nil
-        aprobacionPendiente = nil
-        continuacion.resume(returning: aprobada)
-    }
-
     func cancelar() {
         tareaActual?.cancel()
         tareaActual = nil
@@ -1526,11 +1554,6 @@ final class EstadoApp: ObservableObject {
         tareaCompactado = nil
         generacionCompactado = UUID()
         compactando = false
-        if continuacionAprobacion != nil {
-            resolverAprobacion(false)
-        }
-        aprobacionPendiente = nil
-        herramientaEnCurso = nil
         enviando = false
         textoEnCurso = ""
     }
@@ -1559,45 +1582,6 @@ final class EstadoApp: ObservableObject {
         case .anthropic:
             return AnthropicClient(transporte: transporte, config: proveedor, clave: clave)
         }
-    }
-
-    /// Herramientas disponibles: la de red siempre, y las del servidor si esta
-    /// configurado y responde.
-    ///
-    /// Se descubren al vuelo, antes de enviar, porque el modelo necesita los
-    /// nombres y argumentos reales para poder usarlas. Si el servidor no
-    /// responde se sigue sin ellas: conversar no debe depender de el.
-    private func herramientasDisponibles() async -> [Herramienta] {
-        // La costura de capturas devuelve una unica herramienta con
-        // consecuencias, para que la hoja de aprobacion y el paso en vivo sean
-        // deterministas y no dependan de la red.
-        if estadoDePrueba != nil {
-            return [HerramientaDePrueba()]
-        }
-
-        var lista: [Herramienta] = [HttpFetchTool(transporte: transporte)]
-
-        guard config.servidor.estaConfigurado,
-              let cliente = try? MCPClient(
-                  transporte: transporte,
-                  config: config.servidor,
-                  token: tokenServidor
-              )
-        else {
-            return lista
-        }
-
-        do {
-            _ = try await cliente.inicializar()
-            let remotas = try await cliente.listarHerramientas()
-            lista.append(contentsOf: remotas.map {
-                HerramientaMCP(cliente: cliente, definicion: $0)
-            })
-        } catch {
-            // Sin servidor se sigue igual; no es un error que deba cortar el chat.
-        }
-
-        return lista
     }
 
     // MARK: - Servidor

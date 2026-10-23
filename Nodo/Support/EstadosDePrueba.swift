@@ -60,6 +60,8 @@ enum EstadosDePrueba {
         case historialEjemplo = "historial-ejemplo"
         /// Conversacion con historial, Memoria y los 4 combos del preset.
         case chat = "chat"
+        /// Nombre heredado del antiguo modo Tarea: hoy siembra un chat normal
+        /// con historial, porque el conmutador ya no existe.
         case tarea = "tarea"
         /// Chat vacio con la Tarjeta de Bienvenida y una clave de ejemplo.
         case bienvenida = "bienvenida"
@@ -375,19 +377,17 @@ enum EstadosDePrueba {
                 conversaciones: [conversacionChat]
             )
         case .tarea:
-            let conversacionTarea = Conversation(
-                id: id("00000000-0000-0000-0000-000000000007"),
-                titulo: "Tarea de ejemplo",
-                mensajes: [],
-                creada: fechaFija,
-                actualizada: fechaFija,
-                modoTarea: true
-            )
+            // El estado conserva nombre, id y titulo para no romper los
+            // argumentos de captura, pero ya es un chat normal CON historial:
+            // el conmutador Chat | Tarea y su bandera desaparecieron.
+            var normal = conversacionChat
+            normal.id = id("00000000-0000-0000-0000-000000000007")
+            normal.titulo = "Tarea de ejemplo"
             return EstadoPrueba(
                 nombre: estado.rawValue,
-                config: configuracion(),
-                conversacion: conversacionTarea,
-                conversaciones: [conversacionTarea]
+                config: configuracionChat(),
+                conversacion: normal,
+                conversaciones: [normal]
             )
         case .bienvenida:
             return EstadoPrueba(

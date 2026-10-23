@@ -47,6 +47,14 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
     /// visual de la burbuja; las instrucciones en si solo viajan en el payload
     /// de ese turno y no se guardan en el historial.
     public var skillsAplicadas: [String]
+    /// Proveedor que genero ESTE mensaje.
+    ///
+    /// POR QUE: el costo historico no puede recalcularse con el proveedor
+    /// activo ni siquiera con el ultimo proveedor del chat. Si el usuario
+    /// cambia de modelo a mitad de una conversacion, cada respuesta conserva
+    /// los precios con los que se pago. nil en mensajes viejos o escritos por
+    /// el usuario: esos se valoran con el proveedor registrado del chat.
+    public var proveedorID: UUID?
 
     public init(
         id: UUID = UUID(),
@@ -57,7 +65,8 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         toolCallId: String? = nil,
         tokensEntrada: Int? = nil,
         tokensSalida: Int? = nil,
-        skillsAplicadas: [String] = []
+        skillsAplicadas: [String] = [],
+        proveedorID: UUID? = nil
     ) {
         self.id = id
         self.rol = rol
@@ -68,6 +77,7 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         self.tokensEntrada = tokensEntrada
         self.tokensSalida = tokensSalida
         self.skillsAplicadas = skillsAplicadas
+        self.proveedorID = proveedorID
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -80,6 +90,7 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         case tokensEntrada
         case tokensSalida
         case skillsAplicadas
+        case proveedorID
     }
 
     /// Decodificacion tolerante: los mensajes guardados antes de existir las
@@ -95,6 +106,7 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         tokensEntrada = try contenedor.decodeIfPresent(Int.self, forKey: .tokensEntrada)
         tokensSalida = try contenedor.decodeIfPresent(Int.self, forKey: .tokensSalida)
         skillsAplicadas = try contenedor.decodeIfPresent([String].self, forKey: .skillsAplicadas) ?? []
+        proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
     }
 
     /// Consumo del mensaje, si lo tiene. Los mensajes viejos devuelven nil.
@@ -128,15 +140,18 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Si el chat no recibe la Memoria como contexto (§4.6). Se guarda por chat
     /// para que el ajuste sobreviva al cerrar la app.
     public var sinMemoria: Bool
-    /// Si el chat esta en modo Tarea. Por ahora solo es un flag de datos: la
-    /// logica completa de herramientas llega con su tarea de interfaz.
+    /// Bandera heredada del antiguo modo Tarea.
+    ///
+    /// Se conserva en el modelo Codable para no romper conversaciones ya
+    /// guardadas, pero la interfaz y el envio ya no la leen: todo chat normal
+    /// va sin herramientas.
     public var modoTarea: Bool
     /// Proveedor con el que este chat responde ahora mismo.
     ///
-    /// No es el proveedor activo global: cada conversacion conserva el suyo para
-    /// que la fila del historial pueda ensenar SU ultimo modelo y calcular SU
-    /// costo con SUS precios aunque el usuario haya cambiado de modelo despues.
-    /// nil en conversaciones viejas o creadas antes de existir este dato.
+    /// No es el proveedor activo global: cada conversacion conserva el suyo
+    /// para que la fila del historial ensene SU ultimo modelo. El costo de cada
+    /// mensaje se resuelve con el proveedor anotado en el propio mensaje y solo
+    /// cae a este id en los mensajes viejos. nil en conversaciones antiguas.
     public var proveedorID: UUID?
     /// Si el usuario pulso "Seguir igual" en la franja de tope (§3.4): este
     /// chat deja de avisar sin tocar el tope global ni a los demas chats.

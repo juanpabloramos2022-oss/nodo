@@ -141,13 +141,7 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func abrirStream(_ peticion: HTTPRequest) async throws -> AsyncThrowingStream<Data, Error> {
-        let guion: GuionRespuesta?
-        candado.lock()
-        peticiones.append(peticion)
-        guion = guiones.isEmpty ? nil : guiones.removeFirst()
-        candado.unlock()
-
-        guard let guion else {
+        guard let guion = registrarStream(peticion) else {
             throw ErrorAPI.respuestaInvalida(
                 "El transporte de prueba recibio una peticion sin guion."
             )
@@ -161,13 +155,29 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func enviar(_ peticion: HTTPRequest) async throws -> HTTPRespuesta {
+        registrarUnaria(peticion)
+    }
+
+    /// Saca el guion de la siguiente peticion de streaming.
+    ///
+    /// El candado se toma en un metodo sincrono a proposito: `NSLock.lock()`
+    /// no esta permitido dentro de un contexto async, y la red del cliente si
+    /// llega desde una tarea.
+    private func registrarStream(_ peticion: HTTPRequest) -> GuionRespuesta? {
         candado.lock()
+        defer { candado.unlock() }
         peticiones.append(peticion)
-        let respuesta = respuestasUnarias.isEmpty
+        return guiones.isEmpty ? nil : guiones.removeFirst()
+    }
+
+    /// Graba una peticion completa y devuelve la respuesta encolada.
+    private func registrarUnaria(_ peticion: HTTPRequest) -> HTTPRespuesta {
+        candado.lock()
+        defer { candado.unlock() }
+        peticiones.append(peticion)
+        return respuestasUnarias.isEmpty
             ? HTTPRespuesta(estado: 200, cuerpo: Data("{}".utf8))
             : respuestasUnarias.removeFirst()
-        candado.unlock()
-        return respuesta
     }
 
     /// Construye el SSE con el mismo dialecto que lee `ChatCompletionsClient`:
@@ -191,7 +201,7 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
 
         if let uso = guion.uso {
             let objeto: [String: Any] = [
-                "choices": [],
+                "choices": [[String: Any]](),
                 "usage": [
                     "prompt_tokens": uso.entrada,
                     "completion_tokens": uso.salida

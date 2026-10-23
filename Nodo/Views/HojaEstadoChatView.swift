@@ -185,7 +185,7 @@ struct HojaEstadoChatView: View {
                         .foregroundStyle(Tema.textoSuave)
                 }
 
-                if let costo = costoDelConsumo(uso) {
+                if let costo = estado.costoAcumuladoDelChat {
                     HStack {
                         Text("Costo acumulado estimado")
                         Spacer()
@@ -203,15 +203,6 @@ struct HojaEstadoChatView: View {
         } footer: {
             Text("Suma histórica de todas las llamadas del chat. No baja al compactar.")
         }
-    }
-
-    /// Costo con los precios del proveedor activo; sin precios no hay dolares.
-    private func costoDelConsumo(_ uso: UsoTokens) -> Double? {
-        CostoEstimado.costo(
-            uso: uso,
-            precioEntrada: proveedor?.precioEntradaPorMillon,
-            precioSalida: proveedor?.precioSalidaPorMillon
-        )
     }
 
     private func textoCosto(_ costo: Double) -> String {

@@ -95,21 +95,26 @@ extension HistorialConversaciones {
     /// Datos de la fila de dos lineas: pastilla de costo, etiqueta del ultimo
     /// modelo de la conversacion y vista previa del ultimo mensaje.
     ///
-    /// El proveedor se busca por `conversacion.proveedorID`, nunca por el
-    /// proveedor activo global: dos chats con modelos distintos conservan cada
-    /// uno su etiqueta y sus precios aunque el activo cambie.
+    /// La etiqueta usa el proveedor registrado del chat, nunca el activo
+    /// global. El costo valora cada mensaje con el proveedor que lo genero y
+    /// solo cae a `conversacion.proveedorID` en los mensajes viejos que no
+    /// traen esa anotacion.
     public static func datosFila(
         de conversacion: Conversation,
         proveedores: [ProviderConfig]
     ) -> DatosFilaChat {
-        let proveedor = conversacion.proveedorID.flatMap { id in
+        let idDelChat = conversacion.proveedorID
+            ?? conversacion.mensajes.last(where: { $0.proveedorID != nil })?.proveedorID
+        let proveedor = idDelChat.flatMap { id in
             proveedores.first { $0.id == id }
         }
 
+        // Cada mensaje se valora con el proveedor que lo genero; el del chat
+        // solo cubre los mensajes viejos que no traen esa anotacion.
         let costo = CostoEstimado.acumulado(
             mensajes: conversacion.mensajes,
-            precioEntrada: proveedor?.precioEntradaPorMillon,
-            precioSalida: proveedor?.precioSalidaPorMillon
+            proveedores: proveedores,
+            proveedorDelChat: conversacion.proveedorID
         )
 
         let modelo = proveedor.map { NombresLimpios.modelo($0.modelo) } ?? ""
@@ -165,7 +170,8 @@ extension HistorialConversaciones {
                 toolCallId: mensaje.toolCallId,
                 tokensEntrada: mensaje.tokensEntrada,
                 tokensSalida: mensaje.tokensSalida,
-                skillsAplicadas: mensaje.skillsAplicadas
+                skillsAplicadas: mensaje.skillsAplicadas,
+                proveedorID: mensaje.proveedorID
             )
         }
 

@@ -103,6 +103,8 @@ targets:
   # `@testable import Nodo` vea el estado y las vistas reales, y corre en el
   # simulador igual que las capturas.
   NodoAppTests:
+    # XcodeGen nombra asi al producto de pruebas unitarias de Xcode
+    # (com.apple.product-type.bundle.unit-test).
     type: bundle.unit-test
     platform: iOS
     sources:

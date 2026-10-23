@@ -31,8 +31,14 @@ final class EstadoAppTests: XCTestCase {
 
         XCTAssertNil(arnes.estado.errorDeTurno)
         XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 2)
-        XCTAssertEqual(arnes.estado.conversacion.mensajes.first?.rol, .usuario)
-        XCTAssertEqual(arnes.estado.conversacion.mensajes.last?.rol, .asistente)
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.first?.rol,
+            ChatMessage.Rol.usuario
+        )
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.last?.rol,
+            ChatMessage.Rol.asistente
+        )
         XCTAssertEqual(
             arnes.estado.conversacion.mensajes.last?.texto,
             "Hola desde el transporte guionizado."
@@ -63,6 +69,149 @@ final class EstadoAppTests: XCTestCase {
                 $0["role"] as? String == "user"
                     && $0["content"] as? String == "Hola"
             }
+        )
+    }
+
+    // MARK: - Demolicion del modo Tarea
+
+    /// Un chat normal va SIN herramientas, aunque una conversacion guardada
+    /// conserve la vieja bandera `modoTarea` en su modelo Codable.
+    func testPayloadDeChatNormalNoOfreceHerramientas() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        arnes.estado.conversacion = Conversation(modoTarea: true)
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta sin herramientas.",
+            uso: UsoTokens(entrada: 40, salida: 8)
+        )
+
+        arnes.estado.enviar("Hola")
+        try await arnes.esperarTurno()
+
+        let cuerpo = try XCTUnwrap(
+            arnes.transporte.peticionesRegistradas.first?.cuerpo
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: cuerpo) as? [String: Any]
+        )
+        XCTAssertNil(
+            json["tools"],
+            "Un chat normal no debe ofrecer herramientas por la bandera modoTarea"
+        )
+    }
+
+    // MARK: - Regenerar con otro combo
+
+    /// El combo elegido solo construye el motor de esa regeneracion: el
+    /// proveedor activo global debe quedar intacto al terminar.
+    func testRegenerarConOtroComboNoCambiaProveedorActivo() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activoOriginal = arnes.proveedor
+        let otro = try XCTUnwrap(
+            arnes.estado.config.proveedores.first { $0.id != activoOriginal.id }
+        )
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-activa", para: activoOriginal)
+        )
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-otro", para: otro)
+        )
+
+        arnes.estado.conversacion = Conversation(
+            mensajes: [
+                ChatMessage(rol: .usuario, texto: "Hola"),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Respuesta anterior",
+                    tokensEntrada: 100,
+                    tokensSalida: 20,
+                    proveedorID: activoOriginal.id
+                )
+            ],
+            proveedorID: activoOriginal.id
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta regenerada con otro combo.",
+            uso: UsoTokens(entrada: 30, salida: 10)
+        )
+
+        arnes.estado.regenerarCon(proveedorID: otro.id)
+        try await arnes.esperarTurno()
+
+        XCTAssertEqual(
+            arnes.estado.config.proveedorActivo,
+            activoOriginal.id,
+            "Regenerar con otro combo no puede cambiar el proveedor activo"
+        )
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.last?.texto,
+            "Respuesta regenerada con otro combo."
+        )
+
+        // Y el motor de esa regeneracion si fue el combo elegido.
+        let cuerpo = try XCTUnwrap(
+            arnes.transporte.peticionesRegistradas.first?.cuerpo
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: cuerpo) as? [String: Any]
+        )
+        XCTAssertEqual(json["model"] as? String, otro.modelo)
+    }
+
+    // MARK: - Costo historico
+
+    /// Cambiar el proveedor activo no puede revaluar los mensajes ya pagados:
+    /// cada uno conserva el proveedor que lo genero.
+    func testCostoAcumuladoNoCambiaAlCambiarProveedorActivo() throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activoOriginal = arnes.proveedor
+        let otro = try XCTUnwrap(
+            arnes.estado.config.proveedores.first {
+                $0.id != activoOriginal.id
+                    && $0.precioEntradaPorMillon != activoOriginal.precioEntradaPorMillon
+            }
+        )
+        let uso = UsoTokens(entrada: 1_000, salida: 500)
+        arnes.estado.conversacion = Conversation(
+            mensajes: [
+                ChatMessage(rol: .usuario, texto: "Hola"),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Respuesta ya pagada",
+                    tokensEntrada: uso.entrada,
+                    tokensSalida: uso.salida,
+                    proveedorID: activoOriginal.id
+                )
+            ],
+            proveedorID: activoOriginal.id
+        )
+
+        let antes = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        let esperado = try XCTUnwrap(
+            CostoEstimado.costo(
+                uso: uso,
+                precioEntrada: activoOriginal.precioEntradaPorMillon,
+                precioSalida: activoOriginal.precioSalidaPorMillon
+            )
+        )
+        XCTAssertEqual(antes, esperado, accuracy: 0.0000001)
+
+        arnes.estado.config.proveedorActivo = otro.id
+
+        let despues = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(
+            antes,
+            despues,
+            accuracy: 0.0000001,
+            "El costo historico no puede recalcularse con el proveedor activo"
         )
     }
 
@@ -134,6 +283,15 @@ final class EstadoAppTests: XCTestCase {
                     texto: "Hola, en que puedo ayudarte?"
                 )
             ]
+        )
+        // Aunque hubiera clave y un guion disponible, una conversacion corta no
+        // debe llegar a pedir el resumen: el guard de longitud va antes.
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Resumen que no se deberia pedir.",
+            uso: UsoTokens(entrada: 10, salida: 5)
         )
 
         arnes.estado.compactar()
