@@ -33,6 +33,7 @@ struct ChatView: View {
 
             resumenDelChat
             tiraFina
+            filaHerramientaEnCurso
             barraDeEntrada
         }
         .background(Tema.fondo.ignoresSafeArea())
@@ -56,6 +57,12 @@ struct ChatView: View {
         }
         .sheet(isPresented: $mostrarMemoriaRapida) {
             HojaMemoriaRapidaView()
+        }
+        .sheet(item: $estado.aprobacionPendiente) { aprobacion in
+            HojaAprobacionView(aprobacion: aprobacion) { aprobada in
+                estado.resolverAprobacion(aprobada)
+            }
+            .interactiveDismissDisabled(true)
         }
         .confirmationDialog(
             "Borrar esta conversacion?",
@@ -365,16 +372,10 @@ struct ChatView: View {
     private func filaDeHilo(_ fila: FilaHilo) -> some View {
         switch fila {
         case .mensaje(let mensaje):
-            VStack(alignment: .leading, spacing: 2) {
-                BurbujaMensaje(mensaje: mensaje)
-
-                if mensaje.rol == .asistente,
-                   let linea = lineaDeConsumo(mensaje) {
-                    Text(linea)
-                        .font(.caption2)
-                        .foregroundStyle(Tema.textoSuave)
-                        .padding(.leading, 14)
-                }
+            if estado.conversacion.modoTarea {
+                filaDeMensajeEnTarea(mensaje)
+            } else {
+                filaDeMensajeNormal(mensaje)
             }
 
         case .evento(let evento):
@@ -385,6 +386,85 @@ struct ChatView: View {
                 .padding(.vertical, 2)
                 .accessibilityLabel(evento.texto)
         }
+    }
+
+    @ViewBuilder
+    private func filaDeMensajeNormal(_ mensaje: ChatMessage) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            BurbujaMensaje(mensaje: mensaje)
+
+            if mensaje.rol == .asistente,
+               let linea = lineaDeConsumo(mensaje) {
+                Text(linea)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .padding(.leading, 14)
+            }
+        }
+    }
+
+    /// En modo Tarea los mensajes internos se leen como pasos plegables.
+    ///
+    /// La fila del paso la pone el mensaje del asistente que pidio la llamada;
+    /// el mensaje de herramienta solo aporta el resultado y se pliega dentro de
+    /// esa misma fila, sin pintar una burbuja duplicada. Un mensaje de
+    /// herramienta huerfano (sin llamada que lo explique) se pinta igual como
+    /// paso para no perder su texto.
+    @ViewBuilder
+    private func filaDeMensajeEnTarea(_ mensaje: ChatMessage) -> some View {
+        if mensaje.rol == .herramienta {
+            if !esHerramientaYaRepresentada(mensaje) {
+                PasoHerramienta(
+                    nombre: nombreDeHerramienta(para: mensaje.toolCallId) ?? "herramienta",
+                    resultado: mensaje.texto
+                )
+            }
+        } else if mensaje.rol == .asistente, !mensaje.toolCalls.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                if !mensaje.texto.isEmpty {
+                    BurbujaMensaje(mensaje: mensaje)
+                }
+
+                ForEach(mensaje.toolCalls, id: \.id) { llamada in
+                    PasoHerramienta(
+                        nombre: llamada.nombre,
+                        resultado: resultadoDeHerramienta(para: llamada.id)
+                    )
+                }
+
+                if let linea = lineaDeConsumo(mensaje) {
+                    Text(linea)
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .padding(.leading, 14)
+                }
+            }
+        } else {
+            filaDeMensajeNormal(mensaje)
+        }
+    }
+
+    private func esHerramientaYaRepresentada(_ mensaje: ChatMessage) -> Bool {
+        guard let id = mensaje.toolCallId else { return false }
+        return estado.conversacion.mensajes.contains { otro in
+            otro.rol == .asistente && otro.toolCalls.contains { $0.id == id }
+        }
+    }
+
+    private func resultadoDeHerramienta(para id: String) -> String {
+        estado.conversacion.mensajes.first {
+            $0.rol == .herramienta && $0.toolCallId == id
+        }?.texto ?? ""
+    }
+
+    private func nombreDeHerramienta(para id: String?) -> String? {
+        guard let id else { return nil }
+        for mensaje in estado.conversacion.mensajes {
+            if let llamada = mensaje.toolCalls.first(where: { $0.id == id }) {
+                return llamada.nombre
+            }
+        }
+        return nil
     }
 
     private static let marcaEnCurso = "nodo-en-curso"
@@ -534,6 +614,25 @@ struct ChatView: View {
         .padding(.top, 6)
     }
 
+    /// Fila fina sobre la caja mientras una herramienta se esta ejecutando.
+    @ViewBuilder
+    private var filaHerramientaEnCurso: some View {
+        if estado.conversacion.modoTarea,
+           let nombre = estado.herramientaEnCurso {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Ejecutando \(nombre)…")
+                    .font(.caption)
+                    .foregroundStyle(Tema.textoSuave)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Tema.margen)
+            .padding(.top, 6)
+            .accessibilityIdentifier("paso-en-curso")
+        }
+    }
+
     private var barraDeEntrada: some View {
         HStack(alignment: .bottom, spacing: 10) {
             TextField("Escribe un mensaje", text: $borrador, axis: .vertical)
@@ -573,5 +672,129 @@ struct ChatView: View {
         let texto = borrador
         borrador = ""
         estado.enviar(texto)
+    }
+}
+
+/// Paso plegable de una herramienta dentro de una conversacion en modo Tarea.
+///
+/// La fila siempre se ve; el resultado solo aparece al tocarla. Asi el hilo no
+/// se llena de texto tecnico, pero nada queda escondido sin salida.
+private struct PasoHerramienta: View {
+    let nombre: String
+    let resultado: String
+
+    @State private var desplegado = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    desplegado.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.caption2)
+                    Text("Paso · \(nombre)")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Image(systemName: desplegado ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(Tema.acento)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Tema.superficie)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Paso \(nombre)")
+            .accessibilityHint(
+                desplegado ? "Toca para plegar el resultado" : "Toca para ver el resultado"
+            )
+            .accessibilityIdentifier("paso-herramienta")
+
+            if desplegado {
+                Text(resultado.isEmpty ? "Sin resultado." : resultado)
+                    .font(.caption)
+                    .foregroundStyle(Tema.textoSuave)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Tema.superficie.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+    }
+}
+
+/// Hoja de aprobacion de una herramienta con consecuencias.
+///
+/// Solo tiene dos salidas, Aprobar y Rechazar, y no se cierra por arrastre ni
+/// por accidente: la decision es obligatoria (CONTRATO §2.2).
+private struct HojaAprobacionView: View {
+    let aprobacion: AprobacionPendiente
+    let decidir: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "hand.raised.fill")
+                    .foregroundStyle(.orange)
+                Text("Aprobar herramienta")
+                    .font(.headline)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(aprobacion.nombreHerramienta)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text(
+                    aprobacion.resumenArgumentos.isEmpty
+                        ? "Sin argumentos."
+                        : aprobacion.resumenArgumentos
+                )
+                .font(.footnote.monospaced())
+                .foregroundStyle(Tema.textoSuave)
+                .lineLimit(6)
+                .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Tema.superficie)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            Text("Esta herramienta puede tener consecuencias. Nada se ejecuta hasta que decidas.")
+                .font(.footnote)
+                .foregroundStyle(Tema.textoSuave)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 12) {
+                Button(role: .destructive) {
+                    decidir(false)
+                } label: {
+                    Text("Rechazar")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    decidir(true)
+                } label: {
+                    Text("Aprobar")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(Tema.margen)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Tema.fondo)
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(true)
+        .accessibilityIdentifier("hoja-aprobacion")
     }
 }

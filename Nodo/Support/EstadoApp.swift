@@ -3,6 +3,34 @@ import SwiftUI
 
 import NodoCore
 
+/// Aprobacion que espera la decision del usuario antes de ejecutar una
+/// herramienta con consecuencias en modo Tarea.
+///
+/// Lleva la llamada original (para devolverla al bucle) y un resumen legible
+/// con el nombre y los argumentos recortados, que es lo unico que se pinta en
+/// la hoja de aprobacion.
+struct AprobacionPendiente: Identifiable, Equatable {
+    let id: UUID
+    let llamada: ToolCall
+    let nombreHerramienta: String
+    let resumenArgumentos: String
+
+    init(id: UUID = UUID(), llamada: ToolCall) {
+        self.id = id
+        self.llamada = llamada
+        self.nombreHerramienta = llamada.nombre
+
+        let plano = llamada.argumentos
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if plano.count > 160 {
+            self.resumenArgumentos = String(plano.prefix(160)) + "…"
+        } else {
+            self.resumenArgumentos = plano
+        }
+    }
+}
+
 /// Estado central de la app.
 ///
 /// Aqui vive todo lo que cambia: la configuracion, las conversaciones y el texto
@@ -18,6 +46,11 @@ final class EstadoApp: ObservableObject {
     @Published var conversacion: Conversation
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
+    /// Aprobacion pendiente del usuario, o nil si no hay ninguna.
+    @Published var aprobacionPendiente: AprobacionPendiente?
+    /// Nombre de la herramienta que se esta ejecutando ahora mismo. nil fuera
+    /// de una ejecucion; alimenta la fila "Ejecutando..." de la conversacion.
+    @Published private(set) var herramientaEnCurso: String?
     /// Divisores y avisos del hilo abierto (SPEC §2.6).
     ///
     /// Viven fuera de `mensajes` a proposito: son metadatos de interfaz y jamas
@@ -37,6 +70,9 @@ final class EstadoApp: ObservableObject {
     }
 
     private let llavero: AlmacenClaves
+    /// Estado sembrado por `-CapturasPrueba`, o nil en un arranque normal.
+    /// Ademas de no persistir, activa el motor y la herramienta deterministas.
+    private let estadoDePrueba: EstadoPrueba?
     /// En modo capturas no se escribe nada en el almacenamiento del telefono:
     /// el estado llega sembrado en memoria y las capturas no deben ensuciar
     /// los datos de quien use la app de verdad.
@@ -44,6 +80,9 @@ final class EstadoApp: ObservableObject {
     private let transporte = TransporteURLSession()
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
+    /// Continuacion que mantiene el turno suspendido mientras la hoja de
+    /// aprobacion espera. Se resuelve una sola vez por aprobacion.
+    private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
     /// La carga inicial del diccionario no debe escribir nada: se activa al
     /// terminar el init normal y se queda apagada en modo de prueba.
     private var puedeGuardarVentanas = false
@@ -53,6 +92,7 @@ final class EstadoApp: ObservableObject {
 
     init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
         self.llavero = llavero
+        self.estadoDePrueba = estadoDePrueba
         self.persistir = estadoDePrueba == nil
 
         // Gancho de capturas (SPEC §6/H7): estado de PRUEBA en memoria, sin
@@ -228,6 +268,34 @@ final class EstadoApp: ObservableObject {
             return "Falta la clave de API de \(proveedor.nombre)."
         }
         return nil
+    }
+
+    /// Proveedor y clave con los que se puede enviar, o nil si falta algo.
+    ///
+    /// En modo capturas no hay llavero real ni clave: el motor de prueba no la
+    /// usa, asi que se permite enviar con una clave vacia para que la captura
+    /// solo tenga que escribir y pulsar enviar.
+    private func proveedorYClaveParaEnviar() -> (ProviderConfig, String)? {
+        if estadoDePrueba != nil {
+            guard let proveedor = config.proveedorSeleccionado else {
+                error = "Falta la configuracion del proveedor."
+                return nil
+            }
+            return (proveedor, "")
+        }
+
+        if let problema = problemaDeConfiguracion() {
+            error = problema
+            return nil
+        }
+
+        guard let proveedor = config.proveedorSeleccionado,
+              let clave = clave(para: proveedor)
+        else {
+            error = "Falta la configuracion del proveedor."
+            return nil
+        }
+        return (proveedor, clave)
     }
 
     // MARK: - Proveedores
@@ -413,17 +481,7 @@ final class EstadoApp: ObservableObject {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty, !enviando else { return }
 
-        if let problema = problemaDeConfiguracion() {
-            error = problema
-            return
-        }
-
-        guard let proveedor = config.proveedorSeleccionado,
-              let clave = clave(para: proveedor)
-        else {
-            error = "Falta la configuracion del proveedor."
-            return
-        }
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
         conversacion.mensajes.append(ChatMessage(rol: .usuario, texto: limpio))
         if conversacion.titulo == "Conversacion" {
@@ -433,9 +491,12 @@ final class EstadoApp: ObservableObject {
 
         enviando = true
         textoEnCurso = ""
+        herramientaEnCurso = nil
+        aprobacionPendiente = nil
         error = nil
 
         let historial = historialParaEnviar()
+        let modoTarea = conversacion.modoTarea
 
         tareaActual = Task { [weak self] in
             guard let self else { return }
@@ -444,6 +505,7 @@ final class EstadoApp: ObservableObject {
                 proveedor: proveedor,
                 clave: clave,
                 historial: historial,
+                modoTarea: modoTarea,
                 alFracasar: {}
             )
 
@@ -461,17 +523,7 @@ final class EstadoApp: ObservableObject {
         guard !enviando else { return }
         guard conversacion.mensajes.last?.rol == .asistente else { return }
 
-        if let problema = problemaDeConfiguracion() {
-            error = problema
-            return
-        }
-
-        guard let proveedor = config.proveedorSeleccionado,
-              let clave = clave(para: proveedor)
-        else {
-            error = "Falta la configuracion del proveedor."
-            return
-        }
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
 
         let turnoDescartado = conversacion.descartarUltimoTurno()
         guard !turnoDescartado.isEmpty else { return }
@@ -479,9 +531,12 @@ final class EstadoApp: ObservableObject {
 
         enviando = true
         textoEnCurso = ""
+        herramientaEnCurso = nil
+        aprobacionPendiente = nil
         error = nil
 
         let historial = historialParaEnviar()
+        let modoTarea = conversacion.modoTarea
 
         tareaActual = Task { [weak self] in
             guard let self else { return }
@@ -490,6 +545,7 @@ final class EstadoApp: ObservableObject {
                 proveedor: proveedor,
                 clave: clave,
                 historial: historial,
+                modoTarea: modoTarea,
                 alFracasar: {
                     self.conversacion.mensajes.append(contentsOf: turnoDescartado)
                 }
@@ -510,12 +566,24 @@ final class EstadoApp: ObservableObject {
         proveedor: ProviderConfig,
         clave: String,
         historial: [ChatMessage],
+        modoTarea: Bool,
         alFracasar: () -> Void
     ) async {
+        defer { herramientaEnCurso = nil }
+
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
-            let herramientas = await herramientasDisponibles()
-            let bucle = ToolLoop(motor: motor, herramientas: herramientas)
+            let herramientas: [Herramienta]
+            if modoTarea {
+                herramientas = await herramientasDisponibles()
+            } else {
+                herramientas = []
+            }
+            let bucle = buclePara(
+                motor: motor,
+                herramientas: herramientas,
+                modoTarea: modoTarea
+            )
 
             let resultado = try await bucle.ejecutar(
                 historial: historial,
@@ -525,6 +593,11 @@ final class EstadoApp: ObservableObject {
                     }
                 }
             )
+
+            // Si el usuario pulso Detener mientras esperaba una aprobacion o
+            // una herramienta, el turno no se publica aunque el bucle haya
+            // alcanzado a devolver un resultado.
+            try Task.checkCancellation()
 
             textoEnCurso = ""
             conversacion.mensajes.append(contentsOf: resultado.mensajesNuevos)
@@ -546,6 +619,86 @@ final class EstadoApp: ObservableObject {
                 ?? fallo.localizedDescription
             persistirActual()
         }
+    }
+
+    /// Monta el bucle del turno segun el modo.
+    ///
+    /// En Chat no se ofrece ninguna herramienta y no hay ganchos: el turno es
+    /// solo streaming y consumo, igual que antes. En Tarea se ofrecen las
+    /// herramientas reales y se cablea la aprobacion por llamada.
+    private func buclePara(
+        motor: ChatEngine,
+        herramientas: [Herramienta],
+        modoTarea: Bool
+    ) -> ToolLoop {
+        guard modoTarea else {
+            return ToolLoop(motor: motor, herramientas: herramientas)
+        }
+
+        let exentas = config.herramientasSinAprobacion ?? []
+
+        return ToolLoop(
+            motor: motor,
+            herramientas: herramientas,
+            alIniciarHerramienta: { [weak self] llamada in
+                Task { @MainActor [weak self] in
+                    self?.herramientaEnCurso = llamada.nombre
+                }
+            },
+            alTerminarHerramienta: { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.herramientaEnCurso = nil
+                }
+            },
+            aprobador: { [weak self] llamada in
+                guard let self else { return false }
+                return await self.pedirAprobacion(llamada)
+            },
+            requiereAprobacion: { llamada in
+                // Hoy la unica herramienta propia es "traer_url" y solo hace
+                // GET. Todo lo demas llega envuelto desde MCP.
+                let esTraerURL = llamada.nombre == "traer_url"
+                return PoliticaAprobacion.requiereAprobacion(
+                    esMCP: !esTraerURL,
+                    metodoHTTP: esTraerURL ? "GET" : nil,
+                    nombreHerramienta: llamada.nombre,
+                    exentas: exentas
+                )
+            }
+        )
+    }
+
+    /// Suspende el turno hasta que el usuario decida en la hoja.
+    ///
+    /// La continuacion se guarda para que `resolverAprobacion` la cierre
+    /// exactamente una vez; si ya habia otra pendiente, se rechaza para no
+    /// dejar nunca un turno colgado.
+    private func pedirAprobacion(_ llamada: ToolCall) async -> Bool {
+        if let anterior = continuacionAprobacion {
+            continuacionAprobacion = nil
+            aprobacionPendiente = nil
+            anterior.resume(returning: false)
+        }
+
+        return await withCheckedContinuation { continuacion in
+            continuacionAprobacion = continuacion
+            aprobacionPendiente = AprobacionPendiente(llamada: llamada)
+        }
+    }
+
+    /// Cierra la aprobacion pendiente con la decision del usuario.
+    ///
+    /// Tambien limpia el estado que pinta la hoja, de modo que la vista se
+    /// cierra sola. Sin continuacion pendiente solo se limpia la hoja.
+    func resolverAprobacion(_ aprobada: Bool) {
+        guard let continuacion = continuacionAprobacion else {
+            aprobacionPendiente = nil
+            return
+        }
+
+        continuacionAprobacion = nil
+        aprobacionPendiente = nil
+        continuacion.resume(returning: aprobada)
     }
 
     /// Avisa una sola vez si el acumulado estimado del chat cruzo el tope.
@@ -574,6 +727,11 @@ final class EstadoApp: ObservableObject {
     func cancelar() {
         tareaActual?.cancel()
         tareaActual = nil
+        if continuacionAprobacion != nil {
+            resolverAprobacion(false)
+        }
+        aprobacionPendiente = nil
+        herramientaEnCurso = nil
         enviando = false
         textoEnCurso = ""
     }
@@ -591,6 +749,11 @@ final class EstadoApp: ObservableObject {
     }
 
     private func motorPara(proveedor: ProviderConfig, clave: String) -> ChatEngine {
+        // Solo las capturas sustituyen el motor real; en produccion no cambia.
+        if estadoDePrueba != nil {
+            return MotorDePrueba()
+        }
+
         switch proveedor.protocolo {
         case .chatCompletions:
             return ChatCompletionsClient(transporte: transporte, config: proveedor, clave: clave)
@@ -606,6 +769,13 @@ final class EstadoApp: ObservableObject {
     /// nombres y argumentos reales para poder usarlas. Si el servidor no
     /// responde se sigue sin ellas: conversar no debe depender de el.
     private func herramientasDisponibles() async -> [Herramienta] {
+        // La costura de capturas devuelve una unica herramienta con
+        // consecuencias, para que la hoja de aprobacion y el paso en vivo sean
+        // deterministas y no dependan de la red.
+        if estadoDePrueba != nil {
+            return [HerramientaDePrueba()]
+        }
+
         var lista: [Herramienta] = [HttpFetchTool(transporte: transporte)]
 
         guard config.servidor.estaConfigurado,

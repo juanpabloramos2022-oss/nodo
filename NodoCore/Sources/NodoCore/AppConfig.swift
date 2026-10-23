@@ -53,6 +53,10 @@ public struct AppConfig: Codable, Equatable {
     /// Tope de aviso por chat, en dolares estimados. nil usa el valor por
     /// defecto; 0 o negativo desactiva el aviso.
     public var topeAvisoCosto: Double?
+    /// Herramientas que no piden aprobacion en modo Tarea, aunque tengan
+    /// consecuencias. nil equivale a la lista vacia, que es el valor por
+    /// defecto que manda la SPEC (§4.3).
+    public var herramientasSinAprobacion: [String]?
 
     public init(
         version: Int = 1,
@@ -60,7 +64,8 @@ public struct AppConfig: Codable, Equatable {
         proveedorActivo: UUID? = nil,
         systemPrompt: String = AppConfig.promptPorDefecto,
         servidor: ServerConfig = ServerConfig(),
-        topeAvisoCosto: Double? = nil
+        topeAvisoCosto: Double? = nil,
+        herramientasSinAprobacion: [String]? = nil
     ) {
         self.version = version
         self.proveedores = proveedores
@@ -68,6 +73,7 @@ public struct AppConfig: Codable, Equatable {
         self.systemPrompt = systemPrompt
         self.servidor = servidor
         self.topeAvisoCosto = topeAvisoCosto
+        self.herramientasSinAprobacion = herramientasSinAprobacion
     }
 
     /// Tope que se aplica de verdad: el guardado o un dolar si nunca se fijo.

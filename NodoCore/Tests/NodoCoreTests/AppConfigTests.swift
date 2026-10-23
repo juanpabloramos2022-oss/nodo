@@ -220,6 +220,23 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config.servidor.url, "https://servidor.test/mcp")
         XCTAssertNil(config.topeAvisoCosto)
         XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)
+        XCTAssertNil(config.herramientasSinAprobacion)
+    }
+
+    func testListaDeHerramientasExentasSobreviveAlJSON() throws {
+        let original = AppConfig(herramientasSinAprobacion: ["traer_url", "crear_nota"])
+
+        let vuelta = try AppConfig.desde(json: try original.json())
+
+        XCTAssertEqual(vuelta.herramientasSinAprobacion, ["traer_url", "crear_nota"])
+    }
+
+    func testSinListaDeExentasDecodificaNil() throws {
+        let config = AppConfig()
+
+        let vuelta = try AppConfig.desde(json: try config.json())
+
+        XCTAssertNil(vuelta.herramientasSinAprobacion)
     }
 
     func testTopeDeAvisoPorDefectoEsUnDolar() {

@@ -31,6 +31,7 @@ enum EstadosDePrueba {
         case ajustesTope = "ajustes-tope"
         case conversacionEjemplo = "conversacion-ejemplo"
         case historialEjemplo = "historial-ejemplo"
+        case tarea = "tarea"
     }
 
     /// Devuelve el estado pedido por los argumentos de lanzamiento, o nil si la
@@ -163,6 +164,21 @@ enum EstadosDePrueba {
                 config: configuracion(),
                 conversacion: conversacionEjemplo,
                 conversaciones: [conversacionEjemplo, conversacionArchivada]
+            )
+        case .tarea:
+            let conversacionTarea = Conversation(
+                id: id("00000000-0000-0000-0000-000000000007"),
+                titulo: "Tarea de ejemplo",
+                mensajes: [],
+                creada: fechaFija,
+                actualizada: fechaFija,
+                modoTarea: true
+            )
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracion(),
+                conversacion: conversacionTarea,
+                conversaciones: [conversacionTarea]
             )
         }
     }
