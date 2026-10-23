@@ -25,13 +25,18 @@ public protocol ResolvedorSkills {
     func todas() -> [SkillResuelta]
 }
 
-/// Los cinco comandos locales del sistema (§4.2). Sus slugs son reservados.
+/// Los comandos locales del sistema (§4.2) mas /plan.
+///
+/// /plan es una adicion firmada del dueno para TASK.2: genera un plan por pasos
+/// sin ejecutar herramientas y lo deja como mensaje en el chat. Se suma a la
+/// gramatica existente; no se crea un parser paralelo.
 public enum ComandoIntegrado: String, Equatable, CaseIterable {
     case compact
     case costo
     case modelos
     case nuevo
     case exportar
+    case plan
 }
 
 /// Resultado de analizar un texto enviado desde la caja.
@@ -61,7 +66,7 @@ public enum AnalizadorComandos {
     /// los resuelve como skill: un comando con texto detras ("/compact ahora")
     /// cae en `.tokensDesconocidos` aunque un registro defectuoso los ofrezca.
     public static let slugsReservados: Set<String> = [
-        "compact", "costo", "modelos", "nuevo", "exportar"
+        "compact", "costo", "modelos", "nuevo", "exportar", "plan"
     ]
 
     public static func analizar(

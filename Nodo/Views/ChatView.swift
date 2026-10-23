@@ -777,6 +777,8 @@ struct ChatView: View {
             return "Crea una conversación nueva."
         case .exportar:
             return "Comparte esta conversación como texto."
+        case .plan:
+            return "Propone un plan por pasos sin ejecutar nada."
         }
     }
 
@@ -810,7 +812,9 @@ struct ChatView: View {
     }
 
     private var placeholderCaja: String {
-        estado.compactando ? "Compactando…" : "Escribe un mensaje"
+        if estado.compactando { return "Compactando…" }
+        if estado.generandoPlanChat { return "Generando plan…" }
+        return "Escribe un mensaje"
     }
 
     private var barraDeEntrada: some View {
@@ -822,7 +826,7 @@ struct ChatView: View {
             )
             .lineLimit(1...5)
             .focused($escribiendo)
-            .disabled(estado.compactando)
+            .disabled(estado.compactando || estado.generandoPlanChat)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(Tema.superficie)
@@ -839,7 +843,7 @@ struct ChatView: View {
                     .background(dictando ? Color.red : Tema.superficieAlta)
                     .clipShape(Circle())
             }
-            .disabled(estado.compactando || estado.enviando)
+            .disabled(estado.compactando || estado.enviando || estado.generandoPlanChat)
             .accessibilityLabel(dictando ? "Detener dictado" : "Dictar")
             .accessibilityIdentifier("boton-dictado")
 
@@ -862,7 +866,7 @@ struct ChatView: View {
     }
 
     private var botonActivo: Bool {
-        guard !estado.compactando else { return false }
+        guard !estado.compactando, !estado.generandoPlanChat else { return false }
         return estado.enviando
             || !estado.borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

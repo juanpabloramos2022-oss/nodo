@@ -19,6 +19,8 @@ final class ArnesApp {
     let llavero: LlaveroFalso
     let defaults: UserDefaults
     let directorioStore: URL
+    /// Almacen propio de tareas, junto al de conversaciones pero sin mezclarse.
+    let directorioTareas: URL
     private let nombreSuite: String
 
     /// Proveedor activo de la configuracion sembrada.
@@ -51,6 +53,7 @@ final class ArnesApp {
             withIntermediateDirectories: true
         )
         self.directorioStore = directorio
+        self.directorioTareas = TareaStore.directorioEn(directorio)
 
         let transporte = TransporteGuionizado()
         self.transporte = transporte
@@ -61,7 +64,8 @@ final class ArnesApp {
             llavero: llavero,
             transporte: transporte,
             defaults: defaults,
-            directorioStore: directorio
+            directorioStore: directorio,
+            directorioTareas: directorioTareas
         )
         // El init normal arranca con `.inicial()` cuando la suite esta vacia;
         // se aplica la configuracion pedida por el test por la ruta publica,

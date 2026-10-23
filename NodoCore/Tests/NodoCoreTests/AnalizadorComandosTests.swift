@@ -104,10 +104,19 @@ final class AnalizadorComandosTests: XCTestCase {
         )
     }
 
-    func testSlugsReservadosSonLosCincoComandosDelSistema() {
+    func testSlugsReservadosIncluyenLosComandosDelSistemaYPlan() {
         XCTAssertEqual(
             AnalizadorComandos.slugsReservados,
-            Set(["compact", "costo", "modelos", "nuevo", "exportar"])
+            Set(["compact", "costo", "modelos", "nuevo", "exportar", "plan"])
+        )
+    }
+
+    /// /plan es una adicion firmada del dueno para TASK.2. Se reconoce por la
+    /// misma gramatica que los demas comandos, no por un parser paralelo.
+    func testPlanSeReconoceComoComandoIntegrado() {
+        XCTAssertEqual(
+            AnalizadorComandos.analizar("/plan", resolvedor: resolvedor),
+            .comando(.plan)
         )
     }
 

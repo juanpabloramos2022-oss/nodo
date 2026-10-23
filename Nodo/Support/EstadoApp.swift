@@ -122,6 +122,20 @@ final class EstadoApp: ObservableObject {
 
     @Published private(set) var conversaciones: [Conversation] = []
     @Published var conversacion: Conversation
+
+    /// Tareas guardadas, la mas reciente primero.
+    ///
+    /// Viven en su propio almacen y en su propia pestana: no se mezclan con las
+    /// conversaciones. El estado `.enCurso` que quedo de una sesion anterior se
+    /// convierte en `.interrumpida` al arrancar.
+    @Published private(set) var tareas: [Tarea] = []
+    /// True mientras se pide el plan de una tarea al modelo.
+    @Published private(set) var generandoPlan = false
+    /// True mientras /plan pide el plan dentro de un chat.
+    @Published private(set) var generandoPlanChat = false
+    /// Error propio de la pantalla de Tareas, separado del error del chat.
+    @Published var errorTarea: String?
+
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
     /// Texto de la caja de la conversacion abierta.
@@ -218,9 +232,13 @@ final class EstadoApp: ObservableObject {
     /// tocar los datos del telefono ni depender de un estado anterior.
     private let defaults: UserDefaults
     private var store: ConversationStore?
+    /// Almacen de tareas, independiente del de conversaciones.
+    private var storeTareas: TareaStore?
     private var tareaActual: Task<Void, Never>?
     /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
     private var tareaCompactado: Task<Void, Never>?
+    /// Tarea de /plan en el chat, para cancelarla al cambiar de conversacion.
+    private var tareaPlanChat: Task<Void, Never>?
     /// Identifica la compactacion vigente: una tarea vieja que termina tarde no
     /// puede reabrir la caja de una compactacion nueva.
     private var generacionCompactado = UUID()
@@ -266,7 +284,8 @@ final class EstadoApp: ObservableObject {
         estadoDePrueba: EstadoPrueba? = nil,
         transporte: any HTTPStreaming & HTTPUnary = TransporteURLSession(),
         defaults: UserDefaults = .standard,
-        directorioStore: URL? = nil
+        directorioStore: URL? = nil,
+        directorioTareas: URL? = nil
     ) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
@@ -293,6 +312,9 @@ final class EstadoApp: ObservableObject {
             // estado sembrado debe ser determinista y no ensuciar el telefono.
             self.ventanasPorModelo = [:]
             self.store = nil
+            // Las capturas no siembran tareas: la pestana Tareas es un espacio
+            // propio de TASK.1 y no forma parte del estado de prueba anterior.
+            self.tareas = []
             sincronizarSkills()
             return
         }
@@ -327,6 +349,36 @@ final class EstadoApp: ObservableObject {
         }
         self.store = almacen
         self.conversaciones = almacen?.listar() ?? []
+
+        // Almacen propio de tareas. Si el llamador inyecta `directorioTareas`
+        // manda ese; si solo inyecta el de conversaciones, las tareas viven en
+        // una subcarpeta hermana para no mezclar los dos tipos de archivo.
+        var almacenTareas: TareaStore?
+        do {
+            let directorio: URL
+            if let directorioTareas {
+                directorio = directorioTareas
+            } else if let directorioStore {
+                directorio = TareaStore.directorioEn(directorioStore)
+            } else {
+                directorio = try TareaStore.directorioPorDefecto()
+            }
+            almacenTareas = try TareaStore(directorio: directorio)
+        } catch {
+            self.error = "No se pudo abrir el almacen de tareas."
+        }
+        self.storeTareas = almacenTareas
+        self.tareas = almacenTareas?.listar() ?? []
+
+        // Frontera honesta de iOS: no hay ejecucion en segundo plano. Toda
+        // tarea que quedo `enCurso` al cerrar la app se lee como interrumpida.
+        if let almacenTareas {
+            let interrumpidas = almacenTareas.marcarInterrumpidas()
+            if interrumpidas > 0 {
+                self.tareas = almacenTareas.listar()
+            }
+        }
+
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
         self.puedeGuardarResumenesCompactados = true
@@ -1410,6 +1462,246 @@ final class EstadoApp: ObservableObject {
         guardarActual()
     }
 
+    // MARK: - Tareas
+
+    /// Vuelve a leer la lista de tareas del almacen.
+    ///
+    /// En modo capturas `storeTareas` es nil: se conserva la lista en memoria.
+    func recargarTareas() {
+        guard let storeTareas else { return }
+        tareas = storeTareas.listar()
+    }
+
+    /// Crea una tarea en borrador y la persiste.
+    ///
+    /// Nace sin plan: la vista de la tarea pide el plan al aparecer o cuando el
+    /// dueno pulsa Regenerar. El proveedor queda anotado para que el plan se
+    /// genere con el que tenia la tarea, no con el activo de otro momento.
+    @discardableResult
+    func crearTarea(instruccion: String = "", conversacionID: UUID? = nil) -> Tarea {
+        let limpia = instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tarea = Tarea(
+            instruccion: limpia,
+            conversacionID: conversacionID,
+            proveedorID: config.proveedorSeleccionado?.id
+        )
+        guardarTarea(tarea)
+        return tarea
+    }
+
+    /// Borra una tarea y su archivo. El plan y el libro se van con ella.
+    func borrarTarea(id: UUID) {
+        do {
+            try storeTareas?.borrar(id: id)
+        } catch {
+            errorTarea = "No se pudo borrar la tarea."
+        }
+        if storeTareas == nil {
+            tareas.removeAll { $0.id == id }
+        }
+        recargarTareas()
+    }
+
+    /// Comodo para las vistas que ya tienen la tarea.
+    func borrarTarea(_ tarea: Tarea) {
+        borrarTarea(id: tarea.id)
+    }
+
+    /// Guarda una instruccion editada y invalida el plan anterior.
+    ///
+    /// POR QUE invalida el plan: un plan generado para otra instruccion no
+    /// describe lo que se va a ejecutar. El dueno tiene que regenerarlo antes
+    /// de poder pulsar Empezar.
+    func actualizarInstruccionTarea(id: UUID, instruccion: String) {
+        guard let indice = tareas.firstIndex(where: { $0.id == id }),
+              tareas[indice].admiteEdicion
+        else {
+            return
+        }
+
+        let limpia = instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpia.isEmpty else {
+            errorTarea = "Escribe una instrucción para la tarea."
+            return
+        }
+
+        tareas[indice].instruccion = limpia
+        tareas[indice].plan = nil
+        tareas[indice].estado = .borrador
+        tareas[indice].fechaActualizacion = Date()
+        guardarTarea(tareas[indice])
+    }
+
+    /// Pide al modelo un plan por pasos y lo guarda en la tarea.
+    ///
+    /// Es el mismo mecanismo que usa /plan en un chat: una sola llamada al
+    /// motor con `herramientas: []`, sin ToolLoop y sin tocar MCP. El payload
+    /// no lleva el arreglo `tools` aunque haya servidor configurado; por eso el
+    /// plan es solo texto y no puede ejecutar nada.
+    ///
+    /// - Parameters:
+    ///   - id: tarea a planificar.
+    ///   - instruccion: si viene, sustituye a la guardada antes de pedir el plan.
+    func generarPlan(id: UUID, instruccion: String? = nil) async {
+        guard !generandoPlan else { return }
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else { return }
+
+        let limpia = (instruccion ?? tareas[indice].instruccion)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpia.isEmpty else {
+            errorTarea = "Escribe una instrucción para generar el plan."
+            return
+        }
+        guard tareas[indice].admiteEdicion else {
+            errorTarea = "La tarea ya empezó: el plan no se puede cambiar."
+            return
+        }
+
+        // La instruccion editada se guarda antes de salir a la red. Si la
+        // llamada falla, el dueno no pierde lo que escribio.
+        tareas[indice].instruccion = limpia
+        tareas[indice].plan = nil
+        tareas[indice].estado = .borrador
+        tareas[indice].fechaActualizacion = Date()
+        guardarTarea(tareas[indice])
+
+        // `guardarTarea` recarga la lista ordenada: se vuelve a buscar la tarea
+        // por id en vez de reutilizar el indice anterior.
+        guard let tareaParaPlan = tareas.first(where: { $0.id == id }),
+              let (proveedor, clave) = proveedorYClaveParaTarea(tareaParaPlan)
+        else {
+            return
+        }
+
+        generandoPlan = true
+        errorTarea = nil
+        defer { generandoPlan = false }
+
+        do {
+            let motor = motorPara(proveedor: proveedor, clave: clave)
+            let respuesta = try await motor.responder(
+                mensajes: PlanTarea.mensajesParaSolicitar(instruccion: limpia),
+                // El plan se genera en modo solo-texto: ninguna herramienta,
+                // ni siquiera si hay un servidor MCP configurado.
+                herramientas: [],
+                alRecibirTexto: nil
+            )
+            try Task.checkCancellation()
+
+            // El plan consume cuota como cualquier llamada; se anota en el
+            // acumulador global aunque no pertenezca a una conversacion.
+            registrarGasto(uso: respuesta.uso, proveedor: proveedor)
+
+            let plan = PlanTarea.desde(
+                texto: respuesta.texto,
+                proveedorID: proveedor.id
+            )
+            guard !plan.pasos.isEmpty else {
+                errorTarea = "El modelo devolvió un plan vacío. Inténtalo de nuevo."
+                return
+            }
+
+            // La tarea pudo borrarse o empezar mientras llegaba la respuesta:
+            // en ese caso el plan ya no se publica.
+            guard let actual = tareas.firstIndex(where: { $0.id == id }),
+                  tareas[actual].admiteEdicion
+            else {
+                return
+            }
+            tareas[actual].instruccion = limpia
+            tareas[actual].plan = plan
+            tareas[actual].estado = .esperandoInicio
+            tareas[actual].proveedorID = proveedor.id
+            tareas[actual].fechaActualizacion = Date()
+            guardarTarea(tareas[actual])
+        } catch is CancellationError {
+            // Cambiar de pantalla o borrar la tarea no deja un error falso.
+        } catch {
+            let detalle = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            errorTarea = "No se pudo generar el plan: \(detalle)"
+        }
+    }
+
+    /// Autoriza la ejecucion: deja la tarea `enCurso` y nada mas.
+    ///
+    /// TASK.2 termina aqui. TASK.3 conecta el libro de pasos y las herramientas;
+    /// hasta entonces Empezar no inventa pasos ni llama a ninguna herramienta.
+    @discardableResult
+    func empezarTarea(id: UUID) -> Bool {
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        guard tareas[indice].admiteEdicion else {
+            return false
+        }
+        guard tareas[indice].plan != nil else {
+            errorTarea = "Genera el plan antes de empezar la tarea."
+            return false
+        }
+
+        tareas[indice].estado = .enCurso
+        tareas[indice].fechaActualizacion = Date()
+        guardarTarea(tareas[indice])
+        return true
+    }
+
+    /// Guarda una tarea en el almacen y refresca la lista.
+    ///
+    /// En modo capturas no hay almacen: la lista en memoria tambien refleja el
+    /// cambio para que la pantalla no ensene una fila fantasma.
+    private func guardarTarea(_ tarea: Tarea) {
+        if let storeTareas {
+            do {
+                try storeTareas.guardar(tarea)
+            } catch {
+                errorTarea = "No se pudo guardar la tarea."
+            }
+            recargarTareas()
+        } else if let indice = tareas.firstIndex(where: { $0.id == tarea.id }) {
+            tareas[indice] = tarea
+        } else {
+            tareas.append(tarea)
+        }
+    }
+
+    /// Proveedor y clave de una tarea, o nil si falta configuracion.
+    ///
+    /// El proveedor anotado en la tarea manda; si ya no existe, se cae al
+    /// activo. La clave se lee del llavero por la misma ruta que el chat.
+    private func proveedorYClaveParaTarea(
+        _ tarea: Tarea
+    ) -> (ProviderConfig, String)? {
+        let proveedor = tarea.proveedorID.flatMap { id in
+            config.proveedores.first { $0.id == id }
+        } ?? config.proveedorSeleccionado
+
+        guard let proveedor else {
+            errorTarea = "No hay ningún proveedor configurado."
+            return nil
+        }
+
+        if estadoDePrueba != nil {
+            return (proveedor, "")
+        }
+
+        do {
+            try proveedor.validar()
+        } catch {
+            errorTarea = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            return nil
+        }
+
+        guard let clave = clave(para: proveedor),
+              !clave.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            errorTarea = "Falta la clave de API de \(proveedor.nombre)."
+            return nil
+        }
+        return (proveedor, clave)
+    }
+
     // MARK: - Envio
 
     /// Ruta unica de la caja: analiza el borrador y despacha comandos, skills
@@ -1419,7 +1711,7 @@ final class EstadoApp: ObservableObject {
     /// limpian el borrador; un token desconocido o una skill sin mensaje lo
     /// dejan intacto y publican `avisoComando`.
     func enviarTextoActual() {
-        guard !enviando, !compactando else { return }
+        guard !enviando, !compactando, !generandoPlanChat else { return }
 
         let texto = borrador
         guard !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -1487,6 +1779,82 @@ final class EstadoApp: ObservableObject {
 
         case .compact:
             compactar()
+
+        case .plan:
+            generarPlanDeChat()
+        }
+    }
+
+    /// /plan dentro de un chat: mismo mecanismo que la tarea, sin ejecutar.
+    ///
+    /// Usa el ultimo mensaje del usuario como instruccion, llama al motor con
+    /// `herramientas: []` y deja la respuesta como mensaje de plan en el hilo.
+    /// No crea una Tarea ni toca el libro: el plan es solo texto visible.
+    private func generarPlanDeChat() {
+        guard !generandoPlanChat, !enviando, !compactando else { return }
+
+        guard let instruccion = conversacion.mensajes
+            .last(where: { $0.rol == .usuario })?
+            .texto
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !instruccion.isEmpty
+        else {
+            avisoComando = "Escribe primero el encargo del que quieres el plan."
+            return
+        }
+
+        guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+
+        let idConversacion = conversacion.id
+        generandoPlanChat = true
+        error = nil
+
+        tareaPlanChat = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                self.generandoPlanChat = false
+                self.tareaPlanChat = nil
+            }
+
+            do {
+                let motor = self.motorPara(proveedor: proveedor, clave: clave)
+                let respuesta = try await motor.responder(
+                    mensajes: PlanTarea.mensajesParaSolicitar(instruccion: instruccion),
+                    // Solo texto: /plan no ofrece herramientas ni las ejecuta.
+                    herramientas: [],
+                    alRecibirTexto: nil
+                )
+                try Task.checkCancellation()
+
+                let plan = PlanTarea.desde(
+                    texto: respuesta.texto,
+                    proveedorID: proveedor.id
+                )
+                guard !plan.pasos.isEmpty else {
+                    self.error = "No se pudo generar el plan: el modelo devolvió un plan vacío."
+                    return
+                }
+
+                self.registrarGasto(uso: respuesta.uso, proveedor: proveedor)
+
+                // Si el dueno cambio de chat mientras se generaba, el plan no
+                // se publica en otro hilo.
+                guard self.conversacion.id == idConversacion else { return }
+
+                var mensaje = ChatMessage(rol: .asistente, texto: plan.textoParaChat)
+                mensaje.proveedorID = proveedor.id
+                mensaje.tokensEntrada = respuesta.uso?.entrada
+                mensaje.tokensSalida = respuesta.uso?.salida
+                SellosDeCosto.sellar(&mensaje, proveedor: proveedor)
+                self.conversacion.mensajes.append(mensaje)
+                self.persistirActual()
+            } catch is CancellationError {
+                // Cambiar de conversacion cancela el plan sin dejar error.
+            } catch {
+                let detalle = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.error = "No se pudo generar el plan: \(detalle)"
+            }
         }
     }
 
@@ -2020,8 +2388,11 @@ final class EstadoApp: ObservableObject {
         tareaActual = nil
         tareaCompactado?.cancel()
         tareaCompactado = nil
+        tareaPlanChat?.cancel()
+        tareaPlanChat = nil
         generacionCompactado = UUID()
         compactando = false
+        generandoPlanChat = false
         enviando = false
         textoEnCurso = ""
     }
