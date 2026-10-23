@@ -90,6 +90,25 @@ final class AppConfigTests: XCTestCase {
         XCTAssertTrue(vuelta.servidor.activo)
     }
 
+    func testSystemPromptConservaSaltosDeLineaEnElJSON() throws {
+        let texto = "Primera linea\nSegunda linea\n\nUltima linea"
+        let original = AppConfig(proveedores: [], systemPrompt: texto)
+
+        let datos = try original.json()
+        let vuelta = try AppConfig.desde(json: datos)
+
+        XCTAssertTrue(String(decoding: datos, as: UTF8.self).contains("systemPrompt"))
+        XCTAssertEqual(vuelta.systemPrompt, texto)
+    }
+
+    func testSystemPromptVacioSeConservaEnElJSON() throws {
+        let original = AppConfig(proveedores: [], systemPrompt: "")
+
+        let vuelta = try AppConfig.desde(json: try original.json())
+
+        XCTAssertEqual(vuelta.systemPrompt, "")
+    }
+
     func testJSONExportadoNoContieneCredenciales() throws {
         let config = AppConfig(proveedores: [Ayudas.proveedor()])
         let texto = String(decoding: try config.json(), as: UTF8.self).lowercased()

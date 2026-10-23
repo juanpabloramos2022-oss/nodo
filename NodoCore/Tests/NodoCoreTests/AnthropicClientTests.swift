@@ -55,6 +55,15 @@ final class AnthropicClientTests: XCTestCase {
         XCTAssertEqual(mensajes.first?["role"] as? String, "user")
     }
 
+    func testSinMensajeDeSistemaNoHayCampoSystem() throws {
+        let peticion = try cliente(TransporteFalso()).construirPeticion(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            herramientas: []
+        )
+
+        XCTAssertNil(try cuerpo(peticion)["system"])
+    }
+
     func testResultadosDeHerramientaSeAgrupanEnUnMensajeDeUsuario() {
         let mensajes: [ChatMessage] = [
             ChatMessage(rol: .usuario, texto: "x"),

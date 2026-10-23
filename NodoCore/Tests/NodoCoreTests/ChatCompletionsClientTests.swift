@@ -80,8 +80,21 @@ final class ChatCompletionsClientTests: XCTestCase {
         )
 
         let mensajes = try XCTUnwrap(try cuerpo(peticion)["messages"] as? [[String: Any]])
+        XCTAssertEqual(mensajes.count, 2)
         XCTAssertEqual(mensajes.first?["role"] as? String, "system")
         XCTAssertEqual(mensajes.first?["content"] as? String, "se breve")
+        XCTAssertEqual(mensajes.last?["role"] as? String, "user")
+    }
+
+    func testSinMensajeDeSistemaNoSeEnviaNinguno() throws {
+        let peticion = try cliente(TransporteFalso()).construirPeticion(
+            mensajes: [ChatMessage(rol: .usuario, texto: "hola")],
+            herramientas: []
+        )
+
+        let mensajes = try XCTUnwrap(try cuerpo(peticion)["messages"] as? [[String: Any]])
+        XCTAssertFalse(mensajes.contains { $0["role"] as? String == "system" })
+        XCTAssertEqual(mensajes.first?["role"] as? String, "user")
     }
 
     func testStreamAcumulaTextoYReportaParciales() async throws {
