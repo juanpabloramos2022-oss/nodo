@@ -25,11 +25,17 @@ public protocol ResolvedorSkills {
     func todas() -> [SkillResuelta]
 }
 
-/// Los comandos locales del sistema (§4.2) mas /plan.
+/// Los comandos locales del sistema (§4.2) mas /plan y /boost.
 ///
 /// /plan es una adicion firmada del dueno para TASK.2: genera un plan por pasos
 /// sin ejecutar herramientas y lo deja como mensaje en el chat. Se suma a la
 /// gramatica existente; no se crea un parser paralelo.
+///
+/// /boost (BOOST.1) se registra aqui por la misma razon, pero su accion NO vive
+/// en el chat: marca el disparo de la tuberia multi-agente DENTRO de una Tarea.
+/// La linea "/boost" sola en un chat no puede ejecutar nada util, asi que la
+/// app solo avisa donde se usa; el reconocimiento con texto detras lo hace
+/// `instruccionDeBoost`, porque la instruccion efectiva es el resto del texto.
 public enum ComandoIntegrado: String, Equatable, CaseIterable {
     case compact
     case costo
@@ -37,6 +43,7 @@ public enum ComandoIntegrado: String, Equatable, CaseIterable {
     case nuevo
     case exportar
     case plan
+    case boost
 }
 
 /// Resultado de analizar un texto enviado desde la caja.
@@ -66,8 +73,36 @@ public enum AnalizadorComandos {
     /// los resuelve como skill: un comando con texto detras ("/compact ahora")
     /// cae en `.tokensDesconocidos` aunque un registro defectuoso los ofrezca.
     public static let slugsReservados: Set<String> = [
-        "compact", "costo", "modelos", "nuevo", "exportar", "plan"
+        "compact", "costo", "modelos", "nuevo", "exportar", "plan", "boost"
     ]
+
+    /// Texto del comando /boost, sin espacios de borde.
+    public static let tokenBoost = "/boost"
+
+    /// Instruccion efectiva de una tarea /boost, o nil si no lo es.
+    ///
+    /// A diferencia de /plan, /boost lleva el encargo DETRAS en la misma linea
+    /// ("/boost analiza esto"), asi que no puede esperar a que la linea entera
+    /// sea el comando. Se exige que el primer token sea exactamente /boost para
+    /// que "/boosters" o un texto que mencione /boost a mitad no disparen la
+    /// tuberia por accidente. Devuelve "" cuando solo viene el comando: el
+    /// llamador decide si eso es un error de instruccion vacia.
+    public static func instruccionDeBoost(_ texto: String) -> String? {
+        let recortado = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recortado.isEmpty else { return nil }
+
+        let tokens = recortado.split(whereSeparator: { $0.isWhitespace })
+        guard let primero = tokens.first,
+              primero.lowercased() == tokenBoost
+        else {
+            return nil
+        }
+
+        // Se corta por longitud y no por el token normalizado: el resto debe
+        // conservar tildes, saltos de linea y mayusculas del encargo original.
+        let resto = String(recortado.dropFirst(primero.count))
+        return resto.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     public static func analizar(
         _ texto: String,

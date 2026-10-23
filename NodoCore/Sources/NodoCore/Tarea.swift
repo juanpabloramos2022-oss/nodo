@@ -123,6 +123,25 @@ public struct Paso: Codable, Identifiable, Equatable {
     public var url: String?
     /// Estado de la hoja de aprobacion, o nil si la herramienta no la pidio.
     public var aprobacion: EstadoAprobacion?
+    /// Fase de la tuberia /boost a la que pertenece el paso.
+    ///
+    /// nil es un paso de una tarea normal. Se guarda en el paso, y no en un
+    /// arreglo aparte, para que el libro siga siendo la unica fuente de verdad:
+    /// una fase es un paso visible mas, con su estado y su costo.
+    public var fase: FaseBoost?
+    /// Numero visible del angulo (1-based) cuando `fase == .angulo`.
+    public var numeroAngulo: Int?
+    /// Proveedor que genero este paso. Sin el no se puede auditar que angulo
+    /// corrio con cada combo ni sellar su costo con los precios correctos.
+    public var proveedorID: UUID?
+    /// Nombre visible del proveedor en el momento de la llamada.
+    ///
+    /// Se copia, no se resuelve al pintar: si el dueno renombra o borra el
+    /// proveedor despues, el libro tiene que seguir contando con que combo se
+    /// hizo cada fase.
+    public var proveedorNombre: String?
+    /// Costo sellado de ESTA fase (COST). nil = no valorable, que no es cero.
+    public var costoUSD: Double?
     public var fechaInicio: Date?
     public var fechaFin: Date?
 
@@ -136,6 +155,11 @@ public struct Paso: Codable, Identifiable, Equatable {
         llamadaID: String? = nil,
         url: String? = nil,
         aprobacion: EstadoAprobacion? = nil,
+        fase: FaseBoost? = nil,
+        numeroAngulo: Int? = nil,
+        proveedorID: UUID? = nil,
+        proveedorNombre: String? = nil,
+        costoUSD: Double? = nil,
         fechaInicio: Date? = nil,
         fechaFin: Date? = nil
     ) {
@@ -148,6 +172,11 @@ public struct Paso: Codable, Identifiable, Equatable {
         self.llamadaID = llamadaID
         self.url = url
         self.aprobacion = aprobacion
+        self.fase = fase
+        self.numeroAngulo = numeroAngulo
+        self.proveedorID = proveedorID
+        self.proveedorNombre = proveedorNombre
+        self.costoUSD = costoUSD
         self.fechaInicio = fechaInicio
         self.fechaFin = fechaFin
     }
@@ -162,6 +191,11 @@ public struct Paso: Codable, Identifiable, Equatable {
         case llamadaID
         case url
         case aprobacion
+        case fase
+        case numeroAngulo
+        case proveedorID
+        case proveedorNombre
+        case costoUSD
         case fechaInicio
         case fechaFin
     }
@@ -180,8 +214,25 @@ public struct Paso: Codable, Identifiable, Equatable {
         llamadaID = try contenedor.decodeIfPresent(String.self, forKey: .llamadaID)
         url = try contenedor.decodeIfPresent(String.self, forKey: .url)
         aprobacion = try contenedor.decodeIfPresent(EstadoAprobacion.self, forKey: .aprobacion)
+        fase = try contenedor.decodeIfPresent(FaseBoost.self, forKey: .fase)
+        numeroAngulo = try contenedor.decodeIfPresent(Int.self, forKey: .numeroAngulo)
+        proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
+        proveedorNombre = try contenedor.decodeIfPresent(String.self, forKey: .proveedorNombre)
+        costoUSD = try contenedor.decodeIfPresent(Double.self, forKey: .costoUSD)
         fechaInicio = try contenedor.decodeIfPresent(Date.self, forKey: .fechaInicio)
         fechaFin = try contenedor.decodeIfPresent(Date.self, forKey: .fechaFin)
+    }
+
+    /// Etiqueta de fase para el libro: "Orquestación", "Ángulo 2", "Síntesis".
+    ///
+    /// Vive en el nucleo, no en la vista, para que la app y los tests nombren
+    /// las fases igual y una tarea normal (sin fase) no pinte nada.
+    public var etiquetaDeFase: String? {
+        guard let fase else { return nil }
+        if fase == .angulo, let numeroAngulo {
+            return "Ángulo \(numeroAngulo)"
+        }
+        return fase.titulo
     }
 
     /// Resumen corto del resultado para el panel. El libro conserva el texto
@@ -421,6 +472,18 @@ public struct Tarea: Codable, Identifiable, Equatable {
     /// consumo valorable; no se escribe cero porque un costo desconocido no es
     /// un costo gratis.
     public var costoAcumuladoUSD: Double?
+    /// Respuesta final de la tarea.
+    ///
+    /// TASK no la guardaba porque el ToolLoop escribia en el chat; la tuberia
+    /// /boost no tiene chat, asi que su unica salida visible es esta. Se guarda
+    /// tambien en tareas normales para que el libro no sea la unica memoria.
+    public var resultado: String?
+    /// True SOLO si la sintesis de la tuberia /boost corrio y cerro.
+    ///
+    /// Frontera honesta: significa que la respuesta final paso por contraste
+    /// cruzado entre modelos, no que se hayan ejecutado pruebas. Sin sintesis
+    /// (detenida por tope, fallo o Detener) se queda en false.
+    public var verificadoPorCruce: Bool
     public var fechaCreacion: Date
     public var fechaActualizacion: Date
 
@@ -433,6 +496,8 @@ public struct Tarea: Codable, Identifiable, Equatable {
         conversacionID: UUID? = nil,
         proveedorID: UUID? = nil,
         costoAcumuladoUSD: Double? = nil,
+        resultado: String? = nil,
+        verificadoPorCruce: Bool = false,
         fechaCreacion: Date = Date(),
         fechaActualizacion: Date = Date()
     ) {
@@ -444,6 +509,8 @@ public struct Tarea: Codable, Identifiable, Equatable {
         self.conversacionID = conversacionID
         self.proveedorID = proveedorID
         self.costoAcumuladoUSD = costoAcumuladoUSD
+        self.resultado = resultado
+        self.verificadoPorCruce = verificadoPorCruce
         self.fechaCreacion = fechaCreacion
         self.fechaActualizacion = fechaActualizacion
     }
@@ -470,6 +537,44 @@ public struct Tarea: Codable, Identifiable, Equatable {
 
     public var admiteEdicion: Bool { estado.admiteEdicion }
 
+    /// True cuando la instruccion arranca con /boost.
+    ///
+    /// El disparo se deriva SIEMPRE del texto guardado y no de una bandera
+    /// aparte: una tarea escrita antes de existir /boost no puede quedar
+    /// marcada por accidente, y editar la instruccion cambia el modo sin
+    /// migrar el archivo.
+    public var esDeBoost: Bool {
+        AnalizadorComandos.instruccionDeBoost(instruccion) != nil
+    }
+
+    /// Instruccion sin el prefijo /boost: el problema real que se resuelve.
+    ///
+    /// El prefijo es el disparo, no parte del encargo. Se quita antes de pedir
+    /// el plan y antes de orquestar para que el modelo no reciba una palabra
+    /// que no significa nada para el.
+    public var instruccionEfectiva: String {
+        let limpia = instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let resto = AnalizadorComandos.instruccionDeBoost(limpia) else {
+            return limpia
+        }
+        return resto
+    }
+
+    /// Costo total de la tuberia /boost: la suma de los sellos de fase.
+    ///
+    /// nil si no hay ninguna fase sellada o si alguna quedo sin valorar: una
+    /// suma parcial seria una cifra inventada, igual que en COST.
+    public var costoBoostUSD: Double? {
+        let fases = pasos.filter { $0.fase != nil }
+        guard !fases.isEmpty else { return nil }
+        var total = 0.0
+        for fase in fases {
+            guard let costo = fase.costoUSD else { return nil }
+            total += costo
+        }
+        return total
+    }
+
     /// Instruccion de sistema del turno de EJECUCION de una tarea.
     ///
     /// El plan ya esta aprobado: el modelo no vuelve a planificar, ejecuta. Se
@@ -483,7 +588,7 @@ public struct Tarea: Codable, Identifiable, Equatable {
     public static func mensajeDeEjecucion(_ tarea: Tarea) -> String {
         var lineas: [String] = [
             "Instrucción:",
-            tarea.instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
+            tarea.instruccionEfectiva
         ]
 
         if let plan = tarea.plan, !plan.pasos.isEmpty {
@@ -505,6 +610,8 @@ public struct Tarea: Codable, Identifiable, Equatable {
         case conversacionID
         case proveedorID
         case costoAcumuladoUSD
+        case resultado
+        case verificadoPorCruce
         case fechaCreacion
         case fechaActualizacion
     }
@@ -525,6 +632,11 @@ public struct Tarea: Codable, Identifiable, Equatable {
             Double.self,
             forKey: .costoAcumuladoUSD
         )
+        resultado = try contenedor.decodeIfPresent(String.self, forKey: .resultado)
+        verificadoPorCruce = try contenedor.decodeIfPresent(
+            Bool.self,
+            forKey: .verificadoPorCruce
+        ) ?? false
         let creada = try contenedor.decodeIfPresent(Date.self, forKey: .fechaCreacion) ?? Date()
         fechaCreacion = creada
         fechaActualizacion = try contenedor.decodeIfPresent(

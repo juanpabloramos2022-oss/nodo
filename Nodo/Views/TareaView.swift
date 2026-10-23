@@ -77,6 +77,7 @@ struct TareaView: View {
                 seccionInstruccion(tarea)
                 seccionPlan(tarea)
                 seccionTrabajo(tarea)
+                seccionRespuestaFinal(tarea)
                 acciones(tarea)
                 fronteraIOs
 
@@ -240,6 +241,13 @@ struct TareaView: View {
                 }
             }
 
+            if let costoBoost = tarea.costoBoostUSD {
+                Text("Boost (fases): ≈$\(String(format: "%.6f", costoBoost))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Tema.textoSuave)
+                    .accessibilityIdentifier("costo-boost-tarea")
+            }
+
             if tarea.pasos.isEmpty {
                 Text(
                     tarea.estado == .enCurso
@@ -320,6 +328,50 @@ struct TareaView: View {
         .accessibilityIdentifier("panel-trabajo-tarea")
     }
 
+    /// Respuesta final de la tarea, con su marca de verificacion cruzada.
+    ///
+    /// La marca es una frontera honesta: dice que la sintesis de /boost cruzo
+    /// los angulos, no que se hayan ejecutado pruebas. Se pinta junto al texto
+    /// para que no se lea como una garantia mayor de la que es.
+    @ViewBuilder
+    private func seccionRespuestaFinal(_ tarea: Tarea) -> some View {
+        if let resultado = tarea.resultado,
+           !resultado.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Respuesta final")
+                        .font(.headline)
+
+                    Spacer(minLength: 0)
+
+                    if tarea.verificadoPorCruce {
+                        Label("Verificado por cruce", systemImage: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                            .accessibilityIdentifier("verificado-por-cruce")
+                    }
+                }
+
+                Text(resultado)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if tarea.verificadoPorCruce {
+                    Text("Verificación cruzada entre modelos: contraste crítico, no pruebas ejecutadas.")
+                        .font(.caption)
+                        .foregroundStyle(Tema.textoSuave)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Tema.superficie)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("respuesta-final-tarea")
+        }
+    }
+
     private func filaPaso(_ paso: Paso) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: iconoDe(paso.estado))
@@ -340,6 +392,32 @@ struct TareaView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(colorDe(paso.estado))
                         .lineLimit(1)
+                }
+
+                if let etiqueta = paso.etiquetaDeFase {
+                    HStack(spacing: 6) {
+                        Text(etiqueta)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Tema.acento)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Tema.acento.opacity(0.18))
+                            .clipShape(Capsule())
+
+                        if let proveedor = paso.proveedorNombre {
+                            Text(proveedor)
+                                .font(.caption2)
+                                .foregroundStyle(Tema.textoSuave)
+                                .lineLimit(1)
+                        }
+
+                        if let costo = paso.costoUSD {
+                            Text("≈$\(String(format: "%.6f", costo))")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(Tema.textoSuave)
+                        }
+                    }
+                    .accessibilityIdentifier("fase-paso-tarea")
                 }
 
                 if let resumen = paso.resultadoResumido() {

@@ -779,6 +779,8 @@ struct ChatView: View {
             return "Comparte esta conversación como texto."
         case .plan:
             return "Propone un plan por pasos sin ejecutar nada."
+        case .boost:
+            return "Tubería multi-agente de 3 fases dentro de una Tarea."
         }
     }
 

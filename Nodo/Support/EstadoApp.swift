@@ -1593,10 +1593,18 @@ final class EstadoApp: ObservableObject {
         guard !generandoPlan else { return }
         guard let indice = tareas.firstIndex(where: { $0.id == id }) else { return }
 
-        let limpia = (instruccion ?? tareas[indice].instruccion)
+        let cruda = (instruccion ?? tareas[indice].instruccion)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpia.isEmpty else {
+        guard !cruda.isEmpty else {
             errorTarea = "Escribe una instrucción para generar el plan."
+            return
+        }
+        // En una tarea /boost el prefijo es el disparo, no parte del encargo:
+        // el plan se pide sobre el texto efectivo, pero se guarda la instruccion
+        // cruda para que el modo se pueda seguir derivando de ella.
+        let limpia = AnalizadorComandos.instruccionDeBoost(cruda) ?? cruda
+        guard !limpia.isEmpty else {
+            errorTarea = "Escribe la instrucción del boost después de /boost."
             return
         }
         guard tareas[indice].admiteEdicion else {
@@ -1606,7 +1614,7 @@ final class EstadoApp: ObservableObject {
 
         // La instruccion editada se guarda antes de salir a la red. Si la
         // llamada falla, el dueno no pierde lo que escribio.
-        tareas[indice].instruccion = limpia
+        tareas[indice].instruccion = cruda
         tareas[indice].plan = nil
         tareas[indice].estado = .borrador
         tareas[indice].fechaActualizacion = Date()
@@ -1669,7 +1677,7 @@ final class EstadoApp: ObservableObject {
             else {
                 return
             }
-            tareas[actual].instruccion = limpia
+            tareas[actual].instruccion = cruda
             tareas[actual].plan = plan
             tareas[actual].estado = .esperandoInicio
             tareas[actual].proveedorID = proveedor.id
@@ -1712,6 +1720,11 @@ final class EstadoApp: ObservableObject {
         // Una tarea que empieza de cero no arrastra un libro de otra corrida.
         // El costo de planificacion si se conserva: ya se gasto en esta tarea.
         tarea.pasos = []
+        // La respuesta y su marca de verificacion pertenecen a la corrida
+        // anterior: si el dueno vuelve a empezar, no puede quedar una respuesta
+        // vieja marcada como verificada.
+        tarea.resultado = nil
+        tarea.verificadoPorCruce = false
         guardarTarea(tarea)
         errorTarea = nil
         lanzarEjecucionTarea(id: id)
@@ -1832,9 +1845,28 @@ final class EstadoApp: ObservableObject {
     }
 
     private func ejecutarTarea(id: UUID, generacion: UUID) async {
-        guard let tarea = tareas.first(where: { $0.id == id }),
-              let (proveedor, clave) = proveedorYClaveParaTarea(tarea)
-        else {
+        guard let tarea = tareas.first(where: { $0.id == id }) else {
+            if generacion == generacionEjecucionTarea {
+                finalizarTareaConError(id: id, mensaje: "La tarea ya no existe.")
+                ejecucionTarea = nil
+                idTareaEjecutando = nil
+            }
+            return
+        }
+
+        // BOOST.1: una tarea /boost no pasa por el ToolLoop. La tuberia de tres
+        // fases corre EN SU LUGAR y escribe sus propios pasos en el mismo libro;
+        // asi Detener, Reanudar y el tope de gasto siguen siendo los de TASK.
+        if tarea.esDeBoost {
+            await ejecutarTuberiaBoost(id: id, generacion: generacion)
+            if generacion == generacionEjecucionTarea {
+                ejecucionTarea = nil
+                idTareaEjecutando = nil
+            }
+            return
+        }
+
+        guard let (proveedor, clave) = proveedorYClaveParaTarea(tarea) else {
             if generacion == generacionEjecucionTarea {
                 finalizarTareaConError(
                     id: id,
@@ -1954,6 +1986,428 @@ final class EstadoApp: ObservableObject {
             ejecucionTarea = nil
             idTareaEjecutando = nil
         }
+    }
+
+    // MARK: - Tuberia /boost (BOOST.1)
+
+    /// Corre las tres fases de /boost EN LUGAR del bucle normal.
+    ///
+    /// No cambia el modelo del turno ni abre un chat: encadena llamadas sueltas
+    /// sin herramientas y cada una queda como `Paso` con su proveedor y su
+    /// sello COST. La cancelacion se comprueba entre fases para que Detener
+    /// corte la tuberia aunque el modelo ya haya respondido la anterior.
+    private func ejecutarTuberiaBoost(id: UUID, generacion: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }) else { return }
+        let problema = tarea.instruccionEfectiva
+        guard !problema.isEmpty else {
+            finalizarTareaConError(
+                id: id,
+                mensaje: "El boost necesita una instrucción después de /boost."
+            )
+            return
+        }
+
+        let tope = config.topeAvisoCostoEfectivo
+        let preferido = tarea.proveedorID.flatMap { idTarea in
+            config.proveedores.first { $0.id == idTarea }
+        } ?? config.proveedorSeleccionado
+
+        guard let fuerteBase = Boost.proveedorFuerte(
+            en: config.proveedores,
+            preferido: preferido
+        ), let (fuerte, claveFuerte) = proveedorConClave(fuerteBase) else {
+            guard generacion == generacionEjecucionTarea else { return }
+            finalizarTareaConError(
+                id: id,
+                mensaje: errorTarea ?? "No hay proveedor utilizable para el boost."
+            )
+            return
+        }
+
+        do {
+            // El tope se mira tambien antes de la primera fase: el plan ya
+            // gasto, y una tuberia no puede arrancar por encima del limite.
+            guard puedeCorrerFaseBoost(id: id, tope: tope, fase: .orquestacion)
+            else {
+                return
+            }
+
+            // FASE 1 — Orquestacion con el combo fuerte: descompone el problema.
+            let orquestacion = try await correrFaseBoost(
+                id: id,
+                generacion: generacion,
+                fase: .orquestacion,
+                numeroAngulo: nil,
+                descripcion: "Orquestación: descomponer el problema en ángulos",
+                proveedor: fuerte,
+                clave: claveFuerte,
+                mensajes: Boost.mensajesOrquestacion(problema: problema)
+            )
+            guard generacion == generacionEjecucionTarea else { return }
+
+            let desglose = Boost.angulos(desde: orquestacion.texto)
+            if desglose.parseoFallido {
+                // Se declara en el propio paso: el dueno tiene que saber que la
+                // "lista de angulos" fue en realidad la respuesta entera.
+                anotarResultadoDePaso(
+                    idTarea: id,
+                    pasoID: orquestacion.pasoID,
+                    generacion: generacion,
+                    nota: "parseo fallido: la respuesta completa se toma como un solo ángulo"
+                )
+            }
+            guard !desglose.angulos.isEmpty else { throw ErrorBoost.sinAngulos }
+
+            // FASE 2 — Un angulo por llamada separada, con combos baratos
+            // distintos entre si mientras existan.
+            let combos = Boost.combosDeAngulos(
+                cantidad: desglose.angulos.count,
+                proveedores: config.proveedores,
+                fuerte: fuerte
+            )
+            guard !combos.isEmpty else { throw ErrorBoost.sinCombos }
+
+            var resultados: [Boost.ResultadoAngulo] = []
+            for (indice, angulo) in desglose.angulos.enumerated() {
+                try Task.checkCancellation()
+                guard puedeCorrerFaseBoost(id: id, tope: tope, fase: .angulo) else {
+                    return
+                }
+
+                let combo = combos[indice]
+                let descripcion = "Ángulo \(indice + 1): \(Self.resumenDeAngulo(angulo))"
+                guard let (proveedorAngulo, claveAngulo) = proveedorConClave(combo) else {
+                    // Un combo sin clave no puede tumbar la tuberia entera: se
+                    // declara el angulo como no ejecutado y los demas siguen.
+                    registrarFaseNoEjecutada(
+                        id: id,
+                        generacion: generacion,
+                        descripcion: descripcion,
+                        motivo: errorTarea ?? "sin clave de API"
+                    )
+                    continue
+                }
+
+                do {
+                    let fase = try await correrFaseBoost(
+                        id: id,
+                        generacion: generacion,
+                        fase: .angulo,
+                        numeroAngulo: indice + 1,
+                        descripcion: descripcion,
+                        proveedor: proveedorAngulo,
+                        clave: claveAngulo,
+                        mensajes: Boost.mensajesAngulo(
+                            problema: problema,
+                            angulo: angulo,
+                            indice: indice + 1,
+                            total: desglose.angulos.count
+                        )
+                    )
+                    guard generacion == generacionEjecucionTarea else { return }
+                    resultados.append(
+                        Boost.ResultadoAngulo(
+                            indice: indice + 1,
+                            proveedor: proveedorAngulo.nombre,
+                            texto: fase.texto
+                        )
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // `correrFaseBoost` ya dejo el paso Fallido en el libro; el
+                    // resto de angulos sigue aportando contraste.
+                    continue
+                }
+            }
+
+            guard !resultados.isEmpty else { throw ErrorBoost.sinAngulosResueltos }
+
+            // FASE 3 — Sintesis con el combo fuerte: cruza y descarta.
+            guard puedeCorrerFaseBoost(id: id, tope: tope, fase: .sintesis) else {
+                return
+            }
+            let sintesis = try await correrFaseBoost(
+                id: id,
+                generacion: generacion,
+                fase: .sintesis,
+                numeroAngulo: nil,
+                descripcion: "Síntesis: cruzar ángulos y descartar lo no verificado",
+                proveedor: fuerte,
+                clave: claveFuerte,
+                mensajes: Boost.mensajesSintesis(
+                    problema: problema,
+                    angulos: resultados
+                )
+            )
+            guard generacion == generacionEjecucionTarea else { return }
+
+            // La marca solo se escribe aqui: si la sintesis no corrio, la
+            // respuesta no puede decir que paso por verificacion cruzada.
+            modificarTarea(id: id) { tarea in
+                tarea.resultado = sintesis.texto
+                tarea.verificadoPorCruce = true
+                tarea.estado = .completada
+            }
+        } catch is CancellationError {
+            guard generacion == generacionEjecucionTarea else { return }
+            modificarTarea(id: id) { tarea in
+                tarea.estado = .detenida
+            }
+        } catch {
+            guard generacion == generacionEjecucionTarea else { return }
+            let detalle = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            finalizarTareaConError(id: id, mensaje: detalle)
+        }
+    }
+
+    /// Una fase de la tuberia: abre el paso, llama sin herramientas y lo cierra
+    /// con su sello de costo. Devuelve el id del paso para poder anotarlo.
+    private func correrFaseBoost(
+        id: UUID,
+        generacion: UUID,
+        fase: FaseBoost,
+        numeroAngulo: Int?,
+        descripcion: String,
+        proveedor: ProviderConfig,
+        clave: String,
+        mensajes: [ChatMessage]
+    ) async throws -> ResultadoFaseBoost {
+        let pasoID = UUID()
+        iniciarPasoDeFase(
+            id: id,
+            generacion: generacion,
+            pasoID: pasoID,
+            fase: fase,
+            numeroAngulo: numeroAngulo,
+            descripcion: descripcion,
+            proveedor: proveedor
+        )
+
+        let motor = motorPara(proveedor: proveedor, clave: clave)
+        do {
+            let respuesta = try await motor.responder(
+                mensajes: mensajes,
+                // Sin herramientas por diseño: un angulo es analisis, no
+                // ejecucion. La tuberia no puede tocar archivos, Memoria ni red.
+                herramientas: [],
+                alRecibirTexto: nil
+            )
+            try Task.checkCancellation()
+
+            let texto = respuesta.texto
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !texto.isEmpty else {
+                throw ErrorBoost.respuestaVacia(fase: fase)
+            }
+
+            registrarGasto(uso: respuesta.uso, proveedor: proveedor)
+            let costo = costoDeLlamada(respuesta.uso, proveedor: proveedor)
+            cerrarPasoDeFase(
+                idTarea: id,
+                generacion: generacion,
+                pasoID: pasoID,
+                estado: .terminado,
+                resultado: texto,
+                costo: costo
+            )
+            return ResultadoFaseBoost(pasoID: pasoID, texto: texto, costo: costo)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            let detalle = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            cerrarPasoDeFase(
+                idTarea: id,
+                generacion: generacion,
+                pasoID: pasoID,
+                estado: .fallido,
+                resultado: "Error: \(detalle)",
+                costo: nil
+            )
+            throw error
+        }
+    }
+
+    private func iniciarPasoDeFase(
+        id: UUID,
+        generacion: UUID,
+        pasoID: UUID,
+        fase: FaseBoost,
+        numeroAngulo: Int?,
+        descripcion: String,
+        proveedor: ProviderConfig
+    ) {
+        guard generacion == generacionEjecucionTarea else { return }
+        modificarTarea(id: id) { tarea in
+            tarea.pasos.append(
+                Paso(
+                    id: pasoID,
+                    descripcion: descripcion,
+                    estado: .enCurso,
+                    fase: fase,
+                    numeroAngulo: numeroAngulo,
+                    proveedorID: proveedor.id,
+                    proveedorNombre: proveedor.nombre,
+                    fechaInicio: Date()
+                )
+            )
+        }
+    }
+
+    /// Cierra el paso y acumula su costo en el total de la tarea.
+    ///
+    /// El sello se escribe UNA vez, con los precios del proveedor de la fase:
+    /// recalcularlo despues inventaria un gasto que no ocurrio (COST).
+    private func cerrarPasoDeFase(
+        idTarea: UUID,
+        generacion: UUID,
+        pasoID: UUID,
+        estado: EstadoPaso,
+        resultado: String,
+        costo: Double?
+    ) {
+        guard generacion == generacionEjecucionTarea else { return }
+        modificarTarea(id: idTarea) { tarea in
+            if let indice = tarea.pasos.firstIndex(where: { $0.id == pasoID }) {
+                tarea.pasos[indice].estado = estado
+                tarea.pasos[indice].resultado = resultado
+                tarea.pasos[indice].costoUSD = costo
+                tarea.pasos[indice].fechaFin = Date()
+            }
+            if let costo {
+                tarea.costoAcumuladoUSD =
+                    (tarea.costoAcumuladoUSD ?? 0) + costo
+            }
+        }
+    }
+
+    /// Deja constancia en el paso de orquestacion de que el parseo fallo.
+    private func anotarResultadoDePaso(
+        idTarea: UUID,
+        pasoID: UUID,
+        generacion: UUID,
+        nota: String
+    ) {
+        guard generacion == generacionEjecucionTarea else { return }
+        modificarTarea(id: idTarea) { tarea in
+            guard let indice = tarea.pasos.firstIndex(where: { $0.id == pasoID })
+            else { return }
+            let actual = tarea.pasos[indice].resultado ?? ""
+            tarea.pasos[indice].resultado = actual + "\n\n[\(nota)]"
+        }
+    }
+
+    /// Comprueba el tope ANTES de una fase y, si ya se alcanzo, la declara.
+    ///
+    /// El costo de una llamada no se conoce antes de hacerla: la unica frontera
+    /// honesta es mirar lo ya sellado. Si la fase anterior dejo el acumulado en
+    /// o por encima del tope, la siguiente no arranca y el libro lo dice.
+    private func puedeCorrerFaseBoost(
+        id: UUID,
+        tope: Double,
+        fase: FaseBoost
+    ) -> Bool {
+        let acumulado = tareas.first(where: { $0.id == id })?.costoAcumuladoUSD ?? 0
+        guard Boost.excedeTope(acumulado: acumulado, tope: tope) else {
+            return true
+        }
+
+        modificarTarea(id: id) { tarea in
+            tarea.estado = .detenida
+            // Sin `fase` a proposito: esta fase no corrio, no tiene combo ni
+            // sello, y marcarla como fase dejaria el costo del boost en
+            // "desconocido" aunque las fases reales si se midieron.
+            tarea.pasos.append(
+                Paso(
+                    descripcion: "Boost detenido por el tope de gasto",
+                    estado: .fallido,
+                    resultado: """
+                    El costo acumulado de la tarea (≈$\(String(format: "%.6f", acumulado))) \
+                    alcanzó el tope de ≈$\(String(format: "%.6f", tope)). \
+                    No se ejecutó la fase \(fase.titulo).
+                    """,
+                    fechaFin: Date()
+                )
+            )
+        }
+        return false
+    }
+
+    /// Un angulo que no pudo correr (sin clave) queda como paso fallido, no
+    /// como fase: no se pago nada y no tiene sello.
+    private func registrarFaseNoEjecutada(
+        id: UUID,
+        generacion: UUID,
+        descripcion: String,
+        motivo: String
+    ) {
+        guard generacion == generacionEjecucionTarea else { return }
+        modificarTarea(id: id) { tarea in
+            tarea.pasos.append(
+                Paso(
+                    descripcion: descripcion,
+                    estado: .fallido,
+                    resultado: "No se ejecutó: \(motivo)",
+                    fechaFin: Date()
+                )
+            )
+        }
+    }
+
+    private func costoDeLlamada(
+        _ uso: UsoTokens?,
+        proveedor: ProviderConfig
+    ) -> Double? {
+        guard let uso else { return nil }
+        var mensaje = ChatMessage(
+            rol: .asistente,
+            texto: "",
+            tokensEntrada: uso.entrada,
+            tokensSalida: uso.salida
+        )
+        SellosDeCosto.sellar(&mensaje, proveedor: proveedor)
+        return mensaje.costoSelladoUSD
+    }
+
+    /// Proveedor y clave para UNA fase, con la misma validacion que la tarea.
+    ///
+    /// Existe aparte porque /boost usa varios proveedores en la misma corrida y
+    /// `proveedorYClaveParaTarea` resuelve uno solo.
+    private func proveedorConClave(
+        _ proveedor: ProviderConfig
+    ) -> (ProviderConfig, String)? {
+        if estadoDePrueba != nil {
+            return (proveedor, "")
+        }
+
+        do {
+            try proveedor.validar()
+        } catch {
+            errorTarea = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            return nil
+        }
+
+        guard let clave = clave(para: proveedor),
+              !clave.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            errorTarea = "Falta la clave de API de \(proveedor.nombre)."
+            return nil
+        }
+        return (proveedor, clave)
+    }
+
+    private static func resumenDeAngulo(
+        _ texto: String,
+        limite: Int = 60
+    ) -> String {
+        let limpio = texto
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if limpio.count <= limite { return limpio }
+        return String(limpio.prefix(limite)) + "…"
     }
 
     /// Herramientas que existen DENTRO de una tarea, nunca en Chat.
@@ -2159,14 +2613,7 @@ final class EstadoApp: ObservableObject {
         // Se usa el mismo sello inmutable que los mensajes del chat: si el
         // proveedor no tiene precios, el costo queda desconocido (nil) en vez
         // de inventarse.
-        var mensaje = ChatMessage(
-            rol: .asistente,
-            texto: "",
-            tokensEntrada: uso.entrada,
-            tokensSalida: uso.salida
-        )
-        SellosDeCosto.sellar(&mensaje, proveedor: proveedor)
-        guard let costo = mensaje.costoSelladoUSD else { return }
+        guard let costo = costoDeLlamada(uso, proveedor: proveedor) else { return }
 
         modificarTarea(id: idTarea) { tarea in
             tarea.costoAcumuladoUSD = (tarea.costoAcumuladoUSD ?? 0) + costo
@@ -2423,6 +2870,11 @@ final class EstadoApp: ObservableObject {
 
         case .plan:
             generarPlanDeChat()
+
+        case .boost:
+            // /boost no ejecuta nada en un chat: su tuberia vive DENTRO de una
+            // Tarea. Se avisa donde se usa en vez de fingir una accion.
+            avisoComando = "El boost se activa en una Tarea: escribe /boost seguido del encargo."
         }
     }
 
@@ -3133,6 +3585,37 @@ final class EstadoApp: ObservableObject {
         case .asistente: return "Asistente"
         case .sistema: return "Sistema"
         case .herramienta: return "Herramienta"
+        }
+    }
+}
+
+/// Resultado interno de una fase de la tuberia /boost.
+///
+/// Lleva el id del paso para poder anotar el parseo fallido y el texto para la
+/// fase siguiente. El costo se sella al cerrar, no se recalcula despues.
+private struct ResultadoFaseBoost {
+    var pasoID: UUID
+    var texto: String
+    var costo: Double?
+}
+
+/// Errores propios de /boost, con mensaje visible para el dueno.
+private enum ErrorBoost: LocalizedError {
+    case sinAngulos
+    case sinAngulosResueltos
+    case sinCombos
+    case respuestaVacia(fase: FaseBoost)
+
+    var errorDescription: String? {
+        switch self {
+        case .sinAngulos:
+            return "El orquestador no devolvió ningún ángulo."
+        case .sinAngulosResueltos:
+            return "Ningún ángulo se pudo resolver: no hay nada que sintetizar."
+        case .sinCombos:
+            return "No hay proveedores con precio para repartir los ángulos."
+        case .respuestaVacia(let fase):
+            return "La fase \(fase.titulo) devolvió una respuesta vacía."
         }
     }
 }

@@ -104,10 +104,10 @@ final class AnalizadorComandosTests: XCTestCase {
         )
     }
 
-    func testSlugsReservadosIncluyenLosComandosDelSistemaYPlan() {
+    func testSlugsReservadosIncluyenLosComandosDelSistemaPlanYBoost() {
         XCTAssertEqual(
             AnalizadorComandos.slugsReservados,
-            Set(["compact", "costo", "modelos", "nuevo", "exportar", "plan"])
+            Set(["compact", "costo", "modelos", "nuevo", "exportar", "plan", "boost"])
         )
     }
 
@@ -118,6 +118,28 @@ final class AnalizadorComandosTests: XCTestCase {
             AnalizadorComandos.analizar("/plan", resolvedor: resolvedor),
             .comando(.plan)
         )
+    }
+
+    /// /boost (BOOST.1) se registra en la misma gramatica, pero su instruccion
+    /// efectiva es el resto del texto: el prefijo es el disparo de la tuberia.
+    func testBoostConTextoDevuelveLaInstruccionEfectiva() {
+        XCTAssertEqual(
+            AnalizadorComandos.instruccionDeBoost("/boost analiza el informe"),
+            "analiza el informe"
+        )
+        XCTAssertEqual(
+            AnalizadorComandos.instruccionDeBoost("  /BOOST  con mayúsculas  "),
+            "con mayúsculas"
+        )
+        // Solo el comando: cadena vacia, que el llamador trata como error de
+        // instruccion y no como tarea normal.
+        XCTAssertEqual(AnalizadorComandos.instruccionDeBoost("/boost"), "")
+    }
+
+    func testBoostSoloSeDisparaSiEsElPrimerTokenExacto() {
+        XCTAssertNil(AnalizadorComandos.instruccionDeBoost("analiza /boost esto"))
+        XCTAssertNil(AnalizadorComandos.instruccionDeBoost("/boosters no es boost"))
+        XCTAssertNil(AnalizadorComandos.instruccionDeBoost(""))
     }
 
     func testNormalizarSlugQuitaTildesEspaciosYCaracteresRaros() {
