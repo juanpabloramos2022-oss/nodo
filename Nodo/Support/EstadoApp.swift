@@ -567,6 +567,134 @@ final class EstadoApp: ObservableObject {
         ventanasPorModelo = respaldo.ventanas
     }
 
+    // MARK: - Respaldo total (BACK.1/BACK.2)
+
+    /// Construye el respaldo TOTAL del estado vivo.
+    ///
+    /// Reune la configuracion, las ventanas, las conversaciones completas (con
+    /// resumen de /compact y sellos de costo) y las tareas con su libro. Las
+    /// claves no entran: los proveedores solo llevan el nombre de su credencial
+    /// en el llavero.
+    func hacerRespaldoTotal() -> RespaldoConfiguracion {
+        RespaldoConfiguracion.hacerRespaldo(
+            config: config,
+            ventanas: ventanasPorModelo,
+            conversaciones: conversaciones,
+            tareas: tareas
+        )
+    }
+
+    /// JSON del respaldo total, listo para que el dueno lo guarde fuera.
+    func exportarRespaldo() -> Data? {
+        try? hacerRespaldoTotal().json()
+    }
+
+    /// Valida un respaldo SIN tocar el estado y devuelve su manifiesto.
+    ///
+    /// La vista la usa para ensenar el resumen de conteos antes de que el dueno
+    /// confirme el reemplazo.
+    func validarRespaldo(
+        _ respaldo: RespaldoConfiguracion
+    ) -> Result<ManifiestoRespaldo, ErrorRespaldo> {
+        do {
+            try respaldo.validar()
+            guard let manifiesto = respaldo.manifiesto else {
+                return .failure(.sinManifiesto)
+            }
+            return .success(manifiesto)
+        } catch let error as ErrorRespaldo {
+            return .failure(error)
+        } catch {
+            return .failure(.manifiestoIncoherente)
+        }
+    }
+
+    /// Reemplazo TOTAL y verificado del estado (BACK.2).
+    ///
+    /// Primero valida el archivo; despues sustituye configuracion, ventanas,
+    /// conversaciones y tareas SIN mezclar con lo anterior; y al final compara
+    /// los conteos resultantes con el manifiesto. Si no cuadran, lanza el
+    /// error: no se finge exito. La siembra de fabrica es idempotente por slug,
+    /// asi que restaurar un pack ya presente no duplica nada.
+    @discardableResult
+    func importarRespaldoTotal(
+        _ respaldo: RespaldoConfiguracion
+    ) throws -> ManifiestoRespaldo {
+        let manifiesto: ManifiestoRespaldo
+        switch validarRespaldo(respaldo) {
+        case .success(let valor):
+            manifiesto = valor
+        case .failure(let error):
+            throw error
+        }
+
+        // 1) Configuracion completa (proveedores sin claves, memoria, skills,
+        //    tope, libro de gasto, contadores y MCP). Primero se corta cualquier
+        //    turno vivo: no puede seguir escribiendo un estado que se reemplaza.
+        cancelar()
+        config = RespaldoConfiguracion.aplicar(respaldo, sobre: config)
+        // 2) Ventanas, conversaciones y tareas: reemplazo, sin mezcla.
+        ventanasPorModelo = respaldo.ventanas
+        reemplazarConversaciones(con: respaldo.conversaciones)
+        reemplazarTareas(con: respaldo.tareas)
+
+        // 3) Verificacion contra el manifiesto: lo aplicado tiene que cuadrar
+        //    con lo anunciado.
+        let real = hacerRespaldoTotal().conteos
+        guard real.cuadraCon(manifiesto) else {
+            throw ErrorRespaldo.verificacionFallida
+        }
+        return manifiesto
+    }
+
+    /// Sustituye las conversaciones guardadas por las del respaldo.
+    ///
+    /// Se borran TODAS las viejas antes de escribir las nuevas: un chat que no
+    /// venia en el respaldo desaparece, que es la diferencia entre restaurar y
+    /// mezclar.
+    private func reemplazarConversaciones(con nuevas: [Conversation]) {
+        if let store {
+            try? store.borrarTodo()
+            for conversacion in nuevas {
+                try? store.guardar(conversacion)
+            }
+        }
+
+        conversaciones = nuevas
+
+        // Los resumenes y los baldes de compactacion pertenecen a una
+        // conversacion concreta: los huerfanos no deben sobrevivir al reemplazo.
+        let ids = Set(nuevas.map { $0.id.uuidString })
+        usoResumidoPorConversacion = usoResumidoPorConversacion.filter {
+            ids.contains($0.key)
+        }
+        resumenesCompactadosPorConversacion = resumenesCompactadosPorConversacion.filter {
+            ids.contains($0.key)
+        }
+
+        // La conversacion abierta se reengancha a la copia restaurada si seguia en
+        // el respaldo; si no, se cae a la primera o a una nueva. En cualquiera de
+        // los dos casos se limpia el estado transitorio de la caja.
+        let idAbierto = conversacion.id
+        conversacion = nuevas.first(where: { $0.id == idAbierto })
+            ?? nuevas.first
+            ?? Conversation()
+        limpiarEventosVisuales()
+        limpiarErrorDeTurno()
+        limpiarEstadoDeCaja()
+    }
+
+    /// Sustituye las tareas guardadas por las del respaldo.
+    private func reemplazarTareas(con nuevas: [Tarea]) {
+        if let storeTareas {
+            try? storeTareas.borrarTodo()
+            for tarea in nuevas {
+                try? storeTareas.guardar(tarea)
+            }
+        }
+        tareas = nuevas
+    }
+
     /// La tabla se guarda como JSON aparte de la configuracion.
     ///
     /// `didSet` solo llega aqui cuando cambia el diccionario; `persistir`
