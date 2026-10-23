@@ -1,0 +1,57 @@
+Optional(Attributes: Application, 0x102e3bfa0, pid: 35843, label: 'Nodo'
+Element subtree:
+ →Application, 0x102e3bfa0, pid: 35843, label: 'Nodo'
+    Window (Main), 0x102e40530, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x102e3c310, {{0.0, 0.0}, {393.0, 852.0}}
+        Other, 0x102e3c9e0, {{0.0, 0.0}, {393.0, 852.0}}
+          Other, 0x102e39d40, {{0.0, 0.0}, {393.0, 852.0}}
+            Other, 0x102e39670, {{0.0, 0.0}, {393.0, 852.0}}
+              Other, 0x102e3e1f0, {{0.0, 0.0}, {393.0, 852.0}}
+                Other, 0x102e3de70, {{0.0, 0.0}, {393.0, 852.0}}
+                  Other, 0x102e3a440, {{0.0, 0.0}, {393.0, 852.0}}
+                    Other, 0x102e3e580, {{0.0, 0.0}, {393.0, 852.0}}
+                      Other, 0x102e37a70, {{0.0, 0.0}, {393.0, 852.0}}
+                        Other, 0x102e3eca0, {{0.0, 0.0}, {393.0, 852.0}}
+                          Other, 0x102e3db10, {{0.0, 0.0}, {393.0, 852.0}}
+                            NavigationBar, 0x102e3b200, {{0.0, 53.7}, {393.0, 148.0}}, identifier: 'Chats'
+                              Other, 0x102e3b550, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nuevo-chat', label: 'Nuevo chat'
+                                Other, 0x102e3a7b0, {{345.7, 60.7}, {31.3, 30.0}}
+                                  Button, 0x102e3d400, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nuevo-chat', label: 'Nuevo chat'
+                              StaticText, 0x102e3c680, {{16.0, 101.3}, {94.3, 40.7}}, label: 'Chats'
+                              SearchField, 0x102e3d770, {{16.0, 150.7}, {361.0, 36.0}}, label: 'Buscar en tus conversaciones', placeholderValue: 'Buscar en tus conversaciones'
+                                Image, 0x102e3b8d0, {{22.0, 159.0}, {20.3, 18.7}}, identifier: 'magnifyingglass', label: 'Search'
+                            Other, 0x102e442f0, {{0.0, 0.0}, {393.0, 852.0}}
+                              Other, 0x102e43f50, {{0.0, 0.0}, {393.0, 852.0}}
+                                Other, 0x102e3ab30, {{0.0, 0.0}, {393.0, 852.0}}
+                                  Other, 0x102e3aea0, {{0.0, 0.0}, {393.0, 852.0}}
+                                    CollectionView, 0x102e44690, {{0.0, 0.0}, {393.0, 852.0}}
+                                      Other, 0x102e44a10, {{0.0, -1502.3}, {393.0, 3474.3}}
+                                      Cell, 0x102e45100, {{0.0, 201.7}, {393.0, 66.3}}
+                                        Other, 0x102e44d90, {{0.0, 201.7}, {393.0, 66.3}}
+                                          Other, 0x102e454a0, {{0.0, 201.7}, {393.0, 66.3}}
+                                            Other, 0x102e45810, {{0.0, 201.7}, {393.0, 66.3}}
+                                        Other, 0x102e45ed0, {{0.0, 201.7}, {393.0, 66.3}}
+                                          Other, 0x102e45b70, {{0.0, 201.7}, {393.0, 66.3}}
+                                            Other, 0x102e465c0, {{0.0, 201.7}, {393.0, 66.3}}
+                                              Button, 0x102e46950, {{0.0, 201.7}, {393.0, 66.3}}, label: 'Chat de ejemplo, 4 mensajes', Selected
+                                                Image, 0x102e46cd0, {{17.0, 219.7}, {12.0, 12.0}}, identifier: 'checkmark.circle.fill', label: 'Selected', Selected
+                                                StaticText, 0x102e46240, {{36.0, 216.7}, {114.3, 18.0}}, label: 'Chat de ejemplo'
+                                                StaticText, 0x102e47040, {{16.0, 238.7}, {64.7, 14.3}}, label: '4 mensajes'
+                                      Other, 0x102e473c0, {{16.0, 201.7}, {377.0, 0.3}}
+                                      Other, 0x102e47740, {{16.0, 267.7}, {377.0, 0.3}}
+                                      Other, 0x102e47ab0, {{360.0, 155.0}, {30.0, 614.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                        Other, 0x102e47e30, {{387.0, 659.0}, {3.0, 107.0}}
+                                      Other, 0x102e481d0, {{360.0, 155.0}, {30.0, 614.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                        Other, 0x102e48520, {{387.0, 659.0}, {3.0, 107.0}}
+                TabBar, 0x102e48880, {{0.0, 769.0}, {393.0, 83.0}}, label: 'Tab Bar'
+                  Button, 0x102e48c00, {{2.0, 770.0}, {193.0, 48.0}}, identifier: 'bubble.left.and.bubble.right.fill', label: 'Chats', Selected
+                    Image, 0x102e48f70, {{79.0, 772.7}, {38.3, 31.3}}, identifier: 'bubble.left.and.bubble.right.fill', label: 'conversation'
+                  Button, 0x102e492d0, {{199.0, 770.0}, {192.0, 48.0}}, identifier: 'gearshape.fill', label: 'Ajustes'
+Path to element:
+ →Application, 0x102e3bfa0, pid: 35843, label: 'Nodo'
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  Output: {
+    Application, 0x10294b670, pid: 35843, label: 'Nodo'
+  }
+)

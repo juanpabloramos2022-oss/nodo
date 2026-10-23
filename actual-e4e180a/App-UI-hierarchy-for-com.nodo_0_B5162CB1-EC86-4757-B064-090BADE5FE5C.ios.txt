@@ -1,0 +1,47 @@
+Application, 0x102f40650, pid: 35843, label: 'Nodo' <App element pid: 35843>
+  Window (Main), 0x102f4a000, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4353969344.4>
+    Other, 0x102f4a120, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4353975760.5>
+      Other, 0x102f445d0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4353970272.6>
+        Other, 0x102f0cc70, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4353965456.7>
+          Other, 0x102f0cd90, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4354143472.8>
+            Other, 0x102f446f0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4354899696.9>
+              Other, 0x102f44810, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4355261264.10>
+                Other, 0x102f44930, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4354004496.12>
+                  Other, 0x102f44a50, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4355264864.15>
+                    Other, 0x102f3bca0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4339373744.17>
+                      Other, 0x102f3bdc0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4339372960.18>
+                        Other, 0x102f3bee0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4339180720.19>
+                          NavigationBar, 0x102f3c000, {{0.0, 53.7}, {393.0, 148.0}}, identifier: 'Chats' <AX element pid: 35843, elementOrHash.elementID: 4355360352.20>
+                            Other, 0x102f432b0, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nuevo-chat', label: 'Nuevo chat' <AX element pid: 35843, elementOrHash.elementID: 4362533888.22>
+                              Other, 0x102f433d0, {{345.7, 60.7}, {31.3, 30.0}} <AX element pid: 35843, elementOrHash.elementID: 4355546032.26>
+                                Button, 0x102f434f0, {{345.7, 60.7}, {31.3, 30.0}}, identifier: 'nuevo-chat', label: 'Nuevo chat' <AX element pid: 35843, elementOrHash.elementID: 4355543648.29>
+                            StaticText, 0x102f43610, {{16.0, 101.3}, {94.3, 40.7}}, label: 'Chats' <AX element pid: 35843, elementOrHash.elementID: 4355367264.23>
+                            SearchField, 0x102f43730, {{16.0, 150.7}, {361.0, 36.0}}, label: 'Buscar en tus conversaciones', placeholderValue: 'Buscar en tus conversaciones' <AX element pid: 35843, elementOrHash.elementID: 4363979264.24>
+                              Image, 0x102f43850, {{22.0, 159.0}, {20.3, 18.7}}, identifier: 'magnifyingglass', label: 'Search' <AX element pid: 35843, elementOrHash.elementID: 4355526496.27>
+                          Other, 0x102f43970, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4339198992.21>
+                            Other, 0x102f44110, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4355511792.25>
+                              Other, 0x102f44230, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4355355728.28>
+                                Other, 0x102f44350, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4355516784.30>
+                                  CollectionView, 0x102f44470, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 35843, elementOrHash.elementID: 4363188736.31>
+                                    Other, 0x102f44f50, {{0.0, -1502.3}, {393.0, 3474.3}} <AX element pid: 35843, elementOrHash.elementID: 4355300208.32>
+                                    Cell, 0x102f45070, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4370804224.33>
+                                      Other, 0x102f45190, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4354109648.37>
+                                        Other, 0x102f46460, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4354121328.40>
+                                          Other, 0x102f46580, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4355507376.42>
+                                      Other, 0x102f466a0, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4354107184.38>
+                                        Other, 0x102f467c0, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4371205120.41>
+                                          Other, 0x102f468e0, {{0.0, 201.7}, {393.0, 66.3}} <AX element pid: 35843, elementOrHash.elementID: 4339394544.43>
+                                            Button, 0x102f46a00, {{0.0, 201.7}, {393.0, 66.3}}, label: 'Chat de ejemplo, 4 mensajes', Selected <AX element pid: 35843, elementOrHash.elementID: 4339391552.44>
+                                              Image, 0x102f46b20, {{17.0, 219.7}, {12.0, 12.0}}, identifier: 'checkmark.circle.fill', label: 'Selected', Selected <AX element pid: 35843, elementOrHash.elementID: 4339377360.45>
+                                              StaticText, 0x102f46c40, {{36.0, 216.7}, {114.3, 18.0}}, label: 'Chat de ejemplo' <AX element pid: 35843, elementOrHash.elementID: 4339378144.46>
+                                              StaticText, 0x102f46d60, {{16.0, 238.7}, {64.7, 14.3}}, label: '4 mensajes' <AX element pid: 35843, elementOrHash.elementID: 4339391120.47>
+                                    Other, 0x102f46e80, {{16.0, 201.7}, {377.0, 0.3}} <AX element pid: 35843, elementOrHash.elementID: 4355591712.34>
+                                    Other, 0x102f46fa0, {{16.0, 267.7}, {377.0, 0.3}} <AX element pid: 35843, elementOrHash.elementID: 4354884320.35>
+                                    Other, 0x102f470c0, {{360.0, 155.0}, {30.0, 614.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 35843, elementOrHash.elementID: 4355558064.36>
+                                      Other, 0x102f471e0, {{387.0, 659.0}, {3.0, 107.0}} <AX element pid: 35843, elementOrHash.elementID: 4355558528.39>
+                                    Other, 0x102f47300, {{360.0, 155.0}, {30.0, 614.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 35843, elementOrHash.elementID: 4355558064.36>
+                                      Other, 0x102f47420, {{387.0, 659.0}, {3.0, 107.0}} <AX element pid: 35843, elementOrHash.elementID: 4355558528.39>
+              TabBar, 0x102f47540, {{0.0, 769.0}, {393.0, 83.0}}, label: 'Tab Bar' <AX element pid: 35843, elementOrHash.elementID: 4355258560.11>
+                Button, 0x102f47660, {{2.0, 770.0}, {193.0, 48.0}}, identifier: 'bubble.left.and.bubble.right.fill', label: 'Chats', Selected <AX element pid: 35843, elementOrHash.elementID: 4355275744.13>
+                  Image, 0x102f47780, {{79.0, 772.7}, {38.3, 31.3}}, identifier: 'bubble.left.and.bubble.right.fill', label: 'conversation' <AX element pid: 35843, elementOrHash.elementID: 4355300720.16>
+                Button, 0x102f478a0, {{199.0, 770.0}, {192.0, 48.0}}, identifier: 'gearshape.fill', label: 'Ajustes' <AX element pid: 35843, elementOrHash.elementID: 4353720336.14>
