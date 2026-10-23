@@ -10,7 +10,7 @@ public enum NodoVersion {
     public static let version = "0.2.0"
 
     /// Numero de compilacion. Se sube en cada entrega que se instala.
-    public static let build = "2"
+    public static let build = "3"
 
     /// Texto corto que identifica la compilacion en pantalla.
     public static var descripcion: String {
