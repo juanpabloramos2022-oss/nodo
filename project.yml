@@ -103,7 +103,7 @@ targets:
   # `@testable import Nodo` vea el estado y las vistas reales, y corre en el
   # simulador igual que las capturas.
   NodoAppTests:
-    type: bundle.unit-testing
+    type: bundle.unit-test
     platform: iOS
     sources:
       - path: NodoAppTests
