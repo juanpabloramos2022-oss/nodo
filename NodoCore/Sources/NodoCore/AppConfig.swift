@@ -65,6 +65,12 @@ public struct AppConfig: Codable, Equatable {
     /// Biblioteca de skills locales (§4.4). Las configuraciones de la v0.2.0 no
     /// traen este campo y se leen como lista vacia.
     public var skills: [SkillLocal]
+    /// Version del pack de skills de fabrica ya sembrada (PACK.1).
+    ///
+    /// 0 en las configuraciones anteriores al pack. La siembra lo compara con
+    /// `PACK_VERSION` y solo corre cuando el marcador es menor: abrir la app
+    /// con el marcador al dia no resiembra ni toca lo que el dueno ya tiene.
+    public var packSkillsVersion: Int
     /// Contadores globales de gasto (§3.5). Viven en la configuracion para
     /// sobrevivir al borrado de chats; las configuraciones viejas arrancan a
     /// cero.
@@ -82,6 +88,7 @@ public struct AppConfig: Codable, Equatable {
         topeAvisoCosto: Double? = nil,
         herramientasSinAprobacion: [String]? = nil,
         skills: [SkillLocal] = [],
+        packSkillsVersion: Int = 0,
         gasto: ContadoresGasto = ContadoresGasto(),
         usoApp: UsoApp = UsoApp()
     ) {
@@ -93,6 +100,7 @@ public struct AppConfig: Codable, Equatable {
         self.topeAvisoCosto = topeAvisoCosto
         self.herramientasSinAprobacion = herramientasSinAprobacion
         self.skills = skills
+        self.packSkillsVersion = packSkillsVersion
         self.gasto = gasto
         self.usoApp = usoApp
     }
@@ -106,6 +114,7 @@ public struct AppConfig: Codable, Equatable {
         case topeAvisoCosto
         case herramientasSinAprobacion
         case skills
+        case packSkillsVersion
         case gasto
         case usoApp
     }
@@ -141,6 +150,13 @@ public struct AppConfig: Codable, Equatable {
             forKey: .herramientasSinAprobacion
         )
         skills = try contenedor.decodeIfPresent([SkillLocal].self, forKey: .skills) ?? []
+        // Las configuraciones anteriores al pack no traen el marcador: 0 las
+        // deja pendientes de la primera siembra, que es lo que se quiere tras
+        // actualizar la app.
+        packSkillsVersion = try contenedor.decodeIfPresent(
+            Int.self,
+            forKey: .packSkillsVersion
+        ) ?? 0
         gasto = try contenedor.decodeIfPresent(ContadoresGasto.self, forKey: .gasto)
             ?? ContadoresGasto()
         usoApp = try contenedor.decodeIfPresent(UsoApp.self, forKey: .usoApp)

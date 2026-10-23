@@ -6,12 +6,24 @@ public struct SkillResuelta: Equatable {
     public let nombre: String
     /// Identificador normalizado con el que se invoca, por ejemplo "resumidor".
     public let slug: String
+    /// Linea corta que se ve en el selector de "/".
+    ///
+    /// Las skills del pack la traen; las propias que no la escribieron dejan
+    /// nil y el selector sigue mostrando su nombre. No viaja al payload: el
+    /// modelo solo recibe las instrucciones.
+    public let descripcion: String?
     /// Instrucciones que se suman al contexto de ese turno.
     public let instrucciones: String
 
-    public init(nombre: String, slug: String, instrucciones: String) {
+    public init(
+        nombre: String,
+        slug: String,
+        descripcion: String? = nil,
+        instrucciones: String
+    ) {
         self.nombre = nombre
         self.slug = slug
+        self.descripcion = descripcion
         self.instrucciones = instrucciones
     }
 }

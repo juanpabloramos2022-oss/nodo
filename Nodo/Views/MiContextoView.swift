@@ -395,6 +395,9 @@ struct MiContextoView: View {
                                     .font(.caption.monospaced())
                                     .foregroundStyle(Tema.textoSuave)
                                     .lineLimit(1)
+                                if skill.origen == .fabrica {
+                                    etiquetaDeFabrica
+                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -426,11 +429,43 @@ struct MiContextoView: View {
                 Label("Nueva skill", systemImage: "plus.circle")
             }
             .accessibilityIdentifier("skill-nueva")
+
+            // PACK.1: la unica via para que vuelva una skill de fabrica
+            // borrada, ademas de reinstalar la app. Respeta la regla de
+            // idempotencia por slug: solo repone las que faltan.
+            Button {
+                estado.restaurarSkillsDeFabrica()
+            } label: {
+                Label(
+                    "Restaurar skills de fábrica",
+                    systemImage: "arrow.counterclockwise"
+                )
+            }
+            .accessibilityIdentifier("skill-restaurar")
         } header: {
             Text("Skills")
         } footer: {
-            Text("Invócalas en cualquier chat escribiendo /slug o tocándolas en el selector de /.")
+            Text(
+                "Invócalas en cualquier chat escribiendo /slug o tocándolas en el selector de /. "
+                    + "Las de fábrica se editan y se borran como las tuyas; restaurar repone solo las que falten."
+            )
         }
+    }
+
+    /// Etiqueta de origen de una skill del pack (PACK.1).
+    ///
+    /// No cambia nada de como se edita o invoca: solo dice de donde salio para
+    /// que el dueno sepa que esa se puede restaurar si la borra.
+    private var etiquetaDeFabrica: some View {
+        Text("De fábrica")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Tema.acento)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Tema.acento.opacity(0.16))
+            .clipShape(Capsule())
+            .fixedSize()
+            .accessibilityIdentifier("skill-origen-fabrica")
     }
 }
 

@@ -761,7 +761,11 @@ struct ChatView: View {
         case .comando(let comando):
             return "/\(comando.rawValue) — \(descripcionDe(comando))"
         case .skill(let skill):
-            return "⚡ /\(skill.slug) — \(skill.nombre)"
+            // La descripcion de selector manda cuando la skill la trae (las del
+            // pack); una skill propia sin descripcion sigue mostrando su nombre.
+            let escrita = (skill.descripcion ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "⚡ /\(skill.slug) — \(escrita.isEmpty ? skill.nombre : escrita)"
         }
     }
 
