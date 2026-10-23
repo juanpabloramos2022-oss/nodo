@@ -1,0 +1,153 @@
+Application, 0x101274b80, pid: 27489, label: 'Nodo' <App element pid: 27489>
+  Window (Main), 0x101268420, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312858368.4>
+    Other, 0x101277120, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312879152.5>
+      Other, 0x101277240, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312888960.6>
+        Other, 0x10123a990, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312862384.7>
+          Other, 0x101276e80, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312057456.8>
+            Other, 0x101276fa0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4311888832.9>
+              Other, 0x10123a750, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4311981056.10>
+                Other, 0x10123a870, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312147872.12>
+                  Other, 0x101275250, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4311998304.50>
+                    Other, 0x101275370, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312920896.52>
+                      Other, 0x101275490, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4313571088.53>
+                        Other, 0x1012755b0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4314647536.54>
+                          NavigationBar, 0x1012756d0, {{0.0, 53.7}, {393.0, 96.0}}, identifier: 'Mi Contexto' <AX element pid: 27489, elementOrHash.elementID: 4314693248.55>
+                            StaticText, 0x1012757f0, {{16.0, 101.3}, {191.7, 40.7}}, label: 'Mi Contexto' <AX element pid: 27489, elementOrHash.elementID: 4314698112.57>
+                          Other, 0x101275910, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4314095104.56>
+                            Other, 0x101275a30, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4313338800.58>
+                              Other, 0x101275b50, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4314690960.59>
+                                Other, 0x101275c70, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4312400416.60>
+                                  CollectionView, 0x101275d90, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 27489, elementOrHash.elementID: 4346584576.61>
+                                    Other, 0x101275eb0, {{-16.0, -1554.3}, {425.0, 2046.3}} <AX element pid: 27489, elementOrHash.elementID: 4312533632.62>
+                                    Cell, 0x101275fd0, {{16.0, 149.7}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4329517568.63>
+                                      Other, 0x1012760f0, {{16.0, 149.7}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312462272.88>
+                                      Other, 0x101276210, {{16.0, 149.7}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312461344.89>
+                                        Other, 0x101276330, {{16.0, 149.7}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4330338304.119>
+                                          Other, 0x101276450, {{16.0, 149.7}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312666160.144>
+                                            StaticText, 0x101276570, {{16.0, 149.7}, {361.0, 38.7}}, label: 'MEMORIA' <AX element pid: 27489, elementOrHash.elementID: 4312665408.159>
+                                    Cell, 0x101276690, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4338838016.64>
+                                      Other, 0x1012767b0, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4313420608.90>
+                                        Other, 0x1012768d0, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4313421104.120>
+                                      Other, 0x1012769f0, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4313419680.91>
+                                        Other, 0x101277840, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4338708480.121>
+                                          Other, 0x101277960, {{16.0, 188.3}, {361.0, 73.7}} <AX element pid: 27489, elementOrHash.elementID: 4314737104.145>
+                                            StaticText, 0x101277a80, {{16.0, 188.3}, {361.0, 73.7}}, label: 'Lo que escribas aquí se envía automáticamente a todos los modelos para que te conozcan sin que tengas que presentarte en cada chat.' <AX element pid: 27489, elementOrHash.elementID: 4314726080.160>
+                                    Cell, 0x101277cc0, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4337971712.65>
+                                      Other, 0x101277de0, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4313393680.92>
+                                        Other, 0x101277f00, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4313423696.122>
+                                      Other, 0x101278020, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4313438704.93>
+                                        Other, 0x101278140, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4338989056.123>
+                                          Other, 0x101278260, {{16.0, 262.0}, {361.0, 64.3}} <AX element pid: 27489, elementOrHash.elementID: 4314748240.146>
+                                            StaticText, 0x101278380, {{16.0, 262.0}, {361.0, 64.3}}, identifier: 'memoria-vista-previa', label: 'Memoria de ejemplo: responde en español, con frases cortas y sin tecnicismos.' <AX element pid: 27489, elementOrHash.elementID: 4314708896.161>
+                                    Other, 0x1012784a0, {{32.0, 261.7}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312558384.66>
+                                    Cell, 0x1012785c0, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338990592.67>
+                                      Other, 0x1012786e0, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313453712.94>
+                                        Other, 0x101278800, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313454208.124>
+                                      Other, 0x101278920, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313463536.95>
+                                        Other, 0x101278a40, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338135040.125>
+                                          Other, 0x101278b60, {{16.0, 326.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4314749536.147>
+                                            StaticText, 0x101278c80, {{32.0, 338.2}, {112.0, 20.3}}, label: 'Peso estimado' <AX element pid: 27489, elementOrHash.elementID: 4314748672.162>
+                                            StaticText, 0x101278da0, {{266.3, 340.5}, {94.7, 15.7}}, identifier: 'memoria-peso', label: '~19 tokens est.' <AX element pid: 27489, elementOrHash.elementID: 4314749104.163>
+                                    Other, 0x101278ec0, {{32.0, 326.0}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312567104.68>
+                                    Cell, 0x101278fe0, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4337985536.69>
+                                      Other, 0x101279100, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313454624.96>
+                                        Other, 0x101279220, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313494208.126>
+                                      Other, 0x101279340, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313456640.97>
+                                        Other, 0x101279460, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4337987072.127>
+                                          Other, 0x101279580, {{16.0, 370.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4314750640.148>
+                                            StaticText, 0x10123e3a0, {{16.0, 370.3}, {361.0, 44.0}}, identifier: 'memoria-costo', label: '≈$0.000001 por envío · calculado con deepseek-v4-1-flash' <AX element pid: 27489, elementOrHash.elementID: 4314740160.164>
+                                    Other, 0x10123e4c0, {{32.0, 370.0}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312568528.70>
+                                    Cell, 0x10123e5e0, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338947072.71>
+                                      Other, 0x10123e700, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313524528.98>
+                                        Other, 0x10123e820, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313525024.128>
+                                      Other, 0x10123e940, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313495280.99>
+                                        Other, 0x10123ea60, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338109952.129>
+                                          Other, 0x101268800, {{16.0, 414.3}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4314754176.149>
+                                            Button, 0x101268920, {{16.0, 414.3}, {361.0, 44.0}}, identifier: 'memoria-editar', label: 'Editar memoria' <AX element pid: 27489, elementOrHash.elementID: 4314753280.165>
+                                              Image, 0x101268a40, {{36.7, 425.0}, {22.7, 22.7}}, identifier: 'square.and.pencil', label: 'Compose' <AX element pid: 27489, elementOrHash.elementID: 4314751072.180>
+                                              StaticText, 0x101268b60, {{36.7, 425.0}, {154.3, 22.7}}, label: 'Editar memoria' <AX element pid: 27489, elementOrHash.elementID: 4314752176.181>
+                                    Other, 0x101268c80, {{32.0, 414.0}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312570304.72>
+                                    Cell, 0x101268da0, {{16.0, 458.3}, {361.0, 33.7}} <AX element pid: 27489, elementOrHash.elementID: 4329523712.73>
+                                      Other, 0x101268ec0, {{16.0, 458.3}, {361.0, 33.7}} <AX element pid: 27489, elementOrHash.elementID: 4312480784.100>
+                                      Other, 0x101268fe0, {{16.0, 458.3}, {361.0, 33.7}} <AX element pid: 27489, elementOrHash.elementID: 4312462768.101>
+                                        Other, 0x101269100, {{16.0, 458.3}, {361.0, 33.7}} <AX element pid: 27489, elementOrHash.elementID: 4329525248.130>
+                                          Other, 0x101269220, {{16.0, 458.3}, {361.0, 33.7}} <AX element pid: 27489, elementOrHash.elementID: 4312666592.150>
+                                            StaticText, 0x101269340, {{16.0, 458.3}, {361.0, 33.7}}, label: 'Se aplica desde el siguiente mensaje que envíes.' <AX element pid: 27489, elementOrHash.elementID: 4312383040.166>
+                                    Other, 0x101269460, {{-16.0, 492.0}, {425.0, 268.0}} <AX element pid: 27489, elementOrHash.elementID: 4312572080.74>
+                                    Cell, 0x101269580, {{16.0, 492.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4329720320.75>
+                                      Other, 0x1012696a0, {{16.0, 492.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312516944.102>
+                                      Other, 0x1012697c0, {{16.0, 492.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312481280.103>
+                                        Other, 0x1012698e0, {{16.0, 492.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4330274304.131>
+                                          Other, 0x101269a00, {{16.0, 492.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4314755040.151>
+                                            StaticText, 0x101269b20, {{16.0, 492.0}, {361.0, 38.7}}, label: 'TOPE DE GASTO POR CHAT' <AX element pid: 27489, elementOrHash.elementID: 4314754608.167>
+                                    Cell, 0x101269c40, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338107904.76>
+                                      Other, 0x101269d60, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313580672.104>
+                                        Other, 0x101269e80, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313565488.132>
+                                      Other, 0x101269fa0, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313565072.105>
+                                        Other, 0x10126a0c0, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4338488320.133>
+                                          Other, 0x10126a1e0, {{16.0, 530.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4314756960.152>
+                                            StaticText, 0x10126a300, {{16.0, 530.7}, {361.0, 44.0}}, label: 'Te avisaremos dentro de la conversación si un solo chat supera este monto.' <AX element pid: 27489, elementOrHash.elementID: 4314755472.168>
+                                    Cell, 0x10126a420, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4337993216.77>
+                                      Other, 0x10126a540, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4313599312.106>
+                                        Other, 0x10126a660, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4313598896.134>
+                                      Other, 0x10126a780, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4313597968.107>
+                                        Other, 0x10126a8a0, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4337994752.135>
+                                          Other, 0x10126a9c0, {{16.0, 574.7}, {361.0, 69.7}} <AX element pid: 27489, elementOrHash.elementID: 4312932512.153>
+                                            StaticText, 0x10126aae0, {{32.0, 599.6}, {200.7, 33.7}}, identifier: 'gasto-acumulado', label: 'Gasto acumulado: Hoy $0.1234 · Desde el último reinicio: $0.4321' <AX element pid: 27489, elementOrHash.elementID: 4313542944.169>
+                                            Button, 0x10126ac00, {{253.3, 600.7}, {107.7, 14.3}}, identifier: 'reiniciar-contador', label: 'Reiniciar contador' <AX element pid: 27489, elementOrHash.elementID: 4313493744.170>
+                                    Other, 0x10126ad20, {{32.0, 574.3}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312573856.78>
+                                    Cell, 0x10126ae40, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4339332096.79>
+                                      Other, 0x10126af60, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4313639456.108>
+                                        Other, 0x10126b080, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4313639952.136>
+                                      Other, 0x10126b1a0, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4313597232.109>
+                                        Other, 0x10126b2c0, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4339333632.137>
+                                          Other, 0x10126b3e0, {{16.0, 644.3}, {361.0, 66.0}} <AX element pid: 27489, elementOrHash.elementID: 4313607552.154>
+                                            Button, 0x10126b500, {{32.0, 655.3}, {59.3, 44.0}}, identifier: 'tope-10', label: '$0.10' <AX element pid: 27489, elementOrHash.elementID: 4313296176.171>
+                                            Button, 0x10126b620, {{99.3, 655.3}, {59.3, 44.0}}, identifier: 'tope-25', label: '$0.25', value: Seleccionado <AX element pid: 27489, elementOrHash.elementID: 4313670464.172>
+                                            Button, 0x10126b740, {{166.7, 655.3}, {59.7, 44.0}}, identifier: 'tope-50', label: '$0.50' <AX element pid: 27489, elementOrHash.elementID: 4313424112.173>
+                                            Button, 0x10126b860, {{234.3, 655.3}, {59.3, 44.0}}, identifier: 'tope-100', label: '$1.00' <AX element pid: 27489, elementOrHash.elementID: 4313007344.174>
+                                            Button, 0x10126b980, {{301.7, 655.3}, {59.3, 44.0}}, identifier: 'tope-otro', label: 'Otro…' <AX element pid: 27489, elementOrHash.elementID: 4313210896.175>
+                                    Other, 0x10126baa0, {{32.0, 644.0}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312575632.80>
+                                    Cell, 0x10126bbc0, {{16.0, 710.3}, {361.0, 49.7}} <AX element pid: 27489, elementOrHash.elementID: 4330272256.81>
+                                      Other, 0x10126bce0, {{16.0, 710.3}, {361.0, 49.7}} <AX element pid: 27489, elementOrHash.elementID: 4312411456.110>
+                                      Other, 0x10126be00, {{16.0, 710.3}, {361.0, 49.7}} <AX element pid: 27489, elementOrHash.elementID: 4311927568.111>
+                                        Other, 0x10126bf20, {{16.0, 710.3}, {361.0, 49.7}} <AX element pid: 27489, elementOrHash.elementID: 4330679296.138>
+                                          Other, 0x10126c040, {{16.0, 710.3}, {361.0, 49.7}} <AX element pid: 27489, elementOrHash.elementID: 4313503072.155>
+                                            StaticText, 0x10126c160, {{16.0, 710.3}, {361.0, 49.7}}, label: '0 = sin aviso. Los importes son una estimación con los precios configurados.' <AX element pid: 27489, elementOrHash.elementID: 4313533616.176>
+                                    Other, 0x10126c280, {{-16.0, 760.0}, {425.0, 1892.3}} <AX element pid: 27489, elementOrHash.elementID: 4312577408.82>
+                                    Cell, 0x10126c3a0, {{16.0, 760.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4329546240.83>
+                                      Other, 0x10126c4c0, {{16.0, 760.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312537504.112>
+                                      Other, 0x10126c5e0, {{16.0, 760.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312403936.113>
+                                        Other, 0x10126c700, {{16.0, 760.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4329547776.139>
+                                          Other, 0x10126c820, {{16.0, 760.0}, {361.0, 38.7}} <AX element pid: 27489, elementOrHash.elementID: 4312377872.156>
+                                            StaticText, 0x10126c940, {{16.0, 760.0}, {361.0, 38.7}}, label: 'SKILLS' <AX element pid: 27489, elementOrHash.elementID: 4312381824.177>
+                                    Cell, 0x10126ca60, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4339377152.84>
+                                      Other, 0x10126cb80, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313679232.114>
+                                        Other, 0x10126cca0, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313570672.140>
+                                      Other, 0x10126cdc0, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4313569392.115>
+                                        Other, 0x10126cee0, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4339395072.141>
+                                          Other, 0x10126d000, {{16.0, 798.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4312792656.157>
+                                            Button, 0x10126d120, {{16.0, 798.7}, {361.0, 44.0}}, identifier: 'skill-fila', label: 'Editar skill Resumidor, se invoca como /resumidor' <AX element pid: 27489, elementOrHash.elementID: 4312380912.178>
+                                              StaticText, 0x10126d240, {{32.0, 810.5}, {81.7, 20.3}}, label: 'Resumidor' <AX element pid: 27489, elementOrHash.elementID: 4312378912.182>
+                                              StaticText, 0x10126d360, {{121.7, 813.5}, {74.3, 14.3}}, label: '/resumidor' <AX element pid: 27489, elementOrHash.elementID: 4312379696.183>
+                                              Image, 0x10126d480, {{354.3, 815.7}, {6.0, 10.3}}, identifier: 'chevron.right', label: 'Forward' <AX element pid: 27489, elementOrHash.elementID: 4312380480.184>
+                                    Cell, 0x10126d5a0, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4329528320.85>
+                                      Other, 0x10126d6c0, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4312414736.116>
+                                        Other, 0x10126d7e0, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4312413648.142>
+                                      Other, 0x10126d900, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4312412720.117>
+                                        Other, 0x10126da20, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4329366528.143>
+                                          Other, 0x10126db40, {{16.0, 842.7}, {361.0, 44.0}} <AX element pid: 27489, elementOrHash.elementID: 4639971520.158>
+                                            Button, 0x10126dc60, {{16.0, 842.7}, {361.0, 44.0}}, identifier: 'skill-fila', label: 'Editar skill Ventas, se invoca como /ventas' <AX element pid: 27489, elementOrHash.elementID: 4639968496.179>
+                                              StaticText, 0x10126dd80, {{32.0, 854.5}, {52.3, 20.3}}, label: 'Ventas' <AX element pid: 27489, elementOrHash.elementID: 4312381344.185>
+                                              StaticText, 0x10126dea0, {{92.3, 857.5}, {52.0, 14.3}}, label: '/ventas' <AX element pid: 27489, elementOrHash.elementID: 4639967280.186>
+                                              Image, 0x10126dfc0, {{354.3, 859.7}, {6.0, 10.3}}, identifier: 'chevron.right', label: 'Forward' <AX element pid: 27489, elementOrHash.elementID: 4639968064.187>
+                                    Other, 0x10126e0e0, {{32.0, 842.3}, {345.0, 0.3}} <AX element pid: 27489, elementOrHash.elementID: 4312579184.86>
+                                    Other, 0x10126e200, {{360.0, 103.0}, {30.0, 666.0}}, label: 'Vertical scroll bar, 2 pages', value: 0% <AX element pid: 27489, elementOrHash.elementID: 4313377152.87>
+                                      Other, 0x10126e320, {{387.0, 759.0}, {3.0, 7.0}} <AX element pid: 27489, elementOrHash.elementID: 4313377616.118>
+                                    Other, 0x10126e440, {{360.0, 103.0}, {30.0, 666.0}}, label: 'Vertical scroll bar, 2 pages', value: 0% <AX element pid: 27489, elementOrHash.elementID: 4313377152.87>
+                                      Other, 0x10126e560, {{387.0, 759.0}, {3.0, 7.0}} <AX element pid: 27489, elementOrHash.elementID: 4313377616.118>
+              TabBar, 0x10126e9d0, {{0.0, 769.0}, {393.0, 83.0}}, label: 'Tab Bar' <AX element pid: 27489, elementOrHash.elementID: 4311978048.11>
+                Button, 0x10126eaf0, {{2.0, 770.0}, {127.0, 48.0}}, label: 'Chats' <AX element pid: 27489, elementOrHash.elementID: 4312028144.13>
+                Button, 0x10126ec10, {{133.0, 770.0}, {127.0, 48.0}}, label: 'Mi Contexto', Selected <AX element pid: 27489, elementOrHash.elementID: 4312112480.14>
+                  Image, 0x10126ed30, {{179.7, 773.0}, {33.7, 29.0}}, identifier: 'brain.fill', label: 'brain.fill' <AX element pid: 27489, elementOrHash.elementID: 4312116336.51>
+                Button, 0x10126ee50, {{264.0, 770.0}, {127.0, 48.0}}, label: 'Conexiones' <AX element pid: 27489, elementOrHash.elementID: 4312131920.15>
