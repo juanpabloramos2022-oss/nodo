@@ -9,12 +9,51 @@ import NodoCore
 /// revaluarse cuando el usuario cambia de modelo. Se guarda el uso de cada
 /// proveedor por separado y, en datos viejos sin atribucion, la clave vacia se
 /// valora con el proveedor registrado del chat.
+///
+/// COST.1/HP4: ademas del uso, el balde guarda el USD ya SELLADO de todo lo que
+/// resumio (los sellos de los mensajes que salieron mas el de la propia llamada
+/// de resumen). Asi el acumulado del chat es sellos vivos + sello del balde y
+/// no pierde un centavo al compactar.
 private struct UsoResumido: Codable, Equatable {
     /// Uso por proveedor, con su UUID en texto. La clave "" es el respaldo de
     /// los archivos escritos antes de existir esta atribucion.
     var porProveedor: [String: UsoTokens] = [:]
+    /// USD sellado de lo compactado. nil en los baldes escritos antes de
+    /// existir el sello: esos se valoran por proveedor como respaldo
+    /// transitorio, igual que los mensajes legados.
+    var costoSelladoUSD: Double?
 
     static let sinProveedor = ""
+
+    init(
+        porProveedor: [String: UsoTokens] = [:],
+        costoSelladoUSD: Double? = nil
+    ) {
+        self.porProveedor = porProveedor
+        self.costoSelladoUSD = costoSelladoUSD
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case porProveedor
+        case costoSelladoUSD
+    }
+
+    /// Decodificacion tolerante con los baldes guardados antes de COST.1.
+    ///
+    /// `porProveedor` se exige a proposito: el formato aun mas viejo (solo
+    /// tokens) no lo trae y debe caer al lector de respaldo de
+    /// `usosResumidosGuardados`, no leerse como un balde vacio.
+    init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: CodingKeys.self)
+        porProveedor = try contenedor.decode(
+            [String: UsoTokens].self,
+            forKey: .porProveedor
+        )
+        costoSelladoUSD = try contenedor.decodeIfPresent(
+            Double.self,
+            forKey: .costoSelladoUSD
+        )
+    }
 
     var total: UsoTokens {
         porProveedor.values.reduce(UsoTokens()) { $0.sumando($1) }
@@ -25,10 +64,13 @@ private struct UsoResumido: Codable, Equatable {
         porProveedor[clave] = porProveedor[clave]?.sumando(uso) ?? uso
     }
 
+    /// Fusiona usos y sellos. Un costo desconocido (nil) contamina la suma:
+    /// no se rellena con cero porque seria inventar.
     mutating func fusionar(_ otro: UsoResumido) {
         for (clave, uso) in otro.porProveedor {
             porProveedor[clave] = porProveedor[clave]?.sumando(uso) ?? uso
         }
+        costoSelladoUSD = CostoEstimado.sumar(costoSelladoUSD, otro.costoSelladoUSD)
     }
 }
 
@@ -241,6 +283,12 @@ final class EstadoApp: ObservableObject {
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
         sincronizarSkills()
+
+        // COST.3 y COST.2, en este orden: primero se sellan los mensajes
+        // legados con los precios de SU proveedor y despues se migra el libro,
+        // para que el USD migrado ya cuente esas estimaciones.
+        sellarLegadosAlCargar()
+        migrarLibroDeGastoAlArrancar()
     }
 
     // MARK: - Configuracion
@@ -390,6 +438,73 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    // MARK: - Sellos de costo y libro de gasto (COST.1-3)
+
+    /// Sella al cargar los mensajes legados que aun no tienen sello (COST.3).
+    ///
+    /// Se hace una vez, sobre las conversaciones recien leidas del almacen, y
+    /// se vuelven a guardar solo las que cambiaron. El proveedor de cada sello
+    /// es el que genero el mensaje (o el registrado del chat en los mas
+    /// viejos): nunca el activo global, que puede ser otro modelo. Los que no
+    /// tienen proveedor resoluble se quedan sin sello.
+    private func sellarLegadosAlCargar() {
+        var cambiadas: [Conversation] = []
+
+        for indice in conversaciones.indices {
+            let cambios = SellosDeCosto.sellarLegados(
+                en: &conversaciones[indice],
+                proveedores: config.proveedores
+            )
+            if cambios > 0 {
+                cambiadas.append(conversaciones[indice])
+            }
+        }
+
+        for conversacion in cambiadas {
+            try? store?.guardar(conversacion)
+        }
+    }
+
+    /// Migra el libro de gasto la primera vez que arranca esta version (COST.2).
+    ///
+    /// POR QUE: las conversaciones ya gastaron dinero antes de que existiera el
+    /// libro. Se vuelca al mes en curso el uso de cada ventana de chat y el USD
+    /// de sus sellos (los legados ya se sellaron arriba, como estimacion). Los
+    /// dias empiezan hoy: no se inventa un reparto hacia atras. Un tramo que no
+    /// se puede valorar no suma USD, pero sus tokens si quedan contados.
+    private func migrarLibroDeGastoAlArrancar() {
+        guard !config.usoApp.migrado else { return }
+
+        var uso = UsoTokens()
+        var usd = 0.0
+
+        for conversacion in conversaciones {
+            if let suyo = CostoEstimado.usoAcumulado(de: conversacion.mensajes) {
+                uso = uso.sumando(suyo)
+            }
+            if let sellado = CostoEstimado.acumuladoSellado(
+                mensajes: conversacion.mensajes,
+                proveedores: config.proveedores,
+                proveedorDelChat: conversacion.proveedorID
+            ) {
+                usd += sellado
+            }
+            if let resumido = usoResumidoPorConversacion[conversacion.id.uuidString] {
+                uso = uso.sumando(resumido.total)
+                // Un balde legado sin sello se valora con el proveedor de SU
+                // chat para no perder lo que ya se compacto.
+                if let suyo = costoDeResumido(
+                    resumido,
+                    proveedorDelChat: conversacion.proveedorID
+                ) {
+                    usd += suyo
+                }
+            }
+        }
+
+        config.usoApp.migrar(uso: uso, usd: usd, fecha: Date())
+    }
+
     /// El identificador crudo se recorta, pero no se transforma: la tabla debe
     /// seguir apuntando al mismo modelo que envia el proveedor.
     private static func claveDeModelo(_ modelo: String) -> String {
@@ -502,27 +617,41 @@ final class EstadoApp: ObservableObject {
         return config.proveedores.first { $0.id == id }
     }
 
-    /// Costo de un mensaje con el proveedor que lo genero.
+    /// Costo de un mensaje tal como se sello al cerrar su generacion.
     ///
-    /// Lo usa el pie de cada respuesta; sin precios de ESE proveedor no hay
-    /// cifra, aunque el activo tenga otros precios.
+    /// Lo usa el pie de cada respuesta. Si el mensaje es legado y no tiene
+    /// sello, se valora con el proveedor que lo genero (respaldo transitorio);
+    /// sin precios de ESE proveedor no hay cifra, aunque el activo tenga otros.
     func costo(de mensaje: ChatMessage) -> Double? {
-        CostoEstimado.costo(
+        CostoEstimado.costoSellado(
             de: mensaje,
             proveedores: config.proveedores,
             proveedorDelChat: conversacion.proveedorID
         )
     }
 
-    /// Costo acumulado del chat abierto, valorando cada mensaje con SU proveedor.
+    /// True si algun mensaje del hilo aporta al acumulado con un sello estimado.
     ///
-    /// Sin precios configurados no hay cifra: no se inventa un costo. Cambiar
-    /// el proveedor activo no puede alterar este numero.
+    /// Son los legados que se sellaron al cargar con los precios actuales de su
+    /// proveedor (COST.3). El rotulo de /costo y la Hoja Estado lo advierten.
+    var hayCostosEstimados: Bool {
+        conversacion.mensajes.contains { mensaje in
+            mensaje.costoEsEstimacion
+                && mensaje.uso != nil
+                && mensaje.costoSelladoUSD != nil
+        }
+    }
+
+    /// Costo acumulado del chat abierto: sellos vivos + sello del balde.
+    ///
+    /// Es el lector unico de COST.1. Sin precios configurados no hay cifra: no
+    /// se inventa un costo. Cambiar el proveedor activo o editar sus precios no
+    /// puede alterar este numero, porque los mensajes ya estan sellados.
     var costoAcumuladoDelChat: Double? {
         var total: Double?
 
         if CostoEstimado.usoAcumulado(de: conversacion.mensajes) != nil {
-            guard let deMensajes = CostoEstimado.acumulado(
+            guard let deMensajes = CostoEstimado.acumuladoSellado(
                 mensajes: conversacion.mensajes,
                 proveedores: config.proveedores,
                 proveedorDelChat: conversacion.proveedorID
@@ -533,15 +662,25 @@ final class EstadoApp: ObservableObject {
         }
 
         if let resumido = usoResumidoPorConversacion[conversacion.id.uuidString] {
-            guard let deResumen = costoDeResumido(resumido) else { return nil }
+            guard let deResumen = costoDeResumido(
+                resumido,
+                proveedorDelChat: conversacion.proveedorID
+            ) else {
+                return nil
+            }
             total = (total ?? 0) + deResumen
         }
 
         return total
     }
 
-    /// Costo del consumo que /compact saco del hilo, proveedor a proveedor.
-    private func costoDeResumido(_ resumido: UsoResumido) -> Double? {
+    /// Costo del balde de /compact: su sello si lo tiene y, si es legado, la
+    /// valoracion por proveedor que hacia antes de existir el sello.
+    private func costoDeResumido(
+        _ resumido: UsoResumido,
+        proveedorDelChat: UUID?
+    ) -> Double? {
+        if let sellado = resumido.costoSelladoUSD { return sellado }
         guard !resumido.porProveedor.isEmpty else { return nil }
 
         var total = 0.0
@@ -549,7 +688,7 @@ final class EstadoApp: ObservableObject {
             guard let uso = resumido.porProveedor[clave] else { continue }
 
             let id = clave.isEmpty
-                ? conversacion.proveedorID
+                ? proveedorDelChat
                 : UUID(uuidString: clave)
             guard let id,
                   let proveedor = config.proveedores.first(where: { $0.id == id }),
@@ -654,32 +793,41 @@ final class EstadoApp: ObservableObject {
         config.gasto.fechaDelDia == Self.hoyComoClave() ? config.gasto.delDia : 0
     }
 
-    /// Suma a los contadores globales el costo de un uso recibido.
+    /// Suma a los contadores y al libro de gasto el costo de un uso recibido.
     ///
-    /// Es el punto unico de alimentacion: lo llaman los turnos normales
+    /// Es el punto UNICO de alimentacion: lo llaman los turnos normales
     /// (envios y regeneraciones) y la llamada de resumen de /compact. El
-    /// contador vive en `AppConfig`, asi que borrar un chat no lo resta.
-    private func registrarGasto(uso: UsoTokens?, proveedor: ProviderConfig) {
-        guard let uso,
-              let costo = CostoEstimado.costo(
-                  uso: uso,
-                  precioEntrada: proveedor.precioEntradaPorMillon,
-                  precioSalida: proveedor.precioSalidaPorMillon
-              ),
-              costo > 0
-        else {
-            return
+    /// contador vive en `AppConfig`, asi que borrar un chat no lo resta; el
+    /// libro de COST.2 anota la misma llamada en su dia y su mes.
+    private func registrarGasto(
+        uso: UsoTokens?,
+        proveedor: ProviderConfig,
+        fecha: Date = Date()
+    ) {
+        guard let uso, uso.total > 0 else { return }
+
+        let costo = CostoEstimado.costo(
+            uso: uso,
+            precioEntrada: proveedor.precioEntradaPorMillon,
+            precioSalida: proveedor.precioSalidaPorMillon
+        )
+
+        if let costo, costo > 0 {
+            config.gasto.registrar(costo: costo, hoy: Self.hoyComoClave(fecha))
         }
-        config.gasto.registrar(costo: costo, hoy: Self.hoyComoClave())
+
+        // El libro anota la llamada real aunque no se pueda valorar: los tokens
+        // son un hecho. Sin precios, el USD queda en cero en vez de inventarse.
+        config.usoApp.registrar(uso: uso, usd: costo ?? 0, fecha: fecha)
     }
 
-    /// Fecha local de hoy en el formato que guarda `ContadoresGasto`.
-    private static func hoyComoClave() -> String {
+    /// Fecha local de `fecha` en el formato que guarda `ContadoresGasto`.
+    private static func hoyComoClave(_ fecha: Date = Date()) -> String {
         let formateador = DateFormatter()
         formateador.calendar = Calendar(identifier: .gregorian)
         formateador.locale = Locale(identifier: "en_US_POSIX")
         formateador.dateFormat = "yyyy-MM-dd"
-        return formateador.string(from: Date())
+        return formateador.string(from: fecha)
     }
 
     /// Proveedor y clave con los que se puede enviar, o nil si falta algo.
@@ -1162,6 +1310,11 @@ final class EstadoApp: ObservableObject {
         if usoReal != nil, let costo = costoAcumuladoDelChat {
             // Mismo formato que el pie y el subtitulo de la pildora.
             texto += " · ≈ $\(String(format: "%.4f", costo)) con \(modelo)"
+            if hayCostosEstimados {
+                // COST.3: los legados se sellaron al cargar con los precios de
+                // hoy de su proveedor, no con lo que se pago entonces.
+                texto += " (incluye estimaciones de legado)"
+            }
         } else {
             texto += " con \(modelo)"
         }
@@ -1250,6 +1403,7 @@ final class EstadoApp: ObservableObject {
                 // La factura conserva el consumo de los mensajes que salen y
                 // tambien el de la propia llamada de resumen.
                 var usoHistorico = UsoResumido()
+                var costoHistorico: Double? = 0
                 for mensaje in mensajesResumidos {
                     guard let uso = mensaje.uso else { continue }
                     // El mensaje conserva el proveedor que lo genero; los
@@ -1257,18 +1411,50 @@ final class EstadoApp: ObservableObject {
                     let id = mensaje.proveedorID
                         ?? self.conversacion.proveedorID
                     usoHistorico.sumar(uso, proveedorID: id)
+                    // HP4: el balde absorbe el sello del mensaje. Un legado sin
+                    // sello aporta su valoracion por proveedor, igual que el
+                    // lector del acumulado.
+                    costoHistorico = CostoEstimado.sumar(
+                        costoHistorico,
+                        CostoEstimado.costoSellado(
+                            de: mensaje,
+                            proveedores: self.config.proveedores,
+                            proveedorDelChat: self.conversacion.proveedorID
+                        )
+                    )
                 }
                 if let usoResumen = respuesta.uso {
                     usoHistorico.sumar(usoResumen, proveedorID: proveedor.id)
+                    // La llamada de resumen se sella a los precios del
+                    // proveedor que la hizo en este momento.
+                    costoHistorico = CostoEstimado.sumar(
+                        costoHistorico,
+                        CostoEstimado.costo(
+                            uso: usoResumen,
+                            precioEntrada: proveedor.precioEntradaPorMillon,
+                            precioSalida: proveedor.precioSalidaPorMillon
+                        )
+                    )
                 }
+                usoHistorico.costoSelladoUSD = costoHistorico
+
                 if usoHistorico.total.total > 0 {
-                    let acumulado = self.usoResumidoPorConversacion[
-                        idConversacion.uuidString
-                    ] ?? UsoResumido()
-                    var fusionado = acumulado
+                    let claveBalde = idConversacion.uuidString
+                    var fusionado = self.usoResumidoPorConversacion[claveBalde]
+                        ?? UsoResumido()
+                    // Un balde legado sin sello se valora ahora por proveedor
+                    // para que la suma no pierda lo ya compactado; un balde
+                    // vacio vale cero, no "desconocido".
+                    if fusionado.costoSelladoUSD == nil {
+                        fusionado.costoSelladoUSD = fusionado.porProveedor.isEmpty
+                            ? 0
+                            : self.costoDeResumido(
+                                fusionado,
+                                proveedorDelChat: self.conversacion.proveedorID
+                            )
+                    }
                     fusionado.fusionar(usoHistorico)
-                    self.usoResumidoPorConversacion[idConversacion.uuidString] =
-                        fusionado
+                    self.usoResumidoPorConversacion[claveBalde] = fusionado
                 }
 
                 let idsResumidos = Set(mensajesResumidos.map(\.id))
@@ -1516,11 +1702,14 @@ final class EstadoApp: ObservableObject {
             try Task.checkCancellation()
 
             textoEnCurso = ""
-            // Cada mensaje generado conserva su proveedor para que el costo
-            // historico no dependa del activo del momento.
+            // Cada mensaje generado conserva su proveedor y, si trae consumo,
+            // su sello de costo con los precios de ESE proveedor en este
+            // momento (COST.1). Regenerar y reintentar pasan por aqui, asi que
+            // sellan igual; el sello de un mensaje anterior no se reescribe.
             var nuevos = resultado.mensajesNuevos
             for indice in nuevos.indices {
                 nuevos[indice].proveedorID = proveedor.id
+                SellosDeCosto.sellar(&nuevos[indice], proveedor: proveedor)
             }
             conversacion.mensajes.append(contentsOf: nuevos)
             // La respuesta nueva pasa a ser la medida de la ventana; el uso de

@@ -193,6 +193,16 @@ struct HojaEstadoChatView: View {
                             .monospacedDigit()
                             .foregroundStyle(Tema.textoSuave)
                     }
+
+                    // COST.3: los mensajes legados se sellaron al cargar con
+                    // los precios actuales de su proveedor. La cifra sigue
+                    // siendo historica, pero conviene decirlo.
+                    if estado.hayCostosEstimados {
+                        Text("Incluye estimaciones de legado: los mensajes viejos se sellaron con los precios actuales de su proveedor.")
+                            .font(.footnote)
+                            .foregroundStyle(Tema.textoSuave)
+                            .accessibilityIdentifier("estado-costos-estimados")
+                    }
                 }
             } else {
                 Text("Todavía no hay consumo medido en este chat.")

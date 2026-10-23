@@ -102,49 +102,61 @@ public enum CostoEstimado {
         )
     }
 
-    /// Costo acumulado valorando cada mensaje con SU proveedor.
+    /// Costo con el que un mensaje aporta al total: su sello si lo tiene y, si
+    /// no, su valoracion por proveedor propio.
     ///
-    /// Agrupa primero los usos por proveedor para conservar la misma aritmetica
-    /// de antes cuando todo el chat lo genero el mismo modelo. Devuelve nil si
-    /// hay consumo pero alguno de esos proveedores ya no existe o no tiene
-    /// precios: un total parcial seria una cifra inventada.
-    public static func acumulado(
+    /// El sello es inmutable (se escribio al cerrar la generacion). El respaldo
+    /// por proveedor existe solo para los legados que todavia no pasaron por
+    /// COST.3; si su proveedor no se puede resolver devuelve nil, porque un
+    /// costo desconocido no se rellena con el proveedor activo.
+    public static func costoSellado(
+        de mensaje: ChatMessage,
+        proveedores: [ProviderConfig],
+        proveedorDelChat: UUID?
+    ) -> Double? {
+        if let sellado = mensaje.costoSelladoUSD { return sellado }
+        return costo(
+            de: mensaje,
+            proveedores: proveedores,
+            proveedorDelChat: proveedorDelChat
+        )
+    }
+
+    /// Costo acumulado del chat leyendo los SELLOS de cada mensaje.
+    ///
+    /// Es el lector unico del que salen `costoAcumuladoDelChat`, el pie de cada
+    /// respuesta, la franja de tope y la pastilla de la lista. Devuelve nil si
+    /// no hay consumo medido o si algun mensaje con uso no se puede valorar: un
+    /// total parcial seria una cifra inventada.
+    public static func acumuladoSellado(
         mensajes: [ChatMessage],
         proveedores: [ProviderConfig],
         proveedorDelChat: UUID?
     ) -> Double? {
-        var orden: [UUID] = []
-        var usos: [UUID: UsoTokens] = [:]
-        var usoSinProveedor: UsoTokens?
+        var total = 0.0
+        var hayUso = false
 
         for mensaje in mensajes {
-            guard let uso = mensaje.uso else { continue }
-            guard let id = mensaje.proveedorID ?? proveedorDelChat else {
-                usoSinProveedor = usoSinProveedor?.sumando(uso) ?? uso
-                continue
-            }
-            if usos[id] == nil { orden.append(id) }
-            usos[id] = usos[id]?.sumando(uso) ?? uso
-        }
-
-        // Un mensaje con consumo pero sin proveedor resoluble impide dar un
-        // total honesto; se prefiere no ensenar cifra.
-        guard usoSinProveedor == nil, !orden.isEmpty else { return nil }
-
-        var total = 0.0
-        for id in orden {
-            guard let uso = usos[id],
-                  let proveedor = proveedores.first(where: { $0.id == id }),
-                  let parcial = costo(
-                      uso: uso,
-                      precioEntrada: proveedor.precioEntradaPorMillon,
-                      precioSalida: proveedor.precioSalidaPorMillon
-                  )
-            else {
+            guard mensaje.uso != nil else { continue }
+            hayUso = true
+            guard let parcial = costoSellado(
+                de: mensaje,
+                proveedores: proveedores,
+                proveedorDelChat: proveedorDelChat
+            ) else {
                 return nil
             }
             total += parcial
         }
-        return total
+        return hayUso ? total : nil
+    }
+
+    /// Suma dos costos opcionales sin inventar.
+    ///
+    /// nil significa "no se pudo valorar" y contamina la suma: es la forma de
+    /// que un tramo desconocido no se confunda con un tramo de cero dolares.
+    public static func sumar(_ izquierda: Double?, _ derecha: Double?) -> Double? {
+        guard let izquierda, let derecha else { return nil }
+        return izquierda + derecha
     }
 }

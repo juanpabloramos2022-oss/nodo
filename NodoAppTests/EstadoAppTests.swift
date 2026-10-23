@@ -308,4 +308,223 @@ final class EstadoAppTests: XCTestCase {
         )
         XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 2)
     }
+
+    // MARK: - Sello de costo (COST.1)
+
+    /// Tras un turno el mensaje queda sellado y editar los precios del
+    /// proveedor despues no puede mover el acumulado del chat.
+    func testElSelloDelTurnoNoSeRevaluaAlEditarLosPrecios() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta sellada.",
+            uso: UsoTokens(entrada: 1_000_000, salida: 500_000)
+        )
+
+        arnes.estado.enviar("Hola")
+        try await arnes.esperarTurno()
+
+        let proveedorDelTurno = arnes.proveedor
+        let mensaje = try XCTUnwrap(arnes.estado.conversacion.mensajes.last)
+        let sello = try XCTUnwrap(mensaje.costoSelladoUSD)
+        XCTAssertFalse(mensaje.costoEsEstimacion)
+
+        let esperado = try XCTUnwrap(
+            CostoEstimado.costo(
+                uso: UsoTokens(entrada: 1_000_000, salida: 500_000),
+                precioEntrada: proveedorDelTurno.precioEntradaPorMillon,
+                precioSalida: proveedorDelTurno.precioSalidaPorMillon
+            )
+        )
+        XCTAssertEqual(sello, esperado, accuracy: 0.0000001)
+        let antes = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+
+        // Se editan los precios DESPUES del turno: el sello ya esta escrito y
+        // no puede revaluarse.
+        let indice = try XCTUnwrap(
+            arnes.estado.config.proveedores.firstIndex {
+                $0.id == proveedorDelTurno.id
+            }
+        )
+        arnes.estado.config.proveedores[indice].precioEntradaPorMillon = 1_000
+        arnes.estado.config.proveedores[indice].precioSalidaPorMillon = 1_000
+
+        let despues = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(
+            despues,
+            antes,
+            accuracy: 0.0000001,
+            "Editar precios no puede reescribir la factura ya sellada"
+        )
+        let delMensaje = try XCTUnwrap(arnes.estado.costo(de: mensaje))
+        XCTAssertEqual(delMensaje, antes, accuracy: 0.0000001)
+    }
+
+    /// La regeneracion pasa por el mismo camino que el envio y tambien sella.
+    func testRegenerarTambienSella() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activo = arnes.proveedor
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: activo))
+        arnes.estado.conversacion = Conversation(
+            mensajes: [
+                ChatMessage(rol: .usuario, texto: "Hola"),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Respuesta anterior",
+                    tokensEntrada: 100,
+                    tokensSalida: 20,
+                    proveedorID: activo.id
+                )
+            ],
+            proveedorID: activo.id
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta regenerada.",
+            uso: UsoTokens(entrada: 2_000, salida: 1_000)
+        )
+
+        arnes.estado.regenerar()
+        try await arnes.esperarTurno()
+
+        let nueva = try XCTUnwrap(arnes.estado.conversacion.mensajes.last)
+        XCTAssertEqual(nueva.texto, "Respuesta regenerada.")
+        let sello = try XCTUnwrap(nueva.costoSelladoUSD)
+        XCTAssertFalse(nueva.costoEsEstimacion)
+
+        let esperado = try XCTUnwrap(
+            CostoEstimado.costo(
+                uso: UsoTokens(entrada: 2_000, salida: 1_000),
+                precioEntrada: activo.precioEntradaPorMillon,
+                precioSalida: activo.precioSalidaPorMillon
+            )
+        )
+        XCTAssertEqual(sello, esperado, accuracy: 0.0000001)
+        let acumulado = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(acumulado, esperado, accuracy: 0.0000001)
+    }
+
+    // MARK: - Libro de gasto (COST.2)
+
+    func testRegistrarUnTurnoAlimentaElLibroDeGasto() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: "Respuesta que alimenta el libro.",
+            uso: UsoTokens(entrada: 120, salida: 30)
+        )
+
+        arnes.estado.enviar("Hola")
+        try await arnes.esperarTurno()
+
+        let libro = arnes.estado.config.usoApp
+        let hoy = Date()
+        let dia = libro.dia(hoy)
+        let mes = libro.mes(hoy)
+
+        XCTAssertEqual(dia.uso, UsoTokens(entrada: 120, salida: 30))
+        XCTAssertEqual(mes.uso, UsoTokens(entrada: 120, salida: 30))
+        XCTAssertGreaterThan(dia.usd, 0)
+        XCTAssertEqual(dia.usd, mes.usd, accuracy: 0.0000001)
+        XCTAssertEqual(libro.totalDias.uso, UsoTokens(entrada: 120, salida: 30))
+    }
+
+    // MARK: - Compactacion y sello (HP4)
+
+    /// Historia larga ya sellada: al compactar, los sellos de los mensajes que
+    /// salen se mudan al balde y el acumulado no pierde nada.
+    func testCompactarConservaElAcumuladoDelChat() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activo = arnes.proveedor
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: activo))
+        arnes.estado.conversacion = historiaSellada(con: activo)
+
+        let costoAntes = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        let usoAntes = try XCTUnwrap(arnes.estado.usoAcumuladoDelChat)
+
+        // Resumen sin consumo guionizado: la unica diferencia medida es la
+        // mudanza de los sellos al balde.
+        arnes.transporte.guionar(texto: "Resumen de la conversacion.", uso: nil)
+
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 6)
+        XCTAssertEqual(
+            arnes.estado.usoAcumuladoDelChat,
+            usoAntes,
+            "El consumo no puede bajar al compactar"
+        )
+        let costoDespues = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(
+            costoDespues,
+            costoAntes,
+            accuracy: 0.0000001,
+            "El acumulado es sellos vivos + balde y no pierde un centavo"
+        )
+    }
+
+    /// HP4: la llamada de resumen tambien se sella y su costo entra en el
+    /// balde, asi que el acumulado sube exactamente lo que costo resumir.
+    func testCompactarSumaElSelloDelResumenAlBalde() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let activo = arnes.proveedor
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: activo))
+        arnes.estado.conversacion = historiaSellada(con: activo)
+
+        let costoAntes = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        let usoDelResumen = UsoTokens(entrada: 2_000, salida: 1_000)
+        arnes.transporte.guionar(texto: "Resumen con consumo.", uso: usoDelResumen)
+
+        arnes.estado.compactar()
+        try await arnes.esperarCompactacion()
+
+        let selloDelResumen = try XCTUnwrap(
+            CostoEstimado.costo(
+                uso: usoDelResumen,
+                precioEntrada: activo.precioEntradaPorMillon,
+                precioSalida: activo.precioSalidaPorMillon
+            )
+        )
+        let costoDespues = try XCTUnwrap(arnes.estado.costoAcumuladoDelChat)
+        XCTAssertEqual(
+            costoDespues,
+            costoAntes + selloDelResumen,
+            accuracy: 0.0000001
+        )
+    }
+
+    /// Ocho mensajes con cuatro respuestas ya selladas a los precios de su
+    /// proveedor. Es la historia larga que /compact parte en dos.
+    private func historiaSellada(con proveedor: ProviderConfig) -> Conversation {
+        var mensajes: [ChatMessage] = []
+        for vuelta in 0..<4 {
+            mensajes.append(
+                ChatMessage(rol: .usuario, texto: "Pregunta \(vuelta)")
+            )
+            var respuesta = ChatMessage(
+                rol: .asistente,
+                texto: "Respuesta \(vuelta)",
+                tokensEntrada: 1_000,
+                tokensSalida: 500,
+                proveedorID: proveedor.id
+            )
+            SellosDeCosto.sellar(&respuesta, proveedor: proveedor)
+            mensajes.append(respuesta)
+        }
+        return Conversation(mensajes: mensajes, proveedorID: proveedor.id)
+    }
 }

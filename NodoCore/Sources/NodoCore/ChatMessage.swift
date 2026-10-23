@@ -55,6 +55,17 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
     /// los precios con los que se pago. nil en mensajes viejos o escritos por
     /// el usuario: esos se valoran con el proveedor registrado del chat.
     public var proveedorID: UUID?
+    /// Costo en dolares con el que se cerro la generacion de ESTE mensaje.
+    ///
+    /// POR QUE se sella y no se recalcula: los precios de un proveedor cambian
+    /// con el tiempo. Guardar el dolar que se pago al cerrar la generacion deja
+    /// la factura historica inmutable; recalcularla despues con los precios de
+    /// hoy seria inventar un gasto que no ocurrio. nil en los mensajes legados
+    /// (sin sello) o en los que no traen consumo.
+    public var costoSelladoUSD: Double?
+    /// True si el sello se calculo al cargar un mensaje legado con los precios
+    /// actuales de su proveedor (COST.3), no al cerrar su generacion.
+    public var costoEsEstimacion: Bool
 
     public init(
         id: UUID = UUID(),
@@ -66,7 +77,9 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         tokensEntrada: Int? = nil,
         tokensSalida: Int? = nil,
         skillsAplicadas: [String] = [],
-        proveedorID: UUID? = nil
+        proveedorID: UUID? = nil,
+        costoSelladoUSD: Double? = nil,
+        costoEsEstimacion: Bool = false
     ) {
         self.id = id
         self.rol = rol
@@ -78,6 +91,8 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         self.tokensSalida = tokensSalida
         self.skillsAplicadas = skillsAplicadas
         self.proveedorID = proveedorID
+        self.costoSelladoUSD = costoSelladoUSD
+        self.costoEsEstimacion = costoEsEstimacion
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -91,10 +106,14 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         case tokensSalida
         case skillsAplicadas
         case proveedorID
+        case costoSelladoUSD
+        case costoEsEstimacion
     }
 
     /// Decodificacion tolerante: los mensajes guardados antes de existir las
-    /// skills no traen `skillsAplicadas` y deben seguir abriendo.
+    /// skills no traen `skillsAplicadas` y deben seguir abriendo. Lo mismo vale
+    /// para el sello de costo: un mensaje viejo se lee sin sello y con
+    /// `costoEsEstimacion` en false.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -107,6 +126,8 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         tokensSalida = try contenedor.decodeIfPresent(Int.self, forKey: .tokensSalida)
         skillsAplicadas = try contenedor.decodeIfPresent([String].self, forKey: .skillsAplicadas) ?? []
         proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
+        costoSelladoUSD = try contenedor.decodeIfPresent(Double.self, forKey: .costoSelladoUSD)
+        costoEsEstimacion = try contenedor.decodeIfPresent(Bool.self, forKey: .costoEsEstimacion) ?? false
     }
 
     /// Consumo del mensaje, si lo tiene. Los mensajes viejos devuelven nil.

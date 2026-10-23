@@ -85,6 +85,21 @@ final class ArnesApp {
         )
     }
 
+    /// Espera a que la compactacion lanzada por `compactar` termine.
+    ///
+    /// `compactar` no toca `enviando`, asi que `esperarTurno` no sirve: la
+    /// bandera que se apaga al cerrar la tarea de resumen es `compactando`.
+    func esperarCompactacion(timeout: TimeInterval = 5) async throws {
+        let limite = Date().addingTimeInterval(timeout)
+        while estado.compactando, Date() < limite {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertFalse(
+            estado.compactando,
+            "La compactacion no termino dentro del tiempo del test"
+        )
+    }
+
     /// Borra la suite y la carpeta temporales al terminar el test.
     func limpiar() {
         defaults.removePersistentDomain(forName: nombreSuite)

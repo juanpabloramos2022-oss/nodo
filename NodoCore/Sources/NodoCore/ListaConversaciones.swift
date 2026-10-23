@@ -96,9 +96,9 @@ extension HistorialConversaciones {
     /// modelo de la conversacion y vista previa del ultimo mensaje.
     ///
     /// La etiqueta usa el proveedor registrado del chat, nunca el activo
-    /// global. El costo valora cada mensaje con el proveedor que lo genero y
-    /// solo cae a `conversacion.proveedorID` en los mensajes viejos que no
-    /// traen esa anotacion.
+    /// global. El costo se lee de los sellos: cada mensaje aporta el dolar con
+    /// el que se cerro su generacion y, solo si es legado y no tiene sello, su
+    /// valoracion con el proveedor que lo genero.
     public static func datosFila(
         de conversacion: Conversation,
         proveedores: [ProviderConfig]
@@ -109,9 +109,9 @@ extension HistorialConversaciones {
             proveedores.first { $0.id == id }
         }
 
-        // Cada mensaje se valora con el proveedor que lo genero; el del chat
-        // solo cubre los mensajes viejos que no traen esa anotacion.
-        let costo = CostoEstimado.acumulado(
+        // El lector unico de sellos (COST.1): el mismo que usan la franja de
+        // tope y el acumulado del chat, para que la fila no ensene otra cifra.
+        let costo = CostoEstimado.acumuladoSellado(
             mensajes: conversacion.mensajes,
             proveedores: proveedores,
             proveedorDelChat: conversacion.proveedorID
@@ -141,9 +141,10 @@ extension HistorialConversaciones {
     ///
     /// La copia lleva ids nuevos de conversacion y de mensaje, el mismo rol,
     /// texto, uso y skills de cada mensaje clonado, y el mismo `proveedorID`,
-    /// `sinMemoria` y `modoTarea` del original. No es un chat fijado ni
-    /// archivado y nace con el titulo de un chat nuevo (`tituloSugerido` se
-    /// deriva del primer usuario, como siempre).
+    /// `sinMemoria` y `modoTarea` del original. El sello de costo tambien se
+    /// clona: la copia no puede revaluar lo que la original ya pago. No es un
+    /// chat fijado ni archivado y nace con el titulo de un chat nuevo
+    /// (`tituloSugerido` se deriva del primer usuario, como siempre).
     ///
     /// NO hereda `resumenCompactado` ni `usoTrasCompactar`: el historial
     /// clonado ES el contexto completo hasta el corte, y heredar el resumen
@@ -171,7 +172,9 @@ extension HistorialConversaciones {
                 tokensEntrada: mensaje.tokensEntrada,
                 tokensSalida: mensaje.tokensSalida,
                 skillsAplicadas: mensaje.skillsAplicadas,
-                proveedorID: mensaje.proveedorID
+                proveedorID: mensaje.proveedorID,
+                costoSelladoUSD: mensaje.costoSelladoUSD,
+                costoEsEstimacion: mensaje.costoEsEstimacion
             )
         }
 

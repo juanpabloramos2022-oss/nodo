@@ -65,6 +65,9 @@ public struct AppConfig: Codable, Equatable {
     /// sobrevivir al borrado de chats; las configuraciones viejas arrancan a
     /// cero.
     public var gasto: ContadoresGasto
+    /// Libro de gasto por dia y por mes (COST.2). Las configuraciones
+    /// guardadas antes de existir el libro se leen con el libro vacio.
+    public var usoApp: UsoApp
 
     public init(
         version: Int = 1,
@@ -75,7 +78,8 @@ public struct AppConfig: Codable, Equatable {
         topeAvisoCosto: Double? = nil,
         herramientasSinAprobacion: [String]? = nil,
         skills: [SkillLocal] = [],
-        gasto: ContadoresGasto = ContadoresGasto()
+        gasto: ContadoresGasto = ContadoresGasto(),
+        usoApp: UsoApp = UsoApp()
     ) {
         self.version = version
         self.proveedores = proveedores
@@ -86,6 +90,7 @@ public struct AppConfig: Codable, Equatable {
         self.herramientasSinAprobacion = herramientasSinAprobacion
         self.skills = skills
         self.gasto = gasto
+        self.usoApp = usoApp
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -98,6 +103,7 @@ public struct AppConfig: Codable, Equatable {
         case herramientasSinAprobacion
         case skills
         case gasto
+        case usoApp
     }
 
     /// Decodificacion tolerante con las configuraciones anteriores a la Fase 4.
@@ -120,6 +126,8 @@ public struct AppConfig: Codable, Equatable {
         skills = try contenedor.decodeIfPresent([SkillLocal].self, forKey: .skills) ?? []
         gasto = try contenedor.decodeIfPresent(ContadoresGasto.self, forKey: .gasto)
             ?? ContadoresGasto()
+        usoApp = try contenedor.decodeIfPresent(UsoApp.self, forKey: .usoApp)
+            ?? UsoApp()
     }
 
     /// Tope que se aplica de verdad: el guardado o un dolar si nunca se fijo.
