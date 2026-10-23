@@ -20,6 +20,16 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var textoEnCurso = ""
     @Published var error: String?
 
+    /// Ventana de contexto de cada modelo, en tokens.
+    ///
+    /// La clave es el identificador crudo del modelo (`vendedor/modelo`), no el
+    /// nombre limpio: asi la tabla sigue valiendo aunque cambie como se pinta.
+    /// Vive fuera de `AppConfig` a proposito, porque el formato exportable de
+    /// la configuracion no cambia en esta tarea.
+    @Published var ventanasPorModelo: [String: Int] = [:] {
+        didSet { guardarVentanas() }
+    }
+
     private let llavero: AlmacenClaves
     /// En modo capturas no se escribe nada en el almacenamiento del telefono:
     /// el estado llega sembrado en memoria y las capturas no deben ensuciar
@@ -28,8 +38,12 @@ final class EstadoApp: ObservableObject {
     private let transporte = TransporteURLSession()
     private var store: ConversationStore?
     private var tareaActual: Task<Void, Never>?
+    /// La carga inicial del diccionario no debe escribir nada: se activa al
+    /// terminar el init normal y se queda apagada en modo de prueba.
+    private var puedeGuardarVentanas = false
 
     private static let claveConfig = "nodo.config.v1"
+    private static let claveVentanas = "nodo.ventanas.v1"
 
     init(llavero: AlmacenClaves = LlaveroAlmacen(), estadoDePrueba: EstadoPrueba? = nil) {
         self.llavero = llavero
@@ -42,6 +56,9 @@ final class EstadoApp: ObservableObject {
             self.config = prueba.config
             self.conversacion = prueba.conversacion
             self.conversaciones = prueba.conversaciones
+            // En capturas la tabla arranca vacia y no toca UserDefaults: el
+            // estado sembrado debe ser determinista y no ensuciar el telefono.
+            self.ventanasPorModelo = [:]
             self.store = nil
             return
         }
@@ -54,6 +71,7 @@ final class EstadoApp: ObservableObject {
         }
 
         self.conversacion = Conversation()
+        self.ventanasPorModelo = Self.ventanasGuardadas()
 
         var almacen: ConversationStore?
         do {
@@ -64,6 +82,7 @@ final class EstadoApp: ObservableObject {
         }
         self.store = almacen
         self.conversaciones = almacen?.listar() ?? []
+        self.puedeGuardarVentanas = true
     }
 
     // MARK: - Configuracion
@@ -71,6 +90,69 @@ final class EstadoApp: ObservableObject {
     private func guardarConfig() {
         guard persistir, let datos = try? config.json() else { return }
         UserDefaults.standard.set(datos, forKey: Self.claveConfig)
+    }
+
+    // MARK: - Ventanas de contexto
+
+    /// Ventana guardada para un modelo, o nil si no hay ninguna definida.
+    ///
+    /// Un cero o un negativo no cuenta como ventana: el contrato prohibe
+    /// inventar un porcentaje cuando falta el denominador.
+    func ventana(paraModelo modelo: String) -> Int? {
+        let clave = Self.claveDeModelo(modelo)
+        guard !clave.isEmpty,
+              let ventana = ventanasPorModelo[clave],
+              ventana > 0
+        else {
+            return nil
+        }
+        return ventana
+    }
+
+    /// Fija la ventana de un modelo. nil o un valor no positivo borra la fila.
+    func fijarVentana(_ ventana: Int?, paraModelo modelo: String) {
+        let clave = Self.claveDeModelo(modelo)
+        guard !clave.isEmpty else { return }
+
+        if let ventana, ventana > 0 {
+            ventanasPorModelo[clave] = ventana
+        } else {
+            ventanasPorModelo.removeValue(forKey: clave)
+        }
+    }
+
+    /// La tabla se guarda como JSON aparte de la configuracion.
+    ///
+    /// `didSet` solo llega aqui cuando cambia el diccionario; `persistir`
+    /// mantiene las capturas fuera del almacenamiento real.
+    private func guardarVentanas() {
+        guard persistir, puedeGuardarVentanas,
+              let datos = try? JSONEncoder().encode(ventanasPorModelo)
+        else {
+            return
+        }
+        UserDefaults.standard.set(datos, forKey: Self.claveVentanas)
+    }
+
+    private static func ventanasGuardadas() -> [String: Int] {
+        guard let datos = UserDefaults.standard.data(forKey: claveVentanas),
+              let ventanas = try? JSONDecoder().decode([String: Int].self, from: datos)
+        else {
+            return [:]
+        }
+        // Una ventana no positiva no es una ventana, y una clave vacia no
+        // apunta a ningun modelo: se descartan al cargar para que la tabla no
+        // ensene filas que el medidor no puede usar.
+        return ventanas.filter {
+            !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && $0.value > 0
+        }
+    }
+
+    /// El identificador crudo se recorta, pero no se transforma: la tabla debe
+    /// seguir apuntando al mismo modelo que envia el proveedor.
+    private static func claveDeModelo(_ modelo: String) -> String {
+        modelo.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func clave(para proveedor: ProviderConfig) -> String? {
