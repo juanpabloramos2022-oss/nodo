@@ -50,6 +50,9 @@ struct ChatView: View {
         // Al entrar en una conversacion las pestanas se ocultan; la cabecera
         // nativa queda clavada y el gesto de borde sigue disponible.
         .toolbar(.hidden, for: .tabBar)
+        // La barra Listo no se hereda de la raiz de la pila: cada pantalla
+        // activa declara la suya. Aqui cubre la caja de texto del chat.
+        .conBarraTecladoListo()
         // Volver (boton o gesto) cierra el teclado en la transicion.
         .onDisappear { bajarTeclado() }
         .sheet(isPresented: $mostrarEstadoChat) {

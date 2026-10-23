@@ -17,8 +17,10 @@ func bajarTeclado() {
 
 /// Barra pegada sobre el teclado con el boton "Listo" (ley n. 4).
 ///
-/// Se declara una sola vez en la raiz de cada jerarquia de navegacion. Si se
-/// repite en una vista hija, UIKit acaba pintando barras accesorias duplicadas.
+/// Se declara una vez por contexto de navegacion ACTIVO: la raiz para sus
+/// propios campos y cada pantalla empujada que tenga campos suyos (por
+/// ejemplo, `ChatView` con su caja de texto). Las barras no se fusionan entre
+/// niveles de la pila: la de la raiz no aparece en la pantalla empujada.
 struct BarraTecladoListo: ViewModifier {
     func body(content: Content) -> some View {
         content.toolbar {
@@ -39,8 +41,9 @@ struct BarraTecladoListo: ViewModifier {
 extension View {
     /// Anade la barra de teclado con "Listo" a la vista que la aplica.
     ///
-    /// El sitio correcto es la raiz de cada `NavigationStack` (la vista que
-    /// contiene el stack), no cada pantalla hija.
+    /// Se aplica sobre la raiz de cada contexto de navegacion activo: la raiz
+    /// del `NavigationStack` para sus campos y tambien cada pantalla empujada
+    /// que tenga campos propios. La barra de la raiz no se hereda.
     func conBarraTecladoListo() -> some View {
         modifier(BarraTecladoListo())
     }

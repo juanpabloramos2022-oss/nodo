@@ -194,7 +194,21 @@ final class CapturasTests: XCTestCase {
         lanzar(estado: "chat")
         abrirConversacion("Chat de ejemplo")
 
-        app.buttons["menu-chat"].tap()
+        let botonMenu = app.buttons["menu-chat"]
+        XCTAssertTrue(
+            botonMenu.waitForExistence(timeout: 30),
+            "Falta el menu de acciones"
+        )
+        // Toque por coordenadas: el scroll-to-visible por AX de XCUITest falla
+        // con este boton de toolbar cuando hay un ScrollView debajo.
+        let marcoMenu = botonMenu.frame
+        if !marcoMenu.isEmpty {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+                .withOffset(CGVector(dx: marcoMenu.midX, dy: marcoMenu.midY))
+                .tap()
+        } else {
+            botonMenu.tap()
+        }
         let opcion = elementoDeMenu("Estado del chat")
         XCTAssertTrue(
             opcion.waitForExistence(timeout: 30),
