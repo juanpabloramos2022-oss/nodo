@@ -84,6 +84,50 @@ class TrazaValidaTest(unittest.TestCase):
             ruta = escribir(Path(tmp), "ui_transcript_B1.2.txt", lineas)
             self.assertEqual(verificador.verificar_traza(ruta, "B1.2"), [])
 
+    def test_b21_cierra_con_tres_lineas_de_memoria(self) -> None:
+        # B2.1 archiva 3 turnos: actualizacion, guardado (el segundo guardado
+        # del turno lo rechaza el ejecutor) y borrado. Una linea por turno.
+        lineas = [
+            '[t=0.0s] UserBubble("Corrige mi fruta favorita de prueba")',
+            '[t=0.1s] MemoryLineNotice(text: "Memoria actualizada: '
+            'mi fruta favorita de prueba es el mango", hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Corregido.")',
+            '  [t=0.2s] TextSegment("Corregido.")',
+            '[t=0.3s] UserBubble("Recuerda dos cosas")',
+            '[t=0.4s] MemoryLineNotice(text: "Guardado en memoria: '
+            'mi color favorito de prueba es el verde", hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Listo.")',
+            '  [t=0.5s] TextSegment("Listo.")',
+            '[t=0.6s] UserBubble("Olvida mi fruta favorita de prueba")',
+            '[t=0.7s] MemoryLineNotice(text: "Memoria: entrada borrada · '
+            'mi fruta favorita de prueba es el mango", hasUndo: true)',
+            '[t=0.8s] AssistantBubble("Olvidado.")',
+            '  [t=0.8s] TextSegment("Olvidado.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.1.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B2.1"), [])
+
+    def test_b21_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
+        # El tope 1/turno deja 3 lineas en el guion de 3 turnos: dos es una
+        # traza que perdio el rechazo del segundo guardado o un turno entero.
+        lineas = [
+            '[t=0.0s] UserBubble("Corrige mi fruta favorita de prueba")',
+            '[t=0.1s] MemoryLineNotice(text: "Memoria actualizada: mango", '
+            'hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Corregido.")',
+            '  [t=0.2s] TextSegment("Corregido.")',
+            '[t=0.3s] UserBubble("Recuerda dos cosas")',
+            '[t=0.4s] MemoryLineNotice(text: "Guardado en memoria: verde", '
+            'hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Listo.")',
+            '  [t=0.5s] TextSegment("Listo.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.1.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.1")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '

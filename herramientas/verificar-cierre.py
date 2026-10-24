@@ -54,6 +54,10 @@ HUMOS_EXIGIDOS = [
     "mem-humo-1.json",
     "mem-humo-2.json",
     "mem-humo-3.json",
+    # B2.1: esquema tipado de memoria, tres turnos del humo vivo.
+    "b21-turno1.json",
+    "b21-turno2.json",
+    "b21-turno3.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -101,6 +105,9 @@ GUARDADOS_ESPERADOS = {
     # dejan una linea cada uno; la consulta del turno 2 no deja ninguna.
     "B1.2": 2,
     "B1.3": 1,
+    # B2.1 archiva 3 turnos: actualizacion, guardado (el segundo guardado del
+    # turno se rechaza) y borrado. Cada turno con operacion deja una linea.
+    "B2.1": 3,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).
