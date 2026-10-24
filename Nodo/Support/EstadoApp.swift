@@ -3589,7 +3589,7 @@ final class EstadoApp: ObservableObject {
         switch tipo {
         case .regeneracion:
             regenerar()
-        case .envio, .none:
+        case .envio:
             reintentarEnvio()
         }
     }
