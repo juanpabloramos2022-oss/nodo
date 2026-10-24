@@ -26,6 +26,10 @@ public final class EjecutorMemoriaDelTurno {
     /// por `update_memory` sobre una de ellas se rechaza: reescribirla sin
     /// hoja seria persistir contenido sensible sin [Aprobar].
     private let sensiblesDelTurno: Set<UUID>
+    /// B2.5: el turno arranca con el tope lleno o no. Se fija con el mismo
+    /// snapshot que los ids, de modo que la decisión se toma contra la lista
+    /// inyectada en ese turno.
+    private let enTope: Bool
     private var invocaciones = 0
     private let aplicar: @MainActor (OperacionMemoriaTipada) async -> ResultadoAccionMemoria
 
@@ -40,6 +44,7 @@ public final class EjecutorMemoriaDelTurno {
         self.sensiblesDelTurno = Set(
             entradas.filter { $0.categoriaSensible != nil }.map(\.id)
         )
+        self.enTope = entradas.count >= Memoria.topeEntradas
         self.aplicar = aplicar
     }
 
@@ -67,7 +72,11 @@ public final class EjecutorMemoriaDelTurno {
 
         switch operacion {
         case .guardar:
-            break
+            // B2.5: con el tope lleno no se crea nada. La actualización y el
+            // borrado siguen su camino normal (no hacen crecer N).
+            if enTope {
+                return "Error: \(Memoria.rechazoEnTope)"
+            }
 
         case .actualizar(let id, _, let categoria, _):
             guard idsDelTurno.contains(id) else {

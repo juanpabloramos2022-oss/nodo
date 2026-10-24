@@ -24,6 +24,19 @@ public enum CategoriaMemoria: String, Codable, Equatable, CaseIterable, Hashable
     public static let paraActualizar: [CategoriaMemoria] = [
         .correction, .durableFact, .preference, .commitment
     ]
+
+    /// Rotulo humano de la categoria (B2.5).
+    ///
+    /// La revisión de compactación de Mi Contexto agrupa por categoría y pinta
+    /// esto, nunca el `rawValue`: el texto visible es lenguaje llano.
+    public var etiquetaVisible: String {
+        switch self {
+        case .durableFact: return "Datos duraderos"
+        case .preference: return "Preferencias"
+        case .commitment: return "Compromisos"
+        case .correction: return "Correcciones"
+        }
+    }
 }
 
 /// Categoria de una escritura sensible propuesta (B2.4).
@@ -265,6 +278,30 @@ public enum Memoria {
     /// `delete_memory`: borra una entrada existente por su `entry_id`.
     public static let nombreBorrar = "delete_memory"
 
+    // MARK: - Cláusula de crecimiento (B2.5)
+
+    /// Tope máximo de entradas activas que viajan en un payload.
+    ///
+    /// B2.5: el tope rige la INYECCIÓN y la CREACIÓN, nunca borra. Con más de
+    /// 50 almacenadas (por ejemplo, un respaldo heredado) se inyectan las
+    /// primeras 50 en el orden vigente de la lista, sin reordenar ni tocar el
+    /// almacenamiento. Con 50 almacenadas se rechazan las altas y las
+    /// correcciones sobre entradas existentes siguen permitidas.
+    public static let topeEntradas = 50
+
+    /// Número de entradas a partir del cual Mi Contexto muestra la banda de
+    /// aviso (80 % del tope). El contador es visible siempre; la banda solo
+    /// desde aquí.
+    public static let umbralAvisoEntradas = 40
+
+    /// Texto del resultado interno cuando una creación choca con el tope.
+    ///
+    /// Viaja al modelo y nunca se pinta en el hilo: existe para que no afirme
+    /// un guardado que el ejecutor rechazó (R35). El aviso accionable vive en
+    /// Mi Contexto, no en la conversación.
+    public static let rechazoEnTope =
+        "memoria en tope: ya hay 50 entradas; no se crea ninguna nueva hasta que el dueno borre alguna."
+
     /// Texto del resultado interno cuando el dueno deniega una escritura.
     ///
     /// Es EXACTAMENTE el que devuelve el bucle del Modo Tarea cuando el dueno
@@ -452,6 +489,13 @@ public enum Memoria {
     ) -> ResultadoAccionMemoria {
         switch operacion {
         case .guardar(let contenido, let categoria, _):
+            // B2.5: puerta de tope en la CREACIÓN. Es la segunda barrera,
+            // además del ejecutor: la vía de Tarea también entra por aquí, así
+            // que una acción aprobada en Tarea con el tope lleno no crea nada.
+            // Actualizar y borrar no pasan por esta guarda.
+            guard entradas.count < topeEntradas else {
+                return .rechazada(rechazoEnTope)
+            }
             let entrada = EntradaMemoria(
                 id: id,
                 texto: contenido,
@@ -518,6 +562,12 @@ public enum Memoria {
         fecha: Date = Date(),
         id: UUID = UUID()
     ) -> ResultadoAccionMemoria {
+        // B2.5: [Aprobar] no puede saltarse el tope. La hoja avisa antes y, si
+        // el dueno aprueba igual, el ejecutor devuelve «memoria en tope» y no
+        // escribe: ninguna vía crea por encima de 50.
+        guard entradas.count < topeEntradas else {
+            return .rechazada(rechazoEnTope)
+        }
         let entrada = EntradaMemoria(
             id: id,
             texto: contenido,
@@ -811,11 +861,17 @@ public enum Memoria {
         lineas.append(candadoDeBorrado)
         lineas.append("")
 
-        if entradas.isEmpty {
+        // B2.5: el tope se aplica SOLO a la inyección. Se toman las primeras
+        // 50 en el orden vigente de la lista (el que el dueno ve en Mi
+        // Contexto) y no se reordena ni se toca el almacenamiento: si hay más
+        // de 50 guardadas, las demás siguen existiendo y editables.
+        let inyectadas = Array(entradas.prefix(topeEntradas))
+
+        if inyectadas.isEmpty {
             lineas.append("Entradas actuales: ninguna.")
         } else {
             lineas.append("Entradas actuales:")
-            for entrada in entradas {
+            for entrada in inyectadas {
                 var linea = "- id: \(entrada.id.uuidString) · categoria: "
                     + "\(entrada.categoria.rawValue)"
                 if let sensible = entrada.categoriaSensible {
