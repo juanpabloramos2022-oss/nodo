@@ -25,6 +25,12 @@ struct ConexionesView: View {
     /// credencial se retira para no dejar una clave huerfana en el llavero.
     @State private var borradorDuplicado: ProviderConfig?
     @State private var mostrandoImportador = false
+    /// Respaldo validado que espera la confirmacion del reemplazo total.
+    ///
+    /// BACK.2: nada se toca hasta que el dueno ve el resumen de conteos y
+    /// confirma que quiere sustituir TODO su estado, no mezclarlo.
+    @State private var respaldoPendiente: RespaldoConfiguracion?
+    @State private var mostrandoConfirmacionRespaldo = false
 
     var body: some View {
         NavigationStack {
@@ -63,6 +69,22 @@ struct ConexionesView: View {
                 Button("Vale") { aviso = nil }
             } message: {
                 Text(aviso ?? "")
+            }
+            // La confirmacion del reemplazo total es aparte del aviso comun:
+            // enseña los conteos y solo entonces ofrece sustituir el estado.
+            .confirmationDialog(
+                "¿Reemplazar todo el contenido?",
+                isPresented: $mostrandoConfirmacionRespaldo,
+                titleVisibility: .visible
+            ) {
+                Button("Reemplazar todo", role: .destructive) {
+                    aplicarRespaldoPendiente()
+                }
+                Button("Cancelar", role: .cancel) {
+                    respaldoPendiente = nil
+                }
+            } message: {
+                Text(mensajeConfirmacionRespaldo)
             }
         }
     }
@@ -332,14 +354,11 @@ struct ConexionesView: View {
         )
     }
 
-    /// JSON construido con la configuracion viva y la tabla de ventanas que
-    /// comparte con la Hoja Estado del chat (`nodo.ventanas.v1`).
+    /// JSON del respaldo TOTAL: configuracion, ventanas, conversaciones y
+    /// tareas. Lo arma `EstadoApp` para que la exportacion use exactamente la
+    /// misma fuente que la importacion.
     private var datosDeRespaldo: Data? {
-        let respaldo = RespaldoConfiguracion.hacerRespaldo(
-            config: estado.config,
-            ventanas: estado.ventanasPorModelo
-        )
-        return try? respaldo.json()
+        estado.exportarRespaldo()
     }
 
     @ViewBuilder
@@ -384,7 +403,11 @@ struct ConexionesView: View {
         .accessibilityIdentifier("importar-respaldo")
     }
 
-    /// Lee un respaldo y lo aplica. Un archivo invalido no toca nada.
+    /// Lee un respaldo, lo valida y pide confirmacion del reemplazo total.
+    ///
+    /// Un archivo invalido no toca nada: la validacion corre antes de que se
+    /// modifique el estado. Un respaldo viejo sin manifiesto se aplica por la
+    /// via de configuracion de siempre, para no reemplazar lo que no traia.
     private func importar(_ resultado: Result<URL, Error>) {
         switch resultado {
         case .failure(let error):
@@ -411,21 +434,54 @@ struct ConexionesView: View {
                 return
             }
 
-            // Dos registros con el mismo id romperian las listas de SwiftUI.
-            // Un respaldo asi no es valido y se rechaza antes de tocar nada.
-            let idsProveedores = Set(respaldo.proveedores.map(\.id))
-            let idsSkills = Set(respaldo.skills.map(\.id))
-            guard idsProveedores.count == respaldo.proveedores.count,
-                  idsSkills.count == respaldo.skills.count
-            else {
+            // La validacion (manifiesto, ids y slugs) vive en el nucleo y no
+            // toca el estado: un archivo manipulado se rechaza aqui.
+            do {
+                try respaldo.validar()
+            } catch {
                 confirmacion = nil
-                aviso = Self.avisoRespaldoInvalido
+                aviso = (error as? LocalizedError)?.errorDescription
+                    ?? Self.avisoRespaldoInvalido
                 return
             }
 
-            estado.importarRespaldo(respaldo)
+            guard respaldo.manifiesto != nil else {
+                // Respaldo de la version 1: solo trae la configuracion.
+                estado.importarRespaldo(respaldo)
+                aviso = nil
+                confirmacion = "Configuración importada"
+                return
+            }
+
+            // BACK.2: se espera a que el dueno vea el resumen y confirme.
+            respaldoPendiente = respaldo
+            confirmacion = nil
+            mostrandoConfirmacionRespaldo = true
+        }
+    }
+
+    /// Texto con los conteos por seccion del respaldo pendiente.
+    private var mensajeConfirmacionRespaldo: String {
+        guard let manifiesto = respaldoPendiente?.manifiesto else {
+            return "Se sustituirá todo el contenido actual."
+        }
+        let lineas = manifiesto.secciones.map { "\($0.id): \($0.valor)" }
+        return "Se sustituirá TODO el contenido actual por:\n\n"
+            + lineas.joined(separator: "\n")
+    }
+
+    /// Aplica el respaldo ya confirmado con reemplazo total y verificacion.
+    private func aplicarRespaldoPendiente() {
+        guard let respaldo = respaldoPendiente else { return }
+        respaldoPendiente = nil
+        do {
+            _ = try estado.importarRespaldoTotal(respaldo)
             aviso = nil
-            confirmacion = "Configuración importada"
+            confirmacion = "Respaldo restaurado"
+        } catch {
+            confirmacion = nil
+            aviso = (error as? LocalizedError)?.errorDescription
+                ?? Self.avisoRespaldoInvalido
         }
     }
 }
@@ -433,7 +489,10 @@ struct ConexionesView: View {
 // MARK: - Agrupacion visual por URL base
 
 /// Un grupo visual de registros que comparten dominio/URL base.
-private struct GrupoProveedores: Identifiable {
+///
+/// No es privado a proposito: la prueba de agrupacion (H6.5) necesita comprobar
+/// que dos proveedores de la misma URL base forman UN solo grupo.
+struct GrupoProveedores: Identifiable {
     let id: String
     let dominio: String
     let nombre: String
@@ -444,7 +503,7 @@ private struct GrupoProveedores: Identifiable {
 ///
 /// No tocan `ProviderConfig`: solo deciden como se reparten los registros que
 /// ya existen y como se pinta cada nombre y cada precio (§2.5/§3.6).
-private enum AgrupacionConexiones {
+enum AgrupacionConexiones {
     /// Agrupa por host y conserva el orden de aparicion de la configuracion.
     static func agrupar(_ proveedores: [ProviderConfig]) -> [GrupoProveedores] {
         var orden: [String] = []

@@ -47,6 +47,25 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
     /// visual de la burbuja; las instrucciones en si solo viajan en el payload
     /// de ese turno y no se guardan en el historial.
     public var skillsAplicadas: [String]
+    /// Proveedor que genero ESTE mensaje.
+    ///
+    /// POR QUE: el costo historico no puede recalcularse con el proveedor
+    /// activo ni siquiera con el ultimo proveedor del chat. Si el usuario
+    /// cambia de modelo a mitad de una conversacion, cada respuesta conserva
+    /// los precios con los que se pago. nil en mensajes viejos o escritos por
+    /// el usuario: esos se valoran con el proveedor registrado del chat.
+    public var proveedorID: UUID?
+    /// Costo en dolares con el que se cerro la generacion de ESTE mensaje.
+    ///
+    /// POR QUE se sella y no se recalcula: los precios de un proveedor cambian
+    /// con el tiempo. Guardar el dolar que se pago al cerrar la generacion deja
+    /// la factura historica inmutable; recalcularla despues con los precios de
+    /// hoy seria inventar un gasto que no ocurrio. nil en los mensajes legados
+    /// (sin sello) o en los que no traen consumo.
+    public var costoSelladoUSD: Double?
+    /// True si el sello se calculo al cargar un mensaje legado con los precios
+    /// actuales de su proveedor (COST.3), no al cerrar su generacion.
+    public var costoEsEstimacion: Bool
 
     public init(
         id: UUID = UUID(),
@@ -57,7 +76,10 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         toolCallId: String? = nil,
         tokensEntrada: Int? = nil,
         tokensSalida: Int? = nil,
-        skillsAplicadas: [String] = []
+        skillsAplicadas: [String] = [],
+        proveedorID: UUID? = nil,
+        costoSelladoUSD: Double? = nil,
+        costoEsEstimacion: Bool = false
     ) {
         self.id = id
         self.rol = rol
@@ -68,6 +90,9 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         self.tokensEntrada = tokensEntrada
         self.tokensSalida = tokensSalida
         self.skillsAplicadas = skillsAplicadas
+        self.proveedorID = proveedorID
+        self.costoSelladoUSD = costoSelladoUSD
+        self.costoEsEstimacion = costoEsEstimacion
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -80,10 +105,15 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         case tokensEntrada
         case tokensSalida
         case skillsAplicadas
+        case proveedorID
+        case costoSelladoUSD
+        case costoEsEstimacion
     }
 
     /// Decodificacion tolerante: los mensajes guardados antes de existir las
-    /// skills no traen `skillsAplicadas` y deben seguir abriendo.
+    /// skills no traen `skillsAplicadas` y deben seguir abriendo. Lo mismo vale
+    /// para el sello de costo: un mensaje viejo se lee sin sello y con
+    /// `costoEsEstimacion` en false.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -95,6 +125,9 @@ public struct ChatMessage: Codable, Identifiable, Equatable {
         tokensEntrada = try contenedor.decodeIfPresent(Int.self, forKey: .tokensEntrada)
         tokensSalida = try contenedor.decodeIfPresent(Int.self, forKey: .tokensSalida)
         skillsAplicadas = try contenedor.decodeIfPresent([String].self, forKey: .skillsAplicadas) ?? []
+        proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
+        costoSelladoUSD = try contenedor.decodeIfPresent(Double.self, forKey: .costoSelladoUSD)
+        costoEsEstimacion = try contenedor.decodeIfPresent(Bool.self, forKey: .costoEsEstimacion) ?? false
     }
 
     /// Consumo del mensaje, si lo tiene. Los mensajes viejos devuelven nil.
@@ -128,15 +161,18 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Si el chat no recibe la Memoria como contexto (§4.6). Se guarda por chat
     /// para que el ajuste sobreviva al cerrar la app.
     public var sinMemoria: Bool
-    /// Si el chat esta en modo Tarea. Por ahora solo es un flag de datos: la
-    /// logica completa de herramientas llega con su tarea de interfaz.
+    /// Bandera heredada del antiguo modo Tarea.
+    ///
+    /// Se conserva en el modelo Codable para no romper conversaciones ya
+    /// guardadas, pero la interfaz y el envio ya no la leen: todo chat normal
+    /// va sin herramientas.
     public var modoTarea: Bool
     /// Proveedor con el que este chat responde ahora mismo.
     ///
-    /// No es el proveedor activo global: cada conversacion conserva el suyo para
-    /// que la fila del historial pueda ensenar SU ultimo modelo y calcular SU
-    /// costo con SUS precios aunque el usuario haya cambiado de modelo despues.
-    /// nil en conversaciones viejas o creadas antes de existir este dato.
+    /// No es el proveedor activo global: cada conversacion conserva el suyo
+    /// para que la fila del historial ensene SU ultimo modelo. El costo de cada
+    /// mensaje se resuelve con el proveedor anotado en el propio mensaje y solo
+    /// cae a este id en los mensajes viejos. nil en conversaciones antiguas.
     public var proveedorID: UUID?
     /// Si el usuario pulso "Seguir igual" en la franja de tope (§3.4): este
     /// chat deja de avisar sin tocar el tope global ni a los demas chats.
@@ -147,6 +183,13 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Consumo de la llamada de resumen de /compact. Solo se usa para el
     /// medidor cuando ningun mensaje del hilo trae su propio uso.
     public var usoTrasCompactar: UsoTokens?
+    /// Mensaje del ultimo turno fallido, guardado CON la conversacion.
+    ///
+    /// POR QUE se persiste y no vive solo en el estado de la app: un fallo de
+    /// red tiene que seguir visible al cerrar y reabrir el chat y al reiniciar
+    /// la app. Ademas deja claro que el mensaje del usuario ya quedo enviado:
+    /// reintentar relanza ese turno sin volver a escribir el mensaje.
+    public var errorDeTurno: String?
 
     public init(
         id: UUID = UUID(),
@@ -162,7 +205,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         topeIgnorado: Bool = false,
         resumenCompactado: String? = nil,
         usoTrasCompactar: UsoTokens? = nil,
-        proveedorID: UUID? = nil
+        proveedorID: UUID? = nil,
+        errorDeTurno: String? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -178,6 +222,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.topeIgnorado = topeIgnorado
         self.resumenCompactado = resumenCompactado
         self.usoTrasCompactar = usoTrasCompactar
+        self.errorDeTurno = errorDeTurno
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -195,6 +240,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case topeIgnorado
         case resumenCompactado
         case usoTrasCompactar
+        case errorDeTurno
     }
 
     /// Decodificacion tolerante con los archivos de v0.1.0.
@@ -220,6 +266,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         topeIgnorado = try contenedor.decodeIfPresent(Bool.self, forKey: .topeIgnorado) ?? false
         resumenCompactado = try contenedor.decodeIfPresent(String.self, forKey: .resumenCompactado)
         usoTrasCompactar = try contenedor.decodeIfPresent(UsoTokens.self, forKey: .usoTrasCompactar)
+        errorDeTurno = try contenedor.decodeIfPresent(String.self, forKey: .errorDeTurno)
     }
 
     /// Titulo derivado del primer mensaje del usuario, recortado a una linea.
@@ -236,6 +283,16 @@ public struct Conversation: Codable, Identifiable, Equatable {
         if limpio.isEmpty { return "Conversacion" }
         if limpio.count <= 48 { return limpio }
         return String(limpio.prefix(48)) + "..."
+    }
+
+    /// Id de la ULTIMA respuesta del asistente del hilo, o nil si no hay.
+    ///
+    /// POR QUE no basta `mensajes.last`: el ultimo mensaje puede ser de
+    /// herramienta o de usuario. Regenerar (D2=B) actua sobre la ultima
+    /// RESPUESTA del asistente, y solo esa ofrece el boton; esta propiedad es
+    /// la regla unica que comparten la vista y el estado.
+    public var idUltimaRespuestaAsistente: UUID? {
+        mensajes.last(where: { $0.rol == .asistente })?.id
     }
 
     /// Descarta lo que haya despues del ultimo mensaje del usuario y devuelve

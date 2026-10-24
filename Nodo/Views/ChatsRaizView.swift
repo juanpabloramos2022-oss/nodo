@@ -38,7 +38,11 @@ struct ChatsRaizView: View {
                             bajarTeclado()
                             seleccion = .conexiones
                         },
-                        alVolverALista: { ruta.removeAll() }
+                        alVolverALista: { ruta.removeAll() },
+                        alVerMemoria: {
+                            bajarTeclado()
+                            seleccion = .contexto
+                        }
                     )
                     // La sincronizacion del estado abierto se hace al aparecer
                     // el destino, que es el punto fiable del empuje.

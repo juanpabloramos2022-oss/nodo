@@ -185,13 +185,23 @@ struct HojaEstadoChatView: View {
                         .foregroundStyle(Tema.textoSuave)
                 }
 
-                if let costo = costoDelConsumo(uso) {
+                if let costo = estado.costoAcumuladoDelChat {
                     HStack {
                         Text("Costo acumulado estimado")
                         Spacer()
                         Text(textoCosto(costo))
                             .monospacedDigit()
                             .foregroundStyle(Tema.textoSuave)
+                    }
+
+                    // COST.3: los mensajes legados se sellaron al cargar con
+                    // los precios actuales de su proveedor. La cifra sigue
+                    // siendo historica, pero conviene decirlo.
+                    if estado.hayCostosEstimados {
+                        Text("Incluye estimaciones de legado: los mensajes viejos se sellaron con los precios actuales de su proveedor.")
+                            .font(.footnote)
+                            .foregroundStyle(Tema.textoSuave)
+                            .accessibilityIdentifier("estado-costos-estimados")
                     }
                 }
             } else {
@@ -203,15 +213,6 @@ struct HojaEstadoChatView: View {
         } footer: {
             Text("Suma histórica de todas las llamadas del chat. No baja al compactar.")
         }
-    }
-
-    /// Costo con los precios del proveedor activo; sin precios no hay dolares.
-    private func costoDelConsumo(_ uso: UsoTokens) -> Double? {
-        CostoEstimado.costo(
-            uso: uso,
-            precioEntrada: proveedor?.precioEntradaPorMillon,
-            precioSalida: proveedor?.precioSalidaPorMillon
-        )
     }
 
     private func textoCosto(_ costo: Double) -> String {

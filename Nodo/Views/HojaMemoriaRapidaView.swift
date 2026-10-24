@@ -2,74 +2,69 @@ import SwiftUI
 
 import NodoCore
 
-/// Edicion rapida de la Memoria sin salir de la conversacion.
+/// Filas que la hoja rapida de Memoria pinta (H6.3).
 ///
-/// POR QUE un borrador local: Cancelar debe descartar sin tocar la
-/// configuracion. Solo Guardar escribe `config.systemPrompt` y cierra la hoja
-/// (leyes n. 2 y n. 3).
+/// POR QUE un modelo aparte de la vista: la ley pide UNA fila por entrada y esa
+/// garantia tiene que poder probarse sin renderizar SwiftUI. El modelo solo
+/// traduce `config.memoria` a la lista que se pinta; no toca la configuracion
+/// ni el chat.
+struct MemoriaRapidaModelo: Equatable {
+    /// Una entrada ya lista para pintar, con su identidad y su texto.
+    struct Fila: Equatable, Identifiable {
+        let id: UUID
+        let texto: String
+    }
+
+    let filas: [Fila]
+
+    init(memoria: [EntradaMemoria]) {
+        filas = memoria.map { Fila(id: $0.id, texto: $0.texto) }
+    }
+
+    var vacia: Bool { filas.isEmpty }
+}
+
+/// Edicion rapida de la Memoria sin salir de la conversacion (H6.3).
+///
+/// La hoja ya no edita la Memoria como un bloque unico: muestra la MISMA lista
+/// de entradas que Mi Contexto (MEM.1/MEM.4), una fila por entrada. El texto se
+/// cambia en el editor de UNA entrada concreta, que tiene su propio Cancelar y
+/// Guardar. Cerrar esta hoja no guarda nada: es una lista de consulta.
 struct HojaMemoriaRapidaView: View {
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss
 
-    @State private var borrador: String
-    @State private var original: String
-    @State private var cargada: Bool
-    /// Titulo de la hoja: "Memoria rapida" desde el chat, "Editar memoria"
-    /// cuando se abre desde Mi Contexto.
-    private let titulo: String
+    /// Hoja anidada que se esta presentando: editar una entrada o crear otra.
+    @State private var hoja: HojaMemoriaRapida?
 
-    /// La presentacion puede pasar el texto actual ya en la mano; si no, la
-    /// hoja lo lee al aparecer para no depender del orden de creacion.
-    init(textoInicial: String? = nil, titulo: String = "Memoria rápida") {
-        let texto = textoInicial ?? ""
-        self.titulo = titulo
-        _borrador = State(initialValue: texto)
-        _original = State(initialValue: texto)
-        _cargada = State(initialValue: textoInicial != nil)
-    }
-
-    private var hayCambios: Bool {
-        borrador != original
-    }
-
-    private var estaVacia: Bool {
-        borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// Misma heuristica ligera que usara Mi Contexto: caracteres / 4, minimo 1.
-    private var tokensEstimados: Int {
-        max(1, borrador.count / 4)
+    private var modelo: MemoriaRapidaModelo {
+        MemoriaRapidaModelo(memoria: estado.config.memoria)
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    ZStack(alignment: .topLeading) {
-                        if estaVacia {
-                            Text("Escribe aquí lo que Nodo debe saber siempre...")
-                                .foregroundStyle(Tema.textoSuave)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
-                                .allowsHitTesting(false)
-                        }
+                    Text("Cada entrada se envía por separado a los chats con Memoria activa. Toca una para editarla.")
+                        .font(.footnote)
+                        .foregroundStyle(Tema.textoSuave)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                        TextEditor(text: $borrador)
-                            .frame(minHeight: 260)
-                            .foregroundStyle(.white)
-                            .scrollContentBackground(.hidden)
-                            .accessibilityIdentifier("memoria-rapida-editor")
-                    }
-
-                    if !estaVacia {
-                        HStack {
-                            Text("Peso estimado")
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Text("~\(tokensEstimados) tokens est.")
-                                .font(.footnote)
-                                .monospacedDigit()
-                                .foregroundStyle(Tema.textoSuave)
+                    if modelo.vacia {
+                        Text("Tu memoria está vacía. Añade una entrada para que Nodo la use.")
+                            .font(.footnote)
+                            .foregroundStyle(Tema.textoSuave)
+                            .accessibilityIdentifier("memoria-rapida-vacia")
+                    } else {
+                        ForEach(modelo.filas) { fila in
+                            Button {
+                                abrir(fila)
+                            } label: {
+                                filaEntrada(fila)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("memoria-rapida-entrada")
+                            .accessibilityLabel("Editar entrada de Memoria: \(fila.texto)")
                         }
                     }
                 } header: {
@@ -77,59 +72,93 @@ struct HojaMemoriaRapidaView: View {
                 } footer: {
                     Text("Se aplica desde el siguiente mensaje que envíes en los chats con Memoria activa.")
                 }
+
+                Section {
+                    Button {
+                        hoja = .nueva
+                    } label: {
+                        Label("Añadir entrada", systemImage: "plus.circle")
+                    }
+                    .accessibilityIdentifier("memoria-rapida-anadir")
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Tema.fondo.ignoresSafeArea())
-            .navigationTitle(titulo)
+            .navigationTitle("Memoria rápida")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // H6.6: salida explicita. Cerrar no escribe nada: la lista solo
+                // consulta y cada edicion se confirma en su propia hoja.
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancelar") {
-                        cancelar()
+                    Button("Cerrar") {
+                        cerrar()
                     }
-                    .accessibilityIdentifier("memoria-rapida-cancelar")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Guardar") {
-                        guardar()
-                    }
-                    .fontWeight(.semibold)
-                    // Ley n. 3: sin cambios no hay nada que guardar.
-                    .disabled(!hayCambios)
-                    .accessibilityIdentifier("memoria-rapida-guardar")
+                    .accessibilityIdentifier("memoria-rapida-cerrar")
                 }
             }
             // Hoja propia: declara la barra Listo una sola vez (contrato §4).
             .conBarraTecladoListo()
             .scrollDismissesKeyboard(.interactively)
-            .onAppear(perform: cargarSiHaceFalta)
+            .sheet(item: $hoja) { hoja in
+                switch hoja {
+                case .entrada(let entrada):
+                    HojaEntradaMemoriaView(entrada: entrada)
+                case .nueva:
+                    HojaEntradaMemoriaView(entrada: nil)
+                }
+            }
         }
-        // Con cambios sin guardar, arrastrar hacia abajo solo esconde el
-        // teclado; la hoja no se cierra perdiendo lo escrito.
-        .interactiveDismissDisabled(hayCambios)
     }
 
-    private func cargarSiHaceFalta() {
-        guard !cargada else { return }
-        borrador = estado.config.systemPrompt
-        original = estado.config.systemPrompt
-        cargada = true
+    /// Fila de una entrada: texto completo (hasta 3 lineas) y acceso al editor.
+    private func filaEntrada(_ fila: MemoriaRapidaModelo.Fila) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(fila.texto)
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
     }
 
-    /// Cancelar descarta el borrador, baja el teclado y cierra la hoja.
-    private func cancelar() {
-        borrador = original
-        cargada = false
+    /// Abre el editor buscando la entrada vigente por id.
+    ///
+    /// No se reusa la copia de la fila como si fuera la entrada: si el texto
+    /// cambio mientras la lista estaba en pantalla, el editor tiene que leer el
+    /// valor actual, no uno viejo.
+    private func abrir(_ fila: MemoriaRapidaModelo.Fila) {
+        guard let entrada = estado.config.memoria.first(where: { $0.id == fila.id }) else {
+            return
+        }
+        hoja = .entrada(entrada)
+    }
+
+    /// Cerrar solo descarta la hoja; nada se guarda al salir (H6.6).
+    private func cerrar() {
         bajarTeclado()
         dismiss()
     }
+}
 
-    /// Guardar escribe la Memoria real y da el cierre normal de hoja.
-    private func guardar() {
-        estado.config.systemPrompt = borrador
-        original = borrador
-        cargada = false
-        bajarTeclado()
-        dismiss()
+/// Hoja que puede abrir la Memoria rapida: el editor de una entrada concreta o
+/// el de una entrada nueva.
+private enum HojaMemoriaRapida: Identifiable {
+    case entrada(EntradaMemoria)
+    case nueva
+
+    var id: String {
+        switch self {
+        case .entrada(let entrada):
+            return "entrada-\(entrada.id.uuidString)"
+        case .nueva:
+            return "nueva"
+        }
     }
 }

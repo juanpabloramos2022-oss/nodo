@@ -15,9 +15,10 @@ struct ChatView: View {
     let alGestionarModelos: () -> Void
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void
+    /// Lleva a Mi Contexto para revisar la Memoria (accion [Ver] de la tarjeta
+    /// de evento de MEM.3).
+    let alVerMemoria: () -> Void
 
-    @State private var dictando = false
-    @State private var textoAntesDeDictar = ""
     @State private var textoParaCompartir: String?
     @FocusState private var escribiendo: Bool
     @State private var mostrarEstadoChat = false
@@ -36,7 +37,6 @@ struct ChatView: View {
             franjaTope
             tiraFina
             filaCompactando
-            filaHerramientaEnCurso
             franjaAvisoComando
             selectorSugerencias
             barraDeEntrada
@@ -60,7 +60,7 @@ struct ChatView: View {
         .conBarraTecladoListo()
         // Volver (boton o gesto) cierra el teclado y corta el dictado.
         .onDisappear {
-            detenerDictado()
+            estado.detenerDictado()
             bajarTeclado()
         }
         .onChange(of: estado.textoParaCompartirSolicitado) { _, nuevo in
@@ -86,12 +86,6 @@ struct ChatView: View {
             }
         )) {
             HojaCompartir(texto: textoParaCompartir ?? "")
-        }
-        .sheet(item: $estado.aprobacionPendiente) { aprobacion in
-            HojaAprobacionView(aprobacion: aprobacion) { aprobada in
-                estado.resolverAprobacion(aprobada)
-            }
-            .interactiveDismissDisabled(true)
         }
         .confirmationDialog(
             "Borrar esta conversacion?",
@@ -193,7 +187,7 @@ struct ChatView: View {
 
     private var memoriaActiva: Bool {
         !estado.conversacion.sinMemoria
-            && !estado.config.systemPrompt
+            && !estado.textoMemoria
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
     }
@@ -415,19 +409,25 @@ struct ChatView: View {
     private func filaDeHilo(_ fila: FilaHilo) -> some View {
         switch fila {
         case .mensaje(let mensaje):
-            if estado.conversacion.modoTarea {
-                filaDeMensajeEnTarea(mensaje)
-            } else {
-                filaDeMensajeNormal(mensaje)
-            }
+            filaDeMensajeNormal(mensaje)
 
         case .evento(let evento):
-            Text(evento.texto)
-                .font(.caption2)
-                .foregroundStyle(Tema.textoSuave)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 2)
-                .accessibilityLabel(evento.texto)
+            if evento.cambioMemoria != nil {
+                TarjetaMemoria(
+                    evento: evento,
+                    alVer: alVerMemoria,
+                    alDeshacer: {
+                        _ = estado.deshacerCambioDeMemoria(id: evento.id)
+                    }
+                )
+            } else {
+                Text(evento.texto)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 2)
+                    .accessibilityLabel(evento.texto)
+            }
         }
     }
 
@@ -448,76 +448,6 @@ struct ChatView: View {
             return nil
         }
         return { estado.ramificar(desde: mensaje) }
-    }
-
-    /// En modo Tarea los mensajes internos se leen como pasos plegables.
-    ///
-    /// La fila del paso la pone el mensaje del asistente que pidio la llamada;
-    /// el mensaje de herramienta solo aporta el resultado y se pliega dentro de
-    /// esa misma fila, sin pintar una burbuja duplicada. Un mensaje de
-    /// herramienta huerfano (sin llamada que lo explique) se pinta igual como
-    /// paso para no perder su texto.
-    @ViewBuilder
-    private func filaDeMensajeEnTarea(_ mensaje: ChatMessage) -> some View {
-        if mensaje.rol == .herramienta {
-            if !esHerramientaYaRepresentada(mensaje) {
-                PasoHerramienta(
-                    nombre: nombreDeHerramienta(para: mensaje.toolCallId) ?? "herramienta",
-                    resultado: mensaje.texto
-                )
-            }
-        } else if mensaje.rol == .asistente, !mensaje.toolCalls.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                if !mensaje.texto.isEmpty {
-                    // El texto del asistente se pinta sin repetir las llamadas:
-                    // los nombres ya salen en las filas de paso de abajo.
-                    BurbujaMensaje(
-                        mensaje: mensajeSinLlamadas(mensaje),
-                        pie: pieDe(mensaje),
-                        alRamificar: accionRamificar(mensaje)
-                    )
-                }
-
-                ForEach(mensaje.toolCalls, id: \.id) { llamada in
-                    PasoHerramienta(
-                        nombre: llamada.nombre,
-                        resultado: resultadoDeHerramienta(para: llamada.id)
-                    )
-                }
-            }
-        } else {
-            filaDeMensajeNormal(mensaje)
-        }
-    }
-
-    /// Copia del mensaje sin las llamadas, para no pintarlas dos veces.
-    private func mensajeSinLlamadas(_ mensaje: ChatMessage) -> ChatMessage {
-        var copia = mensaje
-        copia.toolCalls = []
-        return copia
-    }
-
-    private func esHerramientaYaRepresentada(_ mensaje: ChatMessage) -> Bool {
-        guard let id = mensaje.toolCallId else { return false }
-        return estado.conversacion.mensajes.contains { otro in
-            otro.rol == .asistente && otro.toolCalls.contains { $0.id == id }
-        }
-    }
-
-    private func resultadoDeHerramienta(para id: String) -> String {
-        estado.conversacion.mensajes.first {
-            $0.rol == .herramienta && $0.toolCallId == id
-        }?.texto ?? ""
-    }
-
-    private func nombreDeHerramienta(para id: String?) -> String? {
-        guard let id else { return nil }
-        for mensaje in estado.conversacion.mensajes {
-            if let llamada = mensaje.toolCalls.first(where: { $0.id == id }) {
-                return llamada.nombre
-            }
-        }
-        return nil
     }
 
     private static let marcaEnCurso = "nodo-en-curso"
@@ -549,9 +479,11 @@ struct ChatView: View {
 
         return PieRespuesta(
             uso: uso,
-            costo: costoDe(uso),
+            costo: costoDe(mensaje),
             textoParaCopiar: mensaje.texto,
-            puedeRegenerar: esUltimaRespuesta(mensaje) && !estado.enviando,
+            // D2=B: la regla de "solo la ultima respuesta" vive en EstadoApp,
+            // para poder probarla sin SwiftUI.
+            puedeRegenerar: estado.puedeRegenerar(mensaje),
             otrosProveedores: otrosProveedores,
             nombreDeProveedor: { nombreDeModelo($0) },
             alRegenerar: { estado.regenerar() },
@@ -559,24 +491,14 @@ struct ChatView: View {
         )
     }
 
-    /// Regenerar actua siempre sobre la ultima respuesta del hilo; por eso el
-    /// pie de las respuestas anteriores no ofrece el boton.
-    private func esUltimaRespuesta(_ mensaje: ChatMessage) -> Bool {
-        estado.conversacion.mensajes.last?.id == mensaje.id
-    }
-
     /// Los demas modelos configurados, para "Regenerar con…" y "Cambiar modelo".
     private var otrosProveedores: [ProviderConfig] {
         estado.config.proveedores.filter { !esActivo($0) }
     }
 
-    private func costoDe(_ uso: UsoTokens) -> Double? {
-        let proveedor = estado.config.proveedorSeleccionado
-        return CostoEstimado.costo(
-            uso: uso,
-            precioEntrada: proveedor?.precioEntradaPorMillon,
-            precioSalida: proveedor?.precioSalidaPorMillon
-        )
+    /// Costo con el proveedor que genero ESTE mensaje, no con el activo.
+    private func costoDe(_ mensaje: ChatMessage) -> Double? {
+        estado.costo(de: mensaje)
     }
 
     // MARK: - Tira fina y caja de texto
@@ -657,25 +579,12 @@ struct ChatView: View {
         return Array(escalera.filter { $0 > actual + 0.000_000_1 }.prefix(4))
     }
 
-    /// Fila fina sobre la caja: modo Chat | Tarea y acceso rapido a la Memoria.
+    /// Fila fina sobre la caja: solo el acceso rapido a la Memoria.
+    ///
+    /// El conmutador Chat | Tarea se demolió: todos los chats son normales y
+    /// no ofrecen herramientas, asi que no queda ningun modo que elegir.
     private var tiraFina: some View {
         HStack(spacing: 10) {
-            Picker(
-                "Modo",
-                selection: Binding(
-                    get: { estado.conversacion.modoTarea },
-                    set: { estado.cambiarModoTarea($0) }
-                )
-            ) {
-                Text("Chat").tag(false)
-                Text("Tarea").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .frame(maxWidth: 160)
-            .accessibilityLabel("Modo del chat")
-            .accessibilityIdentifier("modo-chat")
-
             Spacer(minLength: 0)
 
             Button {
@@ -706,25 +615,6 @@ struct ChatView: View {
         }
         .padding(.horizontal, Tema.margen)
         .padding(.top, 6)
-    }
-
-    /// Fila fina sobre la caja mientras una herramienta se esta ejecutando.
-    @ViewBuilder
-    private var filaHerramientaEnCurso: some View {
-        if estado.conversacion.modoTarea,
-           let nombre = estado.herramientaEnCurso {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Ejecutando \(nombre)…")
-                    .font(.caption)
-                    .foregroundStyle(Tema.textoSuave)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Tema.margen)
-            .padding(.top, 6)
-            .accessibilityIdentifier("paso-en-curso")
-        }
     }
 
     /// Mientras /compact pide el resumen, la caja queda bloqueada y se dice.
@@ -865,7 +755,11 @@ struct ChatView: View {
         case .comando(let comando):
             return "/\(comando.rawValue) — \(descripcionDe(comando))"
         case .skill(let skill):
-            return "⚡ /\(skill.slug) — \(skill.nombre)"
+            // La descripcion de selector manda cuando la skill la trae (las del
+            // pack); una skill propia sin descripcion sigue mostrando su nombre.
+            let escrita = (skill.descripcion ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "⚡ /\(skill.slug) — \(escrita.isEmpty ? skill.nombre : escrita)"
         }
     }
 
@@ -881,6 +775,10 @@ struct ChatView: View {
             return "Crea una conversación nueva."
         case .exportar:
             return "Comparte esta conversación como texto."
+        case .plan:
+            return "Propone un plan por pasos sin ejecutar nada."
+        case .boost:
+            return "Tubería multi-agente de 3 fases dentro de una Tarea."
         }
     }
 
@@ -914,7 +812,9 @@ struct ChatView: View {
     }
 
     private var placeholderCaja: String {
-        estado.compactando ? "Compactando…" : "Escribe un mensaje"
+        if estado.compactando { return "Compactando…" }
+        if estado.generandoPlanChat { return "Generando plan…" }
+        return "Escribe un mensaje"
     }
 
     private var barraDeEntrada: some View {
@@ -926,7 +826,7 @@ struct ChatView: View {
             )
             .lineLimit(1...5)
             .focused($escribiendo)
-            .disabled(estado.compactando)
+            .disabled(estado.compactando || estado.generandoPlanChat)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(Tema.superficie)
@@ -935,16 +835,18 @@ struct ChatView: View {
             .accessibilityIdentifier("caja-mensaje")
 
             // Micrófono a la izquierda del botón Enviar. Rojo mientras dicta.
-            Button(action: alternarDictado) {
+            Button {
+                Task { await estado.alternarDictado() }
+            } label: {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 38, height: 38)
-                    .background(dictando ? Color.red : Tema.superficieAlta)
+                    .background(estado.dictando ? Color.red : Tema.superficieAlta)
                     .clipShape(Circle())
             }
-            .disabled(estado.compactando || estado.enviando)
-            .accessibilityLabel(dictando ? "Detener dictado" : "Dictar")
+            .disabled(estado.compactando || estado.enviando || estado.generandoPlanChat)
+            .accessibilityLabel(estado.dictando ? "Detener dictado" : "Dictar")
             .accessibilityIdentifier("boton-dictado")
 
             Button(action: accion) {
@@ -966,7 +868,7 @@ struct ChatView: View {
     }
 
     private var botonActivo: Bool {
-        guard !estado.compactando else { return false }
+        guard !estado.compactando, !estado.generandoPlanChat else { return false }
         return estado.enviando
             || !estado.borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -979,60 +881,16 @@ struct ChatView: View {
 
         // Tocar Enviar tambien termina el dictado: el texto parcial ya esta en
         // la caja y se envia tal cual.
-        if dictando {
-            detenerDictado()
+        if estado.dictando {
+            estado.detenerDictado()
         }
         estado.enviarTextoActual()
     }
 
     // MARK: - Dictado
 
-    private func alternarDictado() {
-        if dictando {
-            detenerDictado()
-            return
-        }
-
-        Task { @MainActor in
-            let permitido = await estado.dictado.solicitarPermisos()
-            guard permitido else {
-                estado.avisoComando =
-                    "El dictado necesita permiso de micrófono y reconocimiento de voz."
-                return
-            }
-
-            // Se conserva lo que ya habia en la caja y solo se reemplaza la
-            // parte dictada en esta sesion.
-            textoAntesDeDictar = estado.borrador
-            do {
-                try estado.dictado.empezar { parcial in
-                    Task { @MainActor in
-                        aplicarDictado(parcial)
-                    }
-                }
-                dictando = true
-            } catch {
-                dictando = false
-                estado.avisoComando = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-            }
-        }
-    }
-
-    private func aplicarDictado(_ parcial: String) {
-        let prefijo = textoAntesDeDictar
-        let separador = prefijo.isEmpty
-            || prefijo.hasSuffix(" ")
-            || prefijo.hasSuffix("\n") ? "" : " "
-        estado.borrador = prefijo + separador + parcial
-        estado.avisoComando = nil
-    }
-
-    private func detenerDictado() {
-        guard dictando else { return }
-        estado.dictado.detener()
-        dictando = false
-    }
+    // El estado del dictado (grabando, parciales y fallos) vive en EstadoApp
+    // para poder probarlo sin SwiftUI ni hardware.
 }
 
 /// Burbuja de error en linea al final del hilo (§3.7).
@@ -1112,126 +970,74 @@ private struct BurbujaErrorTurno: View {
     }
 }
 
-/// Paso plegable de una herramienta dentro de una conversacion en modo Tarea.
+/// Tarjeta de evento de Memoria (MEM.3).
 ///
-/// La fila siempre se ve; el resultado solo aparece al tocarla. Asi el hilo no
-/// se llena de texto tecnico, pero nada queda escondido sin salida.
-private struct PasoHerramienta: View {
-    let nombre: String
-    let resultado: String
-
-    @State private var desplegado = false
+/// No es un mensaje: vive en `eventosVisuales` y nunca viaja en el payload.
+/// [Ver] lleva a Mi Contexto para revisar la lista y [Deshacer] revierte
+/// EXACTAMENTE el cambio que esta tarjeta representa. Una vez deshecha, la
+/// tarjeta queda como constancia y ya no ofrece deshacer otra vez.
+private struct TarjetaMemoria: View {
+    let evento: EventoVisual
+    let alVer: () -> Void
+    let alDeshacer: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    desplegado.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "wrench.and.screwdriver")
-                        .font(.caption2)
-                    Text("Paso · \(nombre)")
-                        .font(.caption.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: desplegado ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                }
-                .foregroundStyle(Tema.acento)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Tema.superficie)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Paso \(nombre)")
-            .accessibilityHint(
-                desplegado ? "Toca para plegar el resultado" : "Toca para ver el resultado"
-            )
-            .accessibilityIdentifier("paso-herramienta")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.caption2)
+                    .foregroundStyle(Tema.acento)
 
-            if desplegado {
-                Text(resultado.isEmpty ? "Sin resultado." : resultado)
+                Text(evento.texto)
                     .font(.caption)
-                    .foregroundStyle(Tema.textoSuave)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Tema.superficie.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-        }
-    }
-}
-
-/// Hoja de aprobacion de una herramienta con consecuencias.
-///
-/// Solo tiene dos salidas, Aprobar y Rechazar, y no se cierra por arrastre ni
-/// por accidente: la decision es obligatoria (CONTRATO §2.2).
-private struct HojaAprobacionView: View {
-    let aprobacion: AprobacionPendiente
-    let decidir: (Bool) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "hand.raised.fill")
-                    .foregroundStyle(.orange)
-                Text("Aprobar herramienta")
-                    .font(.headline)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(aprobacion.nombreHerramienta)
-                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                Text(
-                    aprobacion.resumenArgumentos.isEmpty
-                        ? "Sin argumentos."
-                        : aprobacion.resumenArgumentos
-                )
-                .font(.footnote.monospaced())
-                .foregroundStyle(Tema.textoSuave)
-                .lineLimit(6)
-                .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Tema.superficie)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            Text("Esta herramienta puede tener consecuencias. Nada se ejecuta hasta que decidas.")
-                .font(.footnote)
-                .foregroundStyle(Tema.textoSuave)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 12) {
-                Button(role: .destructive) {
-                    decidir(false)
-                } label: {
-                    Text("Rechazar")
-                        .frame(maxWidth: .infinity)
+            HStack(spacing: 8) {
+                Button(action: alVer) {
+                    Text("Ver")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Tema.superficieAlta)
+                        .clipShape(Capsule())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("memoria-evento-ver")
 
-                Button {
-                    decidir(true)
-                } label: {
-                    Text("Aprobar")
-                        .frame(maxWidth: .infinity)
+                if evento.deshecho {
+                    Text("Deshecho")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityIdentifier("memoria-evento-deshecho")
+                } else {
+                    Button(action: alDeshacer) {
+                        Text("Deshacer")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Tema.acento.opacity(0.22))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("memoria-evento-deshacer")
                 }
-                .buttonStyle(.borderedProminent)
+
+                Spacer(minLength: 0)
             }
         }
-        .padding(Tema.margen)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Tema.fondo)
-        .presentationDetents([.medium])
-        .interactiveDismissDisabled(true)
-        .accessibilityIdentifier("hoja-aprobacion")
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memoria-evento")
     }
 }

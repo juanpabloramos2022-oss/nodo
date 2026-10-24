@@ -103,7 +103,7 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f1-tope-teclado-numerico")
     }
 
-    // MARK: - Fase 2: cabecera, tira fina, hojas y modo Tarea
+    // MARK: - Fase 2: cabecera, tira fina y hojas
 
     /// SPEC §5, Fase 2: "cabecera despejada completa (solo ← Chats, píldora y
     /// •••) con el teclado abierto".
@@ -118,7 +118,8 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f2-cabecera-teclado-abierto")
     }
 
-    /// SPEC §5, Fase 2: "tira fina con Chat | Tarea y 🧠" sobre la caja.
+    /// La tira fina sobre la caja conserva solo el acceso a la Memoria: el
+    /// conmutador Chat | Tarea se demolió y ningun chat ofrece herramientas.
     func testF2TiraFina() throws {
         lanzar(estado: "chat")
         abrirConversacion("Chat de ejemplo")
@@ -134,9 +135,9 @@ final class CapturasTests: XCTestCase {
         let modo = app.descendants(matching: .any)
             .matching(identifier: "modo-chat")
             .firstMatch
-        XCTAssertTrue(
-            modo.waitForExistence(timeout: 30),
-            "No aparecio el conmutador Chat | Tarea"
+        XCTAssertFalse(
+            modo.exists,
+            "El conmutador Chat | Tarea no debe existir en la interfaz"
         )
         XCTAssertTrue(
             app.buttons["memoria-rapida"].exists,
@@ -250,7 +251,8 @@ final class CapturasTests: XCTestCase {
         adjuntarCaptura("f2-estado-del-chat")
     }
 
-    /// SPEC §5, Fase 2: "hoja Memoria rápida con Cancelar/Guardar".
+    /// SPEC §5, Fase 2 y H6.3: la hoja Memoria rapida lista las entradas de la
+    /// Memoria una por una y tiene una salida explicita de Cerrar.
     func testF2MemoriaRapida() throws {
         lanzar(estado: "chat")
         abrirConversacion("Chat de ejemplo")
@@ -266,103 +268,22 @@ final class CapturasTests: XCTestCase {
             app.navigationBars["Memoria rápida"].waitForExistence(timeout: 60),
             "No se abrio la hoja Memoria rapida"
         )
-        XCTAssertTrue(app.buttons["Cancelar"].exists, "Falta Cancelar")
-        XCTAssertTrue(app.buttons["Guardar"].exists, "Falta Guardar")
+        // H6.3/H6.6: la lista se cierra con Cerrar y cada entrada es una fila
+        // propia; ya no hay un unico editor de bloque con Guardar.
+        XCTAssertTrue(app.buttons["Cerrar"].exists, "Falta Cerrar")
+        // La fila se busca como CUALQUIER tipo de elemento: SwiftUI puede
+        // exponer la fila con su propio rasgo segun la version de iOS.
+        let filaMemoria = app.descendants(matching: .any)
+            .matching(identifier: "memoria-rapida-entrada")
+            .firstMatch
+        XCTAssertTrue(
+            filaMemoria.waitForExistence(timeout: 10),
+            "Falta la fila de la entrada de Memoria"
+        )
         // Margen para que la hoja termine de presentarse.
         Thread.sleep(forTimeInterval: 0.4)
 
         adjuntarCaptura("f2-memoria-rapida")
-    }
-
-    /// SPEC §5/§4.3: la hoja de aprobacion aparece ANTES de ejecutar una
-    /// herramienta con consecuencias y solo ofrece Aprobar o Rechazar.
-    func testF2TareaAprobacion() throws {
-        lanzar(estado: "tarea")
-        abrirConversacion("Tarea de ejemplo")
-        escribirYEnviar("Mensaje de ejemplo para la tarea.")
-
-        _ = esperarHojaDeAprobacion()
-
-        let ejecutando = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Ejecutando")
-        ).firstMatch
-        XCTAssertFalse(
-            ejecutando.exists,
-            "La herramienta se ejecuto antes de que el usuario aprobara"
-        )
-        // Margen para que la hoja de aprobacion termine de presentarse.
-        Thread.sleep(forTimeInterval: 0.5)
-
-        adjuntarCaptura("f2-tarea-aprobacion")
-    }
-
-    /// SPEC §5/§4.3: tras aprobar, el turno termina con la respuesta final de
-    /// ejemplo y el paso plegable de la herramienta.
-    func testF2TareaPasoCompletado() throws {
-        lanzar(estado: "tarea")
-        abrirConversacion("Tarea de ejemplo")
-        escribirYEnviar("Mensaje de ejemplo para la tarea.")
-
-        let aprobar = esperarHojaDeAprobacion()
-        // Margen para que la hoja termine de presentarse antes de tocarla.
-        Thread.sleep(forTimeInterval: 0.5)
-        aprobar.tap()
-
-        // La costura de prueba puede cambiar el texto final entre corridas;
-        // se aceptan las dos respuestas de ejemplo conocidas.
-        let final = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "label CONTAINS %@ OR label CONTAINS %@",
-                "Respuesta de ejemplo para las capturas",
-                "He completado la tarea de ejemplo"
-            )
-        ).firstMatch
-        XCTAssertTrue(
-            final.waitForExistence(timeout: 90),
-            "No aparecio la respuesta final del turno de tarea"
-        )
-
-        let paso = app.descendants(matching: .any)
-            .matching(identifier: "paso-herramienta")
-            .firstMatch
-        XCTAssertTrue(
-            paso.waitForExistence(timeout: 30),
-            "No quedo el paso plegable de la herramienta"
-        )
-        // Margen para que el hilo termine de desplazarse hasta el final.
-        Thread.sleep(forTimeInterval: 0.4)
-
-        adjuntarCaptura("f2-tarea-paso-completado")
-    }
-
-    /// SPEC §4.3: intento del estado intermedio "Ejecutando..." justo tras
-    /// aprobar. Si el turno termina antes de la foto, el test no falla: las
-    /// capturas obligatorias son la de aprobacion y la del paso completado.
-    func testF2TareaEjecutando() throws {
-        lanzar(estado: "tarea")
-        abrirConversacion("Tarea de ejemplo")
-        escribirYEnviar("Mensaje de ejemplo para la tarea.")
-
-        let aprobar = esperarHojaDeAprobacion()
-        // Margen para que la hoja termine de presentarse antes de tocarla.
-        Thread.sleep(forTimeInterval: 0.5)
-        aprobar.tap()
-        esperarQueDesaparezca(aprobar)
-        // Margen para que la hoja termine de retirarse y se vea la fila viva.
-        Thread.sleep(forTimeInterval: 0.3)
-
-        let ejecutando = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Ejecutando")
-        ).firstMatch
-        guard ejecutando.waitForExistence(timeout: 3) else {
-            // El turno fue mas rapido que la foto; no se fuerza un fallo por
-            // una captura que la propia SPEC marca como intento.
-            return
-        }
-        // Margen minimo para que la fila y el spinner se pinten.
-        Thread.sleep(forTimeInterval: 0.1)
-
-        adjuntarCaptura("f2-tarea-ejecutando")
     }
 
     // MARK: - Ayudas
@@ -469,30 +390,6 @@ final class CapturasTests: XCTestCase {
         )
         XCTAssertTrue(enviar.isEnabled, "El boton Enviar esta deshabilitado")
         enviar.tap()
-    }
-
-    /// Espera la hoja de aprobacion y comprueba sus dos unicas salidas.
-    private func esperarHojaDeAprobacion() -> XCUIElement {
-        let aprobar = app.buttons["Aprobar"]
-        XCTAssertTrue(
-            aprobar.waitForExistence(timeout: 90),
-            "No aparecio la hoja de aprobacion antes de ejecutar la herramienta"
-        )
-        XCTAssertTrue(app.buttons["Rechazar"].exists, "Falta la salida Rechazar")
-        return aprobar
-    }
-
-    /// Espera a que un elemento desaparezca (por ejemplo, la hoja al cerrarse).
-    private func esperarQueDesaparezca(_ elemento: XCUIElement, timeout: TimeInterval = 15) {
-        let expectativa = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == false"),
-            object: elemento
-        )
-        XCTAssertEqual(
-            XCTWaiter().wait(for: [expectativa], timeout: timeout),
-            .completed,
-            "El elemento no desaparecio a tiempo"
-        )
     }
 
     /// Espera a que el teclado termine de bajar.

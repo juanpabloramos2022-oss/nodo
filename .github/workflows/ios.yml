@@ -7,7 +7,7 @@ name: ios
 
 on:
   push:
-    branches: [main, feat/gran-avance]
+    branches: [main, feat/gran-avance, feat/v031-correccion, feat/v031-paralela]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -18,7 +18,12 @@ on:
         type: string
 
 jobs:
-  compilar:
+  # CI en dos velocidades (metodo aprobado 23-oct): los commits intermedios de
+  # una partida llevan el marcador [solo-tests] en el mensaje y corren solo
+  # este job (swift test + NodoAppTests). La corrida completa `compilar`
+  # (tests + build + IPA) se exige solo en el commit de cierre de partida.
+  tests:
+    if: ${{ contains(github.event.head_commit.message, '[solo-tests]') }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
@@ -31,6 +36,62 @@ jobs:
 
       - name: Generar el proyecto Xcode
         run: xcodegen generate
+
+      - name: Pruebas de la app (NodoAppTests)
+        run: |
+          if ! xcrun simctl list devices available | grep -q "iPhone 16 ("; then
+            RUNTIME=$(xcrun simctl list runtimes | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+' | tail -1)
+            xcrun simctl create "iPhone 16" com.apple.CoreSimulator.SimDeviceType.iPhone-16 "$RUNTIME" || true
+          fi
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          xcrun simctl bootstatus booted -b || true
+          xcodebuild test \
+            -project Nodo.xcodeproj \
+            -scheme Nodo \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:NodoAppTests \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+  compilar:
+    if: ${{ !contains(github.event.head_commit.message, '[solo-tests]') }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pruebas del nucleo
+        run: swift test
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar el proyecto Xcode
+        run: xcodegen generate
+
+      # Las pruebas de la app van antes de compilar el .ipa: si fallan, el job
+      # se corta y no se publica un binario roto.
+      - name: Pruebas de la app (NodoAppTests)
+        run: |
+          # El job compilar nunca habia corrido tests de simulador: en un
+          # runner frio el dispositivo puede no existir todavia. Se crea si
+          # falta y se arranca antes de probar, como hace el job capturas.
+          if ! xcrun simctl list devices available | grep -q "iPhone 16 ("; then
+            RUNTIME=$(xcrun simctl list runtimes | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+' | tail -1)
+            xcrun simctl create "iPhone 16" com.apple.CoreSimulator.SimDeviceType.iPhone-16 "$RUNTIME" || true
+          fi
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          xcrun simctl bootstatus booted -b || true
+          xcodebuild test \
+            -project Nodo.xcodeproj \
+            -scheme Nodo \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:NodoAppTests \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
 
       - name: Compilar sin firma
         run: |
@@ -45,6 +106,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
+
+      - name: Puerta de cierre (coherencia de version)
+        run: python3 herramientas/verificar-cierre.py --solo-repo
 
       - name: Empaquetar el .ipa
         run: |

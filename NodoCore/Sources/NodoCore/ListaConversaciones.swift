@@ -95,21 +95,26 @@ extension HistorialConversaciones {
     /// Datos de la fila de dos lineas: pastilla de costo, etiqueta del ultimo
     /// modelo de la conversacion y vista previa del ultimo mensaje.
     ///
-    /// El proveedor se busca por `conversacion.proveedorID`, nunca por el
-    /// proveedor activo global: dos chats con modelos distintos conservan cada
-    /// uno su etiqueta y sus precios aunque el activo cambie.
+    /// La etiqueta usa el proveedor registrado del chat, nunca el activo
+    /// global. El costo se lee de los sellos: cada mensaje aporta el dolar con
+    /// el que se cerro su generacion y, solo si es legado y no tiene sello, su
+    /// valoracion con el proveedor que lo genero.
     public static func datosFila(
         de conversacion: Conversation,
         proveedores: [ProviderConfig]
     ) -> DatosFilaChat {
-        let proveedor = conversacion.proveedorID.flatMap { id in
+        let idDelChat = conversacion.proveedorID
+            ?? conversacion.mensajes.last(where: { $0.proveedorID != nil })?.proveedorID
+        let proveedor = idDelChat.flatMap { id in
             proveedores.first { $0.id == id }
         }
 
-        let costo = CostoEstimado.acumulado(
+        // El lector unico de sellos (COST.1): el mismo que usan la franja de
+        // tope y el acumulado del chat, para que la fila no ensene otra cifra.
+        let costo = CostoEstimado.acumuladoSellado(
             mensajes: conversacion.mensajes,
-            precioEntrada: proveedor?.precioEntradaPorMillon,
-            precioSalida: proveedor?.precioSalidaPorMillon
+            proveedores: proveedores,
+            proveedorDelChat: conversacion.proveedorID
         )
 
         let modelo = proveedor.map { NombresLimpios.modelo($0.modelo) } ?? ""
@@ -136,13 +141,15 @@ extension HistorialConversaciones {
     ///
     /// La copia lleva ids nuevos de conversacion y de mensaje, el mismo rol,
     /// texto, uso y skills de cada mensaje clonado, y el mismo `proveedorID`,
-    /// `sinMemoria` y `modoTarea` del original. No es un chat fijado ni
-    /// archivado y nace con el titulo de un chat nuevo (`tituloSugerido` se
-    /// deriva del primer usuario, como siempre).
+    /// `sinMemoria` y `modoTarea` del original. El sello de costo tambien se
+    /// clona: la copia no puede revaluar lo que la original ya pago. No es un
+    /// chat fijado ni archivado y nace con el titulo de un chat nuevo
+    /// (`tituloSugerido` se deriva del primer usuario, como siempre).
     ///
-    /// NO hereda `resumenCompactado` ni `usoTrasCompactar`: el historial
-    /// clonado ES el contexto completo hasta el corte, y heredar el resumen
-    /// duplicaria contexto. Su acumulado facturable sale de los usos clonados.
+    /// COMP.3: tambien hereda `resumenCompactado` y `usoTrasCompactar`. Si el
+    /// origen ya se compacto, la rama conserva el contexto resumido y el
+    /// consumo sellado de esa compactacion; perderlos al ramificar haria que la
+    /// copia olvidara lo que la original resumio y rebajaria su factura.
     ///
     /// Devuelve nil si el id no pertenece a esta conversacion; no se inventa un
     /// punto de corte.
@@ -165,7 +172,10 @@ extension HistorialConversaciones {
                 toolCallId: mensaje.toolCallId,
                 tokensEntrada: mensaje.tokensEntrada,
                 tokensSalida: mensaje.tokensSalida,
-                skillsAplicadas: mensaje.skillsAplicadas
+                skillsAplicadas: mensaje.skillsAplicadas,
+                proveedorID: mensaje.proveedorID,
+                costoSelladoUSD: mensaje.costoSelladoUSD,
+                costoEsEstimacion: mensaje.costoEsEstimacion
             )
         }
 
@@ -180,8 +190,8 @@ extension HistorialConversaciones {
             sinMemoria: conversacion.sinMemoria,
             modoTarea: conversacion.modoTarea,
             topeIgnorado: false,
-            resumenCompactado: nil,
-            usoTrasCompactar: nil,
+            resumenCompactado: conversacion.resumenCompactado,
+            usoTrasCompactar: conversacion.usoTrasCompactar,
             proveedorID: conversacion.proveedorID
         )
     }

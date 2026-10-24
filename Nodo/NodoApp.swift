@@ -20,12 +20,14 @@ struct NodoApp: App {
     }
 }
 
-/// Raiz definitiva de la app: tres pestanas, cada una con su propia pila.
+/// Raiz definitiva de la app: cuatro pestanas, cada una con su propia pila.
 ///
-/// Chats conserva la pila de la Fase 2 (lista -> conversacion). Mi Contexto
+/// Chats conserva la pila de la Fase 2 (lista -> conversacion). Tareas es el
+/// espacio propio del modo Tarea: no comparte lista con los chats. Mi Contexto
 /// reune Memoria, Tope y Skills. Conexiones es solo fontaneria: proveedores
 /// agrupados por URL base, servidor MCP y Respaldo (§3.6/§4.8).
 struct RaizView: View {
+    @EnvironmentObject private var estado: EstadoApp
     @State private var seleccion: PestanaRaiz = .chats
 
     var body: some View {
@@ -33,6 +35,10 @@ struct RaizView: View {
             ChatsRaizView(seleccion: $seleccion)
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right.fill") }
                 .tag(PestanaRaiz.chats)
+
+            TareasRaizView()
+                .tabItem { Label("Tareas", systemImage: "checklist") }
+                .tag(PestanaRaiz.tareas)
 
             MiContextoView()
                 .tabItem { Label("Mi Contexto", systemImage: "brain") }
@@ -42,12 +48,22 @@ struct RaizView: View {
                 .tabItem { Label("Conexiones", systemImage: "network") }
                 .tag(PestanaRaiz.conexiones)
         }
+        // La aprobacion vive en la raiz: si el dueno cambia de pestana con una
+        // tarea ejecutando, la hoja sigue apareciendo y el bucle no se queda
+        // esperando una decision invisible.
+        .sheet(item: $estado.solicitudAprobacion) { solicitud in
+            HojaAprobacionView(solicitud: solicitud)
+        }
     }
 }
 
 /// Pestanas de la raiz definitiva (SPEC §3).
+///
+/// TASK.1 anade Tareas como espacio propio; las otras tres siguen siendo las
+/// del mapa de pantallas del Documento Maestro.
 enum PestanaRaiz: Hashable {
     case chats
+    case tareas
     case contexto
     case conexiones
 }

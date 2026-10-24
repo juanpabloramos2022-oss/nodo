@@ -10,18 +10,58 @@ public struct SkillLocal: Codable, Identifiable, Equatable {
     public var id: UUID
     public var nombre: String
     public var slug: String
+    /// Linea corta que se ve en el selector de "/".
+    ///
+    /// Las skills del pack la traen escrita; las que crea el dueno nacen sin
+    /// ella (nil) y el selector sigue mostrando su nombre. No es obligatoria
+    /// para invocar la skill: el texto que manda es `instrucciones`.
+    public var descripcion: String?
     public var instrucciones: String
+    /// De donde salio la skill (PACK.1). Visible como "De fábrica" en Mi
+    /// Contexto > Skills; no cambia como se edita, invoca ni borra.
+    public var origen: OrigenSkill
 
     public init(
         id: UUID = UUID(),
         nombre: String,
         slug: String,
-        instrucciones: String
+        descripcion: String? = nil,
+        instrucciones: String,
+        origen: OrigenSkill = .propia
     ) {
         self.id = id
         self.nombre = nombre
         self.slug = slug
+        self.descripcion = descripcion
         self.instrucciones = instrucciones
+        self.origen = origen
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case nombre
+        case slug
+        case descripcion
+        case instrucciones
+        case origen
+    }
+
+    /// Decodificacion tolerante con las skills guardadas antes de PACK.1.
+    ///
+    /// `descripcion` y `origen` no existian en ese formato. Se leen como nil y
+    /// `.propia` respectivamente: el dueno es el unico que pudo crear esas
+    /// skills, y marcarlas de fabrica por actualizar la app seria mentirle
+    /// sobre el origen de su propio contenido (y ademas las volveria candidatas
+    /// del pack, que es justo lo que la siembra no puede hacer).
+    public init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: CodingKeys.self)
+        id = try contenedor.decode(UUID.self, forKey: .id)
+        nombre = try contenedor.decode(String.self, forKey: .nombre)
+        slug = try contenedor.decode(String.self, forKey: .slug)
+        descripcion = try contenedor.decodeIfPresent(String.self, forKey: .descripcion)
+        instrucciones = try contenedor.decode(String.self, forKey: .instrucciones)
+        origen = try contenedor.decodeIfPresent(OrigenSkill.self, forKey: .origen)
+            ?? .propia
     }
 }
 
@@ -80,11 +120,18 @@ public enum AlmacenSkills {
         let skill: SkillLocal
         if let idExistente,
            let indice = config.skills.firstIndex(where: { $0.id == idExistente }) {
+            // Editar el texto no cambia de donde vino la skill ni le borra su
+            // descripcion de selector: se conservan las marcas del registro.
+            // Si el dueno la edita, el texto editado manda y la siembra ya no
+            // la toca (su slug sigue existiendo), pero sigue siendo del pack.
+            let anterior = config.skills[indice]
             skill = SkillLocal(
                 id: idExistente,
                 nombre: nombre,
                 slug: slug,
-                instrucciones: instrucciones
+                descripcion: anterior.descripcion,
+                instrucciones: instrucciones,
+                origen: anterior.origen
             )
             config.skills[indice] = skill
         } else {

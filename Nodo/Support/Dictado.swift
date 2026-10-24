@@ -16,7 +16,11 @@ protocol SpeechRecognizing {
     func solicitarPermisos() async -> Bool
 
     /// Empieza a escuchar y entrega cada transcripcion parcial por el callback.
-    func empezar(onParcial: @escaping (String) -> Void) throws
+    /// Un fallo posterior (no el `throw` de arranque) llega por `onFallo`.
+    func empezar(
+        onParcial: @escaping (String) -> Void,
+        onFallo: @escaping (Error?) -> Void
+    ) throws
 
     /// Corta la escucha y libera el microfono.
     func detener()
@@ -37,13 +41,20 @@ enum ErrorDictado: Error, LocalizedError {
     }
 }
 
-/// Dictado real con el reconocimiento del propio iPhone (locale es-ES).
+/// Dictado real con el reconocimiento del propio iPhone (locale es-CO).
 ///
 /// No hay servidor ni costo: `SFSpeechRecognizer` transcribe en el telefono y
 /// `AVAudioEngine` le pasa el audio del microfono. La transcripcion parcial se
 /// entrega continua para que la caja se vaya rellenando mientras se habla.
 final class DictadoReconocimiento: SpeechRecognizing {
-    private let reconocedor = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
+    /// Locale del dictado, explicito y compartido: es-CO.
+    ///
+    /// POR QUE es una constante: el dueno pidio reconocimiento en espanol de
+    /// Colombia y asi la prueba de logica puede comprobar el locale sin crear
+    /// un `SFSpeechRecognizer` (eso si es hardware).
+    static let localeDictado = Locale(identifier: "es-CO")
+
+    private let reconocedor = SFSpeechRecognizer(locale: localeDictado)
     private let motor = AVAudioEngine()
     private var solicitud: SFSpeechAudioBufferRecognitionRequest?
     private var tarea: SFSpeechRecognitionTask?
@@ -68,7 +79,10 @@ final class DictadoReconocimiento: SpeechRecognizing {
         }
     }
 
-    func empezar(onParcial: @escaping (String) -> Void) throws {
+    func empezar(
+        onParcial: @escaping (String) -> Void,
+        onFallo: @escaping (Error?) -> Void
+    ) throws {
         guard disponible else { throw ErrorDictado.noDisponible }
 
         // Empezar dos veces no puede dejar dos motores escuchando.
@@ -81,7 +95,7 @@ final class DictadoReconocimiento: SpeechRecognizing {
         let solicitud = SFSpeechAudioBufferRecognitionRequest()
         solicitud.shouldReportPartialResults = true
         solicitud.taskHint = .dictation
-        // Cuando el telefono trae el modelo de es-ES, se dicta en el propio
+        // Cuando el telefono trae el modelo de es-CO, se dicta en el propio
         // dispositivo (sin servidor). Si no, el sistema decide.
         solicitud.requiresOnDeviceRecognition =
             reconocedor?.supportsOnDeviceRecognition == true
@@ -115,8 +129,12 @@ final class DictadoReconocimiento: SpeechRecognizing {
             if let resultado {
                 onParcial(resultado.bestTranscription.formattedString)
             }
-            if error != nil {
+            if let error {
+                // El fallo del reconocimiento se le informa a quien arranco el
+                // dictado para que restablezca su estado: sin esto el boton se
+                // quedaba pegado en "grabando".
                 DispatchQueue.main.async {
+                    onFallo(error)
                     self?.detener()
                 }
             }
@@ -167,7 +185,10 @@ final class DictadoDePrueba: SpeechRecognizing {
 
     func solicitarPermisos() async -> Bool { true }
 
-    func empezar(onParcial: @escaping (String) -> Void) throws {
+    func empezar(
+        onParcial: @escaping (String) -> Void,
+        onFallo: @escaping (Error?) -> Void
+    ) throws {
         onParcial(Self.transcripcionDeEjemplo)
     }
 

@@ -60,6 +60,8 @@ enum EstadosDePrueba {
         case historialEjemplo = "historial-ejemplo"
         /// Conversacion con historial, Memoria y los 4 combos del preset.
         case chat = "chat"
+        /// Nombre heredado del antiguo modo Tarea: hoy siembra un chat normal
+        /// con historial, porque el conmutador ya no existe.
         case tarea = "tarea"
         /// Chat vacio con la Tarjeta de Bienvenida y una clave de ejemplo.
         case bienvenida = "bienvenida"
@@ -280,7 +282,7 @@ enum EstadosDePrueba {
     /// bajar para el estado de la franja ambar.
     private static func configuracionChat(tope: Double = 1.00) -> AppConfig {
         var config = AppConfig.inicial()
-        config.systemPrompt = memoriaDeEjemplo
+        config.memoria = Memoria.entradasDesdeTextoLegado(memoriaDeEjemplo)
         config.topeAvisoCosto = tope
         return config
     }
@@ -307,6 +309,45 @@ enum EstadosDePrueba {
             fechaDelDia: hoyComoClave(),
             desdeReinicio: 0.4321
         )
+
+        // Libro de sellos de ejemplo para que la tarjeta y la vista Gasto
+        // tengan algo que ensenar en las capturas. No toca los contadores:
+        // estos siguen siendo la cifra del acumulador de siempre.
+        let ahora = Date()
+        var libro = UsoApp()
+        libro.registrar(
+            uso: UsoTokens(entrada: 420_000, salida: 80_000),
+            usd: 0.0894,
+            fecha: ahora,
+            modelo: proveedorEjemplo.modelo
+        )
+        libro.registrar(
+            uso: UsoTokens(entrada: 260_000, salida: 40_000),
+            usd: 0.034,
+            fecha: ahora,
+            modelo: "otro-modelo-de-ejemplo"
+        )
+        if let antes = Calendar(identifier: .gregorian).date(
+            byAdding: .day,
+            value: -1,
+            to: ahora
+        ) {
+            libro.registrar(
+                uso: UsoTokens(entrada: 900_000, salida: 150_000),
+                usd: 0.12,
+                fecha: antes,
+                modelo: proveedorEjemplo.modelo
+            )
+        }
+        // Un uso sin precio: tokens reales, dolar desconocido.
+        libro.registrar(
+            uso: UsoTokens(entrada: 12_000, salida: 3_000),
+            usd: 0,
+            fecha: ahora,
+            modelo: "modelo-sin-precios",
+            conPrecio: false
+        )
+        config.usoApp = libro
         return config
     }
 
@@ -323,7 +364,9 @@ enum EstadosDePrueba {
         AppConfig(
             proveedores: [proveedorEjemplo],
             proveedorActivo: proveedorEjemplo.id,
-            systemPrompt: "Memoria de ejemplo para las capturas.",
+            memoria: Memoria.entradasDesdeTextoLegado(
+                "Memoria de ejemplo para las capturas."
+            ),
             servidor: ServerConfig(
                 nombre: "Servidor de ejemplo",
                 url: "",
@@ -375,19 +418,17 @@ enum EstadosDePrueba {
                 conversaciones: [conversacionChat]
             )
         case .tarea:
-            let conversacionTarea = Conversation(
-                id: id("00000000-0000-0000-0000-000000000007"),
-                titulo: "Tarea de ejemplo",
-                mensajes: [],
-                creada: fechaFija,
-                actualizada: fechaFija,
-                modoTarea: true
-            )
+            // El estado conserva nombre, id y titulo para no romper los
+            // argumentos de captura, pero ya es un chat normal CON historial:
+            // el conmutador Chat | Tarea y su bandera desaparecieron.
+            var normal = conversacionChat
+            normal.id = id("00000000-0000-0000-0000-000000000007")
+            normal.titulo = "Tarea de ejemplo"
             return EstadoPrueba(
                 nombre: estado.rawValue,
-                config: configuracion(),
-                conversacion: conversacionTarea,
-                conversaciones: [conversacionTarea]
+                config: configuracionChat(),
+                conversacion: normal,
+                conversaciones: [normal]
             )
         case .bienvenida:
             return EstadoPrueba(

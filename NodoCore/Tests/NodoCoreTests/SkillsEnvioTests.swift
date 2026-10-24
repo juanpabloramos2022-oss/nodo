@@ -59,7 +59,11 @@ final class SkillsEnvioTests: XCTestCase {
         XCTAssertEqual(payload.last?.texto, "hola")
     }
 
-    func testUnaSkillBorradaCaeEnTokensDesconocidos() {
+    /// D1=A: si el primer token no resuelve ni a comando ni a skill, el texto
+    /// completo se manda como mensaje normal. Una skill borrada no puede
+    /// tragarse lo escrito ni devolver un token desconocido que bloquee el
+    /// envio: el "/" delante ya no manda sobre el resto.
+    func testUnaSkillBorradaConTextoVaComoMensajeNormal() {
         let resolvedor = ResolvedorFijo(lista: [])
 
         let analisis = AnalizadorComandos.analizar(
@@ -67,10 +71,6 @@ final class SkillsEnvioTests: XCTestCase {
             resolvedor: resolvedor
         )
 
-        guard case .tokensDesconocidos(let slugs) = analisis else {
-            XCTFail("Se esperaba .tokensDesconocidos, llego \(analisis)")
-            return
-        }
-        XCTAssertEqual(slugs, ["resumidor"])
+        XCTAssertEqual(analisis, .mensajeNormal(texto: "/resumidor hola"))
     }
 }

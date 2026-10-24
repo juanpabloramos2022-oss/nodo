@@ -76,41 +76,54 @@ final class HistorialTests: XCTestCase {
         )
     }
 
-    func testChatNormalIncluyeElPromptDeSistemaPrimero() {
+    private func entradas(_ textos: String...) -> [EntradaMemoria] {
+        textos.map { EntradaMemoria(texto: $0) }
+    }
+
+    func testChatNormalIncluyeElBloqueDeMemoriaPrimero() {
+        let memoria = entradas("Memoria curada")
         let historial = Historial.paraEnviar(
             conversacion: conversacion(),
-            promptSistema: "Memoria curada"
+            memoria: memoria
         )
 
         XCTAssertEqual(historial.count, 3)
         XCTAssertEqual(historial.first?.rol, .sistema)
-        XCTAssertEqual(historial.first?.texto, "Memoria curada")
+        XCTAssertEqual(
+            historial.first?.texto,
+            Memoria.bloqueSistema(entradas: memoria)
+        )
     }
 
-    func testChatSinMemoriaNoIncluyeElPrompt() {
+    func testChatSinMemoriaNoIncluyeElBloque() {
         let historial = Historial.paraEnviar(
             conversacion: conversacion(sinMemoria: true),
-            promptSistema: "Memoria curada"
+            memoria: entradas("Memoria curada")
         )
 
         XCTAssertEqual(historial.count, 2)
         XCTAssertFalse(historial.contains { $0.rol == .sistema })
-        XCTAssertFalse(historial.contains { $0.texto == "Memoria curada" })
+        XCTAssertFalse(historial.contains { $0.texto.contains("Memoria curada") })
     }
 
-    func testUnPromptVacioNoSeIncluyeNunca() {
+    func testUnaMemoriaVaciaSigueTeniendoBloqueDeCapacidad() {
         let normal = Historial.paraEnviar(
             conversacion: conversacion(),
-            promptSistema: "   \n  "
+            memoria: []
         )
         let sinMemoria = Historial.paraEnviar(
             conversacion: conversacion(sinMemoria: true),
-            promptSistema: ""
+            memoria: []
         )
 
-        XCTAssertEqual(normal.count, 2)
+        // En un chat con Memoria el bloque viaja aunque no haya entradas: es lo
+        // que declara la capacidad de guardar la primera. En uno sin Memoria no
+        // viaja nada.
+        XCTAssertEqual(normal.count, 3)
+        XCTAssertEqual(normal.first?.rol, .sistema)
+        XCTAssertTrue(normal.first?.texto.contains(Memoria.cabeceraBloque) == true)
+        XCTAssertTrue(normal.first?.texto.contains("ninguna") == true)
         XCTAssertEqual(sinMemoria.count, 2)
-        XCTAssertFalse(normal.contains { $0.rol == .sistema })
         XCTAssertFalse(sinMemoria.contains { $0.rol == .sistema })
     }
 
@@ -124,35 +137,47 @@ final class HistorialTests: XCTestCase {
 
         let historial = Historial.paraEnviar(
             conversacion: conversacion(mensajes: mensajes),
-            promptSistema: "sistema"
+            memoria: entradas("sistema")
         )
 
         XCTAssertEqual(historial.count, mensajes.count + 1)
         XCTAssertEqual(Array(historial.dropFirst()), mensajes)
     }
 
-    func testElPromptSeRecortaAntesDeEnviarse() {
+    func testElBloqueListaTodasLasEntradasConSusIds() {
+        let memoria = entradas("primera", "segunda")
         let historial = Historial.paraEnviar(
             conversacion: conversacion(),
-            promptSistema: "  Memoria curada  "
+            memoria: memoria
         )
 
-        XCTAssertEqual(historial.first?.texto, "Memoria curada")
+        let bloque = historial.first?.texto ?? ""
+        for entrada in memoria {
+            XCTAssertTrue(bloque.contains(entrada.texto))
+            XCTAssertTrue(bloque.contains(entrada.id.uuidString))
+        }
     }
 
-    func testElResumenVaComoUnSoloMensajeDeSistemaTrasElPrompt() {
+    func testElResumenVaComoUnSoloMensajeDeSistemaTrasElBloqueDeMemoria() {
         let chat = conversacion(resumenCompactado: "Resumen del chat\ncon dos lineas")
+        let memoria = entradas("Memoria curada")
 
         let historial = Historial.paraEnviar(
             conversacion: chat,
-            promptSistema: "Memoria curada"
+            memoria: memoria
         )
 
         XCTAssertEqual(historial.count, chat.mensajes.count + 2)
         XCTAssertEqual(historial[0].rol, .sistema)
-        XCTAssertEqual(historial[0].texto, "Memoria curada")
+        XCTAssertEqual(
+            historial[0].texto,
+            Memoria.bloqueSistema(entradas: memoria)
+        )
         XCTAssertEqual(historial[1].rol, .sistema)
-        XCTAssertEqual(historial[1].texto, "Resumen del chat\ncon dos lineas")
+        XCTAssertEqual(
+            historial[1].texto,
+            Historial.cabeceraResumen + "\nResumen del chat\ncon dos lineas"
+        )
         XCTAssertEqual(Array(historial.dropFirst(2)), chat.mensajes)
     }
 
@@ -164,7 +189,7 @@ final class HistorialTests: XCTestCase {
 
         let historial = Historial.paraEnviar(
             conversacion: chat,
-            promptSistema: "Memoria curada"
+            memoria: entradas("Memoria curada")
         )
 
         XCTAssertEqual(historial, chat.mensajes)
@@ -172,29 +197,81 @@ final class HistorialTests: XCTestCase {
         XCTAssertFalse(historial.contains { $0.rol == .sistema })
     }
 
+    func testChatSinMemoriaInyectaElResumenGuardado() {
+        // COMP.2: el chat sin memoria no recibe la Memoria, pero si el
+        // respaldo persistido de la ultima compactacion. Sin esto, /compact
+        // resume y poda para siempre.
+        let chat = conversacion(sinMemoria: true)
+
+        let historial = Historial.paraEnviar(
+            conversacion: chat,
+            memoria: entradas("Memoria curada"),
+            resumenGuardado: "EL DATO CLAVE ES 42"
+        )
+
+        XCTAssertEqual(historial.count, chat.mensajes.count + 1)
+        XCTAssertEqual(historial.first?.rol, .sistema)
+        XCTAssertEqual(
+            historial.first?.texto,
+            Historial.cabeceraResumen + "\nEL DATO CLAVE ES 42"
+        )
+        XCTAssertFalse(historial.contains { $0.texto.contains("Memoria curada") })
+        XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
+    }
+
+    func testElResumenGuardadoNoSeDuplicaSiLaMemoriaYaLoTrae() {
+        let resumen = "EL DATO CLAVE ES 42"
+        let chat = conversacion(resumenCompactado: resumen)
+        let memoria = entradas(
+            "Memoria curada\n" + Historial.cabeceraResumen + "\n" + resumen
+        )
+
+        let historial = Historial.paraEnviar(
+            conversacion: chat,
+            memoria: memoria,
+            resumenGuardado: resumen
+        )
+
+        XCTAssertEqual(
+            historial.filter { $0.texto.contains(Historial.cabeceraResumen) }.count,
+            1,
+            "La cabecera del resumen no puede viajar dos veces"
+        )
+        XCTAssertEqual(
+            historial.first?.texto,
+            Memoria.bloqueSistema(entradas: memoria)
+        )
+        XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
+    }
+
     func testUnResumenVacioNoSeInyecta() {
         let chat = conversacion(resumenCompactado: "  \n  ")
 
         let historial = Historial.paraEnviar(
             conversacion: chat,
-            promptSistema: "Memoria curada"
+            memoria: entradas("Memoria curada")
         )
 
         XCTAssertEqual(historial.count, chat.mensajes.count + 1)
         XCTAssertEqual(historial.filter { $0.rol == .sistema }.count, 1)
     }
 
-    func testSinPromptElResumenVaPrimero() {
+    func testSinEntradasElResumenVaTrasElBloqueDeCapacidad() {
         let chat = conversacion(resumenCompactado: "Resumen guardado")
 
         let historial = Historial.paraEnviar(
             conversacion: chat,
-            promptSistema: ""
+            memoria: []
         )
 
         XCTAssertEqual(historial.first?.rol, .sistema)
-        XCTAssertEqual(historial.first?.texto, "Resumen guardado")
-        XCTAssertEqual(Array(historial.dropFirst()), chat.mensajes)
+        XCTAssertTrue(historial.first?.texto.contains(Memoria.cabeceraBloque) == true)
+        XCTAssertEqual(historial[1].rol, .sistema)
+        XCTAssertEqual(
+            historial[1].texto,
+            Historial.cabeceraResumen + "\nResumen guardado"
+        )
+        XCTAssertEqual(Array(historial.dropFirst(2)), chat.mensajes)
     }
 
     func testLasInstruccionesVanJustoAntesDelUltimoMensajeDeUsuario() {

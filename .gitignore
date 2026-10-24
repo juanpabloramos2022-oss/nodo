@@ -39,3 +39,6 @@ capturas-export/
 
 # Varios
 *.log
+
+# Toolchain local de sesiones (nunca se versiona)
+.swift-toolchain/

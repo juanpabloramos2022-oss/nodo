@@ -6,12 +6,24 @@ public struct SkillResuelta: Equatable {
     public let nombre: String
     /// Identificador normalizado con el que se invoca, por ejemplo "resumidor".
     public let slug: String
+    /// Linea corta que se ve en el selector de "/".
+    ///
+    /// Las skills del pack la traen; las propias que no la escribieron dejan
+    /// nil y el selector sigue mostrando su nombre. No viaja al payload: el
+    /// modelo solo recibe las instrucciones.
+    public let descripcion: String?
     /// Instrucciones que se suman al contexto de ese turno.
     public let instrucciones: String
 
-    public init(nombre: String, slug: String, instrucciones: String) {
+    public init(
+        nombre: String,
+        slug: String,
+        descripcion: String? = nil,
+        instrucciones: String
+    ) {
         self.nombre = nombre
         self.slug = slug
+        self.descripcion = descripcion
         self.instrucciones = instrucciones
     }
 }
@@ -25,13 +37,25 @@ public protocol ResolvedorSkills {
     func todas() -> [SkillResuelta]
 }
 
-/// Los cinco comandos locales del sistema (§4.2). Sus slugs son reservados.
+/// Los comandos locales del sistema (§4.2) mas /plan y /boost.
+///
+/// /plan es una adicion firmada del dueno para TASK.2: genera un plan por pasos
+/// sin ejecutar herramientas y lo deja como mensaje en el chat. Se suma a la
+/// gramatica existente; no se crea un parser paralelo.
+///
+/// /boost (BOOST.1) se registra aqui por la misma razon, pero su accion NO vive
+/// en el chat: marca el disparo de la tuberia multi-agente DENTRO de una Tarea.
+/// La linea "/boost" sola en un chat no puede ejecutar nada util, asi que la
+/// app solo avisa donde se usa; el reconocimiento con texto detras lo hace
+/// `instruccionDeBoost`, porque la instruccion efectiva es el resto del texto.
 public enum ComandoIntegrado: String, Equatable, CaseIterable {
     case compact
     case costo
     case modelos
     case nuevo
     case exportar
+    case plan
+    case boost
 }
 
 /// Resultado de analizar un texto enviado desde la caja.
@@ -40,6 +64,10 @@ public enum ResultadoAnalisis: Equatable {
     case mensajeNormal(texto: String)
     /// La linea entera es un comando local; no se envia nada al modelo.
     case comando(ComandoIntegrado)
+    /// El PRIMER token es un comando conocido y habia texto detras (D1=A):
+    /// el comando se ejecuta y el resto se descarta. `descartado` es ese texto,
+    /// para que la app avise en el hilo que no se envio.
+    case comandoConTexto(comando: ComandoIntegrado, descartado: String)
     /// Skills resueltas y el mensaje limpio que queda tras quitarlas.
     case conSkills(skills: [SkillResuelta], mensaje: String)
     /// Tokens con "/" que no resolvieron a ninguna skill (sin la "/").
@@ -50,19 +78,46 @@ public enum ResultadoAnalisis: Equatable {
 
 /// La gramatica unica del parser de "/" (SPEC §4.5 / contrato §8).
 ///
-/// Decision documentada: un comando integrado SOLO se reconoce cuando la linea
-/// completa es exactamente "/nombre". Si lleva texto detras ("/compact ahora")
-/// pasa al analisis de skills; como "compact" es un slug reservado, no se
-/// resuelve como skill y cae en `.tokensDesconocidos`. Se eligio asi porque la
-/// SPEC solo define la accion local para el comando solo y nunca debe
-/// ejecutarse una accion por accidente mientras el usuario escribe un mensaje.
+/// Decision firmada D1=A: manda el PRIMER token. Si es un comando integrado
+/// conocido se ejecuta, aunque lleve texto detras ("/compact ahora" compacta);
+/// el resto se descarta y el llamador avisa en el hilo, nunca en silencio. Si
+/// el primer token no es comando ni skill conocida, el texto completo se manda
+/// como mensaje normal: un "/" delante no puede tragarse lo que se escribio.
 public enum AnalizadorComandos {
     /// Slugs que el almacen de skills no puede usar (§4.6). El parser tampoco
-    /// los resuelve como skill: un comando con texto detras ("/compact ahora")
-    /// cae en `.tokensDesconocidos` aunque un registro defectuoso los ofrezca.
+    /// los resuelve como skill: un token reservado que no sea el primero cae en
+    /// `.tokensDesconocidos` aunque un registro defectuoso lo ofrezca.
     public static let slugsReservados: Set<String> = [
-        "compact", "costo", "modelos", "nuevo", "exportar"
+        "compact", "costo", "modelos", "nuevo", "exportar", "plan", "boost"
     ]
+
+    /// Texto del comando /boost, sin espacios de borde.
+    public static let tokenBoost = "/boost"
+
+    /// Instruccion efectiva de una tarea /boost, o nil si no lo es.
+    ///
+    /// A diferencia de /plan, /boost lleva el encargo DETRAS en la misma linea
+    /// ("/boost analiza esto"), asi que no puede esperar a que la linea entera
+    /// sea el comando. Se exige que el primer token sea exactamente /boost para
+    /// que "/boosters" o un texto que mencione /boost a mitad no disparen la
+    /// tuberia por accidente. Devuelve "" cuando solo viene el comando: el
+    /// llamador decide si eso es un error de instruccion vacia.
+    public static func instruccionDeBoost(_ texto: String) -> String? {
+        let recortado = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recortado.isEmpty else { return nil }
+
+        let tokens = recortado.split(whereSeparator: { $0.isWhitespace })
+        guard let primero = tokens.first,
+              primero.lowercased() == tokenBoost
+        else {
+            return nil
+        }
+
+        // Se corta por longitud y no por el token normalizado: el resto debe
+        // conservar tildes, saltos de linea y mayusculas del encargo original.
+        let resto = String(recortado.dropFirst(primero.count))
+        return resto.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     public static func analizar(
         _ texto: String,
@@ -77,11 +132,33 @@ public enum AnalizadorComandos {
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
 
-        // Comando integrado: solo si es el unico token de la linea.
-        if tokens.count == 1,
-           let primero = tokens.first,
-           let comando = comandoDeToken(primero) {
-            return .comando(comando)
+        // D1=A: el PRIMER token manda. Si es un comando integrado conocido se
+        // ejecuta aunque haya texto detras; el resto se descarta y el llamador
+        // avisa en el hilo. Un primer token que no es comando ni skill conocida
+        // se manda entero como mensaje normal en vez de tragarse el texto.
+        if let primero = tokens.first {
+            if let comando = comandoDeToken(primero) {
+                guard tokens.count > 1 else { return .comando(comando) }
+                // Se corta por longitud del token crudo, no por el normalizado:
+                // el aviso debe ensenar el texto tal como se escribio.
+                let resto = String(recortado.dropFirst(primero.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return .comandoConTexto(comando: comando, descartado: resto)
+            }
+
+            // Sin comando de primer token: solo se sigue con la gramatica de
+            // skills si el primero resuelve a una skill. Si no, el "/" delante
+            // no puede bloquear el envio.
+            let crudoPrimero = primero.hasPrefix("/")
+                ? String(primero.dropFirst())
+                : primero
+            let slugPrimero = normalizarSlug(crudoPrimero)
+            let primerTokenEsSkill = !slugPrimero.isEmpty
+                && !slugsReservados.contains(slugPrimero)
+                && resolvedor.skill(porSlug: slugPrimero) != nil
+            if !primerTokenEsSkill {
+                return .mensajeNormal(texto: recortado)
+            }
         }
 
         var skills: [SkillResuelta] = []

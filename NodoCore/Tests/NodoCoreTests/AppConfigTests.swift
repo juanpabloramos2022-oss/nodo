@@ -94,35 +94,38 @@ final class AppConfigTests: XCTestCase {
         let original = AppConfig(
             proveedores: [Ayudas.proveedor()],
             proveedorActivo: nil,
-            systemPrompt: "se breve",
+            memoria: [EntradaMemoria(texto: "se breve")],
             servidor: ServerConfig(nombre: "s", url: "https://s.test/mcp", activo: true)
         )
 
         let vuelta = try AppConfig.desde(json: try original.json())
 
-        XCTAssertEqual(vuelta.systemPrompt, "se breve")
+        XCTAssertEqual(vuelta.memoria.map(\.texto), ["se breve"])
         XCTAssertEqual(vuelta.proveedores.count, 1)
         XCTAssertEqual(vuelta.servidor.url, "https://s.test/mcp")
         XCTAssertTrue(vuelta.servidor.activo)
     }
 
-    func testSystemPromptConservaSaltosDeLineaEnElJSON() throws {
+    func testLasEntradasDeMemoriaConservanSaltosDeLineaEnElJSON() throws {
         let texto = "Primera linea\nSegunda linea\n\nUltima linea"
-        let original = AppConfig(proveedores: [], systemPrompt: texto)
+        let original = AppConfig(
+            proveedores: [],
+            memoria: [EntradaMemoria(texto: texto)]
+        )
 
         let datos = try original.json()
         let vuelta = try AppConfig.desde(json: datos)
 
-        XCTAssertTrue(String(decoding: datos, as: UTF8.self).contains("systemPrompt"))
-        XCTAssertEqual(vuelta.systemPrompt, texto)
+        XCTAssertTrue(String(decoding: datos, as: UTF8.self).contains("memoria"))
+        XCTAssertEqual(vuelta.memoria.map(\.texto), [texto])
     }
 
-    func testSystemPromptVacioSeConservaEnElJSON() throws {
-        let original = AppConfig(proveedores: [], systemPrompt: "")
+    func testMemoriaVaciaSeConservaEnElJSON() throws {
+        let original = AppConfig(proveedores: [], memoria: [])
 
         let vuelta = try AppConfig.desde(json: try original.json())
 
-        XCTAssertEqual(vuelta.systemPrompt, "")
+        XCTAssertTrue(vuelta.memoria.isEmpty)
     }
 
     func testJSONExportadoNoContieneCredenciales() throws {
@@ -216,7 +219,7 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config.proveedorSeleccionado?.modelo, "modelo-x")
         XCTAssertNil(config.proveedorSeleccionado?.precioEntradaPorMillon)
         XCTAssertNil(config.proveedorSeleccionado?.precioSalidaPorMillon)
-        XCTAssertEqual(config.systemPrompt, "se breve")
+        XCTAssertEqual(config.memoria.map(\.texto), ["se breve"])
         XCTAssertEqual(config.servidor.url, "https://servidor.test/mcp")
         XCTAssertNil(config.topeAvisoCosto)
         XCTAssertEqual(config.topeAvisoCostoEfectivo, 1.00, accuracy: 0.0001)

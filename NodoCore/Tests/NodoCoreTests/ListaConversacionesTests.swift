@@ -329,7 +329,7 @@ final class ListaConversacionesTests: XCTestCase {
         XCTAssertEqual(copia.mensajes.count, 4)
     }
 
-    func testRamificarHeredaProveedorYModosPeroNoResumenNiFijacion() throws {
+    func testRamificarHeredaProveedorModosYResumenCompactado() throws {
         let original = conversacionLarga()
 
         let copia = try XCTUnwrap(
@@ -344,8 +344,9 @@ final class ListaConversacionesTests: XCTestCase {
         XCTAssertEqual(copia.modoTarea, original.modoTarea)
         XCTAssertFalse(copia.fijada)
         XCTAssertFalse(copia.archivada)
-        XCTAssertNil(copia.resumenCompactado)
-        XCTAssertNil(copia.usoTrasCompactar)
+        // COMP.3: la rama no puede olvidar lo que la original ya resumio.
+        XCTAssertEqual(copia.resumenCompactado, original.resumenCompactado)
+        XCTAssertEqual(copia.usoTrasCompactar, original.usoTrasCompactar)
     }
 
     func testElAcumuladoDeLaRamaEsLaSumaDeLosUsosClonados() throws {
@@ -386,6 +387,38 @@ final class ListaConversacionesTests: XCTestCase {
                 hastaElMensaje: UUID()
             )
         )
+    }
+
+    /// COST.1: la pastilla de la fila lee el SELLO del mensaje. Subir los
+    /// precios del proveedor despues del turno no puede cambiar lo ya pagado.
+    func testLaPastillaLeeElSelloYNoSeRevaluaConLosPreciosNuevos() throws {
+        let proveedor = proveedorConfig(
+            id: proveedorA,
+            modelo: "vendedor/modelo-a",
+            precioEntrada: 2,
+            precioSalida: 8
+        )
+        let conversacion = Conversation(
+            mensajes: [
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "respuesta sellada",
+                    tokensEntrada: 1_000,
+                    tokensSalida: 500,
+                    proveedorID: proveedorA,
+                    costoSelladoUSD: 0.004
+                )
+            ],
+            proveedorID: proveedorA
+        )
+
+        let fila = HistorialConversaciones.datosFila(
+            de: conversacion,
+            proveedores: [proveedor]
+        )
+
+        let costo = try XCTUnwrap(fila.costo)
+        XCTAssertEqual(costo, 0.004, accuracy: 0.0000001)
     }
 
     // MARK: - Ayudas
