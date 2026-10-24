@@ -1,0 +1,7 @@
+[t=0.0s] UserBubble("Recuerda que mi palabra clave de la barbería es LUNA-7 y que prefiero respuestas cortas.")
+[t=0.0s] MemoryLineNotice(text: "Guarde en Memoria: Palabra clave de la barbería: LUNA-7", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo: lo guarde en tu Memoria.")
+  [t=0.0s] TextSegment("Listo: lo guarde en tu Memoria.")
+
+Test Case '-[NodoAppTests.TrazaVistaTest testElFixtureBProduceLaTrazaP02]' passed (0.030 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testElTurnoDeEstrenoProduceLaTrazaP03]' started.

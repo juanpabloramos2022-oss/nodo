@@ -1,0 +1,56 @@
+[t=0.0s] UserBubble("Di solo: ok")
+[t=0.0s] AssistantBubble("ok")
+  [t=0.0s] TextSegment("ok")
+
+Test Case '-[NodoAppTests.TrazaVistaTest testElTurnoDeEstrenoProduceLaTrazaP03]' passed (0.030 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testElVolcadoAnidaProsaYCodigoBajoLaBurbuja]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testElVolcadoAnidaProsaYCodigoBajoLaBurbuja]' passed (0.002 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionDeclaraElModoEnLaPrimeraLinea]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionDeclaraElModoEnLaPrimeraLinea]' passed (0.003 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionRegistraElDeshacerDeLaLineaDeMemoria]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionRegistraElDeshacerDeLaLineaDeMemoria]' passed (0.031 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionSoloEmiteElementosNuevosOCambiados]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testLaSesionSoloEmiteElementosNuevosOCambiados]' passed (0.005 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testTareaYBusquedaUsanLasEtiquetasDelCatalogo]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testTareaYBusquedaUsanLasEtiquetasDelCatalogo]' passed (0.001 seconds).
+Test Case '-[NodoAppTests.TrazaVistaTest testVolcarHiloEscribeEnLaRutaIndicada]' started.
+Test Case '-[NodoAppTests.TrazaVistaTest testVolcarHiloEscribeEnLaRutaIndicada]' passed (0.003 seconds).
+Test Suite 'TrazaVistaTest' passed at 2026-10-24 16:42:22.121.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.126 (0.156) seconds
+Test Suite 'ViewModelSnapshotTest' started at 2026-10-24 16:42:22.121.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testDivisorDeCompactacionYErrorDeTurnoAparecenEnSuPosicion]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testDivisorDeCompactacionYErrorDeTurnoAparecenEnSuPosicion]' passed (0.022 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testGuardadoDeMemoriaProduceUnaLineaYNoFiltraElResultadoDeLaHerramienta]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testGuardadoDeMemoriaProduceUnaLineaYNoFiltraElResultadoDeLaHerramienta]' passed (0.056 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaBurbujaDelAsistenteSeparaProsaYCodigoEnOrden]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaBurbujaDelAsistenteSeparaProsaYCodigoEnOrden]' passed (0.011 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaBusquedaSinCoincidenciasDevuelveElEstadoVacioExplicito]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaBusquedaSinCoincidenciasDevuelveElEstadoVacioExplicito]' passed (0.009 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaTareaProyectaCabeceraPlanVersionadoYFilasDePaso]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLaTareaProyectaCabeceraPlanVersionadoYFilasDePaso]' passed (0.035 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLosMensajesDeHerramientaNoProducenElementos]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testLosMensajesDeHerramientaNoProducenElementos]' passed (0.009 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testPropuestaSensiblePendienteEsElUnicoArtefactoDelTurno]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testPropuestaSensiblePendienteEsElUnicoArtefactoDelTurno]' passed (0.008 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testTurnoSimpleProduceBurbujaDeUsuarioYDeAsistente]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testTurnoSimpleProduceBurbujaDeUsuarioYDeAsistente]' passed (0.026 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testUnaCercaSinLenguajeProduceCodigoConLenguajeNil]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testUnaCercaSinLenguajeProduceCodigoConLenguajeNil]' passed (0.010 seconds).
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testUnMensajeDeHerramientaConUUIDYJSONNoProduceNingunElemento]' started.
+Test Case '-[NodoAppTests.ViewModelSnapshotTest testUnMensajeDeHerramientaConUUIDYJSONNoProduceNingunElemento]' passed (0.011 seconds).
+Test Suite 'ViewModelSnapshotTest' passed at 2026-10-24 16:42:22.320.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.196 (0.198) seconds
+Test Suite 'NodoAppTests.xctest' passed at 2026-10-24 16:42:22.320.
+	 Executed 98 tests, with 0 failures (0 unexpected) in 10.610 (12.175) seconds
+Test Suite 'All tests' passed at 2026-10-24 16:42:22.320.
+	 Executed 98 tests, with 0 failures (0 unexpected) in 10.610 (12.175) seconds
+2026-10-24 16:42:23.688 xcodebuild[2941:13592] [MT] IDETestOperationsObserverDebug: 240.337 elapsed -- Testing started completed.
+2026-10-24 16:42:23.689 xcodebuild[2941:13592] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-24 16:42:23.689 xcodebuild[2941:13592] [MT] IDETestOperationsObserverDebug: 240.337 sec, +240.337 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/nodo/nodo/build/Logs/Test/Test-Nodo-2026.10.24_16-36-45-+0000.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started
