@@ -178,6 +178,13 @@ final class EstadoApp: ObservableObject {
     /// `aprobarSolicitud()` o `denegarSolicitud()`.
     @Published var solicitudAprobacion: SolicitudAprobacion?
 
+    /// Propuesta de escritura sensible pendiente de aprobacion (B2.4).
+    ///
+    /// P0.2 solo la proyecta como `.hojaAprobacionMemoria`: el flujo que la
+    /// crea y la resuelve llega en B2.4. Mientras esta pendiente, la hoja es el
+    /// unico artefacto visible del turno.
+    @Published var propuestaMemoriaSensible: PropuestaMemoriaSensible?
+
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
     /// Texto de la caja de la conversacion abierta.
@@ -3771,6 +3778,390 @@ final class EstadoApp: ObservableObject {
         generandoPlanChat = false
         enviando = false
         textoEnCurso = ""
+    }
+
+    // MARK: - Proyeccion visible (P0.2)
+
+    /// Que se ve en el hilo abierto, en orden y sin efectos.
+    ///
+    /// Es la traduccion ejecutable de la tabla S0-S5 al catalogo cerrado de
+    /// `UI_INVARIANTS.md`. `ChatView` pinta esta lista y no vuelve a decidir
+    /// filas leyendo `conversacion.mensajes`.
+    ///
+    /// Reglas de mezcla (las mismas que tenia la vista, ahora en la capa de
+    /// aplicacion): eventos sin ancla al principio, cada mensaje seguido de sus
+    /// eventos anclados y los eventos huerfanos al final. La exclusion es por
+    /// tipo: los mensajes de rol herramienta y los `toolCalls` de un mensaje de
+    /// asistente no producen ningun elemento.
+    func elementosVisiblesDelHilo() -> [ElementoHiloVisible] {
+        let mensajes = conversacion.mensajes
+        let ids = Set(mensajes.map(\.id))
+        var resultado: [ElementoHiloVisible] = []
+
+        // Divisores y lineas de memoria que no cuelgan de ningun mensaje.
+        for evento in eventosVisuales where evento.trasMensaje == nil {
+            if let elemento = elementoVisible(de: evento) {
+                resultado.append(elemento)
+            }
+        }
+
+        for mensaje in mensajes {
+            switch mensaje.rol {
+            case .usuario:
+                resultado.append(.burbujaUsuario(texto: mensaje.texto))
+
+            case .asistente:
+                // Los toolCalls no son un artefacto visible. Si el mensaje no
+                // trae prosa (solo pidio herramientas), no deja burbuja vacia.
+                let segmentos = SegmentoRespuesta.segmentos(de: mensaje.texto)
+                if !segmentos.isEmpty {
+                    resultado.append(.burbujaAsistente(segmentos: segmentos))
+                }
+
+            case .herramienta, .sistema:
+                // Un resultado de herramienta jamas es un elemento del hilo.
+                // Los mensajes de sistema son contexto interno, no conversacion.
+                break
+            }
+
+            for evento in eventosVisuales where evento.trasMensaje == mensaje.id {
+                if let elemento = elementoVisible(de: evento) {
+                    resultado.append(elemento)
+                }
+            }
+        }
+
+        // Un evento cuyo ancla desaparecio (por ejemplo, al regenerar) no se
+        // pierde: se pinta al final para no ocultar informacion.
+        let huerfanos = eventosVisuales.filter { evento in
+            guard let ancla = evento.trasMensaje else { return false }
+            return !ids.contains(ancla)
+        }
+        for evento in huerfanos {
+            if let elemento = elementoVisible(de: evento) {
+                resultado.append(elemento)
+            }
+        }
+
+        if let propuesta = propuestaMemoriaSensible,
+           propuesta.estado == .pendiente {
+            // La hoja es el UNICO artefacto del turno mientras esta pendiente:
+            // no se anade burbuja en curso ni error de turno a su lado.
+            resultado.append(
+                .hojaAprobacionMemoria(
+                    texto: propuesta.texto,
+                    categoriaSensible: propuesta.categoriaSensible,
+                    estado: propuesta.estado
+                )
+            )
+        } else {
+            if enviando {
+                resultado.append(.burbujaEnCurso(texto: textoEnCurso))
+            }
+            if !enviando, let error = errorDeTurno,
+               !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                resultado.append(.errorTurno(texto: error))
+            }
+        }
+
+        return resultado
+    }
+
+    /// Traduce un evento visual a su elemento del catalogo.
+    ///
+    /// La traslacion es conservadora a proposito: un cambio de memoria sigue
+    /// produciendo `.lineaMemoria` con el texto actual de la tarjeta. El cambio
+    /// de texto y de componente visual es B1.2, no P0.2.
+    private func elementoVisible(de evento: EventoVisual) -> ElementoHiloVisible? {
+        if let cambio = evento.cambioMemoria {
+            return .lineaMemoria(
+                texto: cambio.textoDeTarjeta,
+                puedeDeshacer: !evento.deshecho,
+                deshecho: evento.deshecho
+            )
+        }
+        return .divisor(texto: evento.texto)
+    }
+
+    /// Mensaje de origen de cada burbuja proyectada, por indice.
+    ///
+    /// La vista lo usa solo para metadatos que el catalogo no pinta (skills,
+    /// pie de consumo y accion de ramificar). Las filas siguen saliendo de
+    /// `elementosVisiblesDelHilo()`.
+    func fuentesDeBurbujaVisibles(
+        _ elementos: [ElementoHiloVisible]
+    ) -> [Int: ChatMessage] {
+        let visibles = conversacion.mensajes.filter { mensaje in
+            switch mensaje.rol {
+            case .usuario:
+                return true
+            case .asistente:
+                return !SegmentoRespuesta.segmentos(de: mensaje.texto).isEmpty
+            case .herramienta, .sistema:
+                return false
+            }
+        }
+
+        var fuentes: [Int: ChatMessage] = [:]
+        var cursor = 0
+        for (indice, elemento) in elementos.enumerated() {
+            switch elemento {
+            case .burbujaUsuario:
+                while cursor < visibles.count,
+                      visibles[cursor].rol != .usuario {
+                    cursor += 1
+                }
+                if cursor < visibles.count {
+                    fuentes[indice] = visibles[cursor]
+                    cursor += 1
+                }
+
+            case .burbujaAsistente:
+                while cursor < visibles.count,
+                      visibles[cursor].rol != .asistente {
+                    cursor += 1
+                }
+                if cursor < visibles.count {
+                    fuentes[indice] = visibles[cursor]
+                    cursor += 1
+                }
+
+            default:
+                break
+            }
+        }
+        return fuentes
+    }
+
+    /// Evento de memoria de cada linea proyectada, por indice.
+    ///
+    /// Permite que [Deshacer] actue sobre el cambio exacto sin que el UUID
+    /// entre en el catalogo de elementos visibles.
+    func eventosDeMemoriaVisibles(
+        _ elementos: [ElementoHiloVisible]
+    ) -> [Int: EventoVisual] {
+        let mensajes = conversacion.mensajes
+        let ids = Set(mensajes.map(\.id))
+        var eventos = eventosVisuales.filter {
+            $0.trasMensaje == nil && $0.cambioMemoria != nil
+        }
+        for mensaje in mensajes {
+            eventos += eventosVisuales.filter {
+                $0.trasMensaje == mensaje.id && $0.cambioMemoria != nil
+            }
+        }
+        eventos += eventosVisuales.filter { evento in
+            guard let ancla = evento.trasMensaje else { return false }
+            return !ids.contains(ancla) && evento.cambioMemoria != nil
+        }
+
+        var memorias: [Int: EventoVisual] = [:]
+        var cursor = 0
+        for (indice, elemento) in elementos.enumerated() {
+            if case .lineaMemoria = elemento, cursor < eventos.count {
+                memorias[indice] = eventos[cursor]
+                cursor += 1
+            }
+        }
+        return memorias
+    }
+
+    /// Que se ve en la pantalla de una Tarea, en orden y sin efectos.
+    ///
+    /// Cabecera, tarjeta de plan y filas del libro. La vista de Tarea pintara
+    /// esta lista igual que el Chat pinta la suya; el estado no cambia aqui.
+    func elementosVisiblesDeTarea(_ tarea: Tarea) -> [ElementoTareaVisible] {
+        var resultado: [ElementoTareaVisible] = []
+        let total = tarea.pasos.count
+
+        resultado.append(
+            .cabeceraTarea(
+                estado: estadoVisibleDeTarea(tarea),
+                pasoActual: Self.pasoActualDe(tarea),
+                pasosTotales: total,
+                costoSellado: Decimal(tarea.costoAcumuladoUSD ?? 0)
+            )
+        )
+
+        if let plan = tarea.plan {
+            // `PlanTarea` aun no guarda un contador de versiones. La version
+            // inicial es 1; el bloque de Tarea la incrementara cuando regenere.
+            resultado.append(.tarjetaPlan(pasos: plan.pasos, version: 1))
+        }
+
+        for (indice, paso) in tarea.pasos.enumerated() {
+            resultado.append(
+                .filaPaso(
+                    paso: indice + 1,
+                    estado: Self.estadoVisibleDePaso(paso, tarea: tarea),
+                    etiquetaDinamica: Self.etiquetaDinamicaDePaso(
+                        paso,
+                        indice: indice + 1
+                    ),
+                    duracion: Self.duracionDePaso(paso),
+                    costo: paso.costoUSD.map { Decimal($0) }
+                )
+            )
+        }
+
+        return resultado
+    }
+
+    /// Que se ve en la pestana Chats para un termino de busqueda.
+    ///
+    /// Una fila se identifica por titulo y vista previa de texto, nunca por un
+    /// identificador interno. Si no hay coincidencias se devuelve el estado
+    /// vacio explicito: la pestana no queda en blanco sin explicacion.
+    func elementosVisiblesDeBusqueda(
+        _ termino: String,
+        en conversaciones: [Conversation]? = nil
+    ) -> [ElementoBusquedaVisible] {
+        let lista = conversaciones ?? self.conversaciones
+        let consulta = termino.trimmingCharacters(in: .whitespacesAndNewlines)
+        let coincidentes = lista.filter {
+            HistorialConversaciones.coincide($0, con: consulta)
+        }
+
+        guard !coincidentes.isEmpty else {
+            return [.sinResultados(termino: consulta)]
+        }
+
+        return coincidentes.map { conversacion in
+            .resultadoBusqueda(
+                titulo: conversacion.titulo,
+                vistaPrevia: Self.vistaPreviaDe(conversacion, termino: consulta)
+            )
+        }
+    }
+
+    /// Estado visible de la cabecera de una tarea.
+    private func estadoVisibleDeTarea(
+        _ tarea: Tarea
+    ) -> ElementoTareaVisible.EstadoTarea {
+        switch tarea.estado {
+        case .borrador:
+            return generandoPlan ? .planificando : .nuevaTarea
+
+        case .esperandoInicio:
+            let tienePlan = !(tarea.plan?.pasos.isEmpty ?? true)
+            return tienePlan ? .planPropuesto : .nuevaTarea
+
+        case .enCurso:
+            let esperaAprobacion = solicitudAprobacion?.tareaID == tarea.id
+                || tarea.pasos.contains { $0.aprobacion == .pendiente }
+            return esperaAprobacion ? .esperandoAprobacion : .enCurso
+
+        case .detenida, .interrumpida:
+            return .detenida
+
+        case .completada:
+            return .completada
+
+        case .fallida:
+            return .error
+        }
+    }
+
+    /// Numero visible del paso en curso, o del siguiente pendiente.
+    private static func pasoActualDe(_ tarea: Tarea) -> Int {
+        guard !tarea.pasos.isEmpty else { return 0 }
+
+        if let indice = tarea.pasos.firstIndex(where: { $0.estado == .enCurso }) {
+            return indice + 1
+        }
+
+        let resueltos = tarea.pasos.filter { $0.estado.estaResuelto }.count
+        return min(max(1, resueltos + 1), tarea.pasos.count)
+    }
+
+    /// Estado visible de una fila del libro.
+    private static func estadoVisibleDePaso(
+        _ paso: Paso,
+        tarea: Tarea
+    ) -> ElementoTareaVisible.EstadoPaso {
+        if paso.aprobacion == .pendiente {
+            return .esperandoAprobacion
+        }
+
+        switch paso.estado {
+        case .pendiente:
+            return .pendiente
+
+        case .enCurso:
+            if tarea.estado == .detenida || tarea.estado == .interrumpida {
+                return .detenido
+            }
+            return .enCurso
+
+        case .terminado:
+            return .completado
+
+        case .denegado:
+            return .denegado
+
+        case .fallido:
+            return .error
+        }
+    }
+
+    /// Rotulo humano de una fila. Nunca es el nombre tecnico de la herramienta
+    /// ni sus argumentos crudos (que pueden traer un UUID).
+    private static func etiquetaDinamicaDePaso(_ paso: Paso, indice: Int) -> String {
+        if let fase = paso.etiquetaDeFase {
+            return fase
+        }
+
+        if paso.herramienta == Memoria.nombreHerramientaTarea {
+            if let accion = try? Memoria.accion(
+                desdeArgumentos: paso.argumentos ?? ""
+            ) {
+                switch accion {
+                case .guardar: return "Guardar en Memoria"
+                case .actualizar: return "Actualizar en Memoria"
+                case .borrar: return "Borrar de Memoria"
+                }
+            }
+            return "Memoria"
+        }
+
+        if paso.herramienta == "traer_url" {
+            return "Leer enlace"
+        }
+
+        return "Paso \(indice)"
+    }
+
+    /// Duracion de un paso, solo cuando el sello de cierre existe.
+    private static func duracionDePaso(_ paso: Paso) -> TimeInterval? {
+        guard let inicio = paso.fechaInicio, let fin = paso.fechaFin else {
+            return nil
+        }
+        return max(0, fin.timeIntervalSince(inicio))
+    }
+
+    /// Vista previa de texto de una conversacion coincidente, sin ids.
+    private static func vistaPreviaDe(
+        _ conversacion: Conversation,
+        termino: String
+    ) -> String {
+        let coincidente = conversacion.mensajes.first { mensaje in
+            !termino.isEmpty
+                && mensaje.texto.range(
+                    of: termino,
+                    options: [.caseInsensitive, .diacriticInsensitive]
+                ) != nil
+        }
+        let primeroConTexto = conversacion.mensajes.first {
+            !$0.texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let crudo = (coincidente ?? primeroConTexto)?.texto ?? ""
+        let limpio = crudo
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !limpio.isEmpty else { return conversacion.titulo }
+        if limpio.count <= 120 { return limpio }
+        return String(limpio.prefix(120)) + "…"
     }
 
     // MARK: - Dictado (§4.5)

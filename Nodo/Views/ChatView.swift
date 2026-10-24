@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 import NodoCore
 
@@ -255,7 +256,9 @@ struct ChatView: View {
                 Label("Compactar", systemImage: "rectangle.compress.vertical")
             }
             // Compactar entra al menu en esta fase, pero solo cuando el hilo
-            // ya tiene suficiente historial (§4.2).
+            // ya tiene suficiente historial (§4.2). Es la unica lectura directa
+            // de `mensajes` que queda en la vista: decide si el comando esta
+            // disponible, no que filas se pintan (eso lo decide la proyeccion).
             .disabled(
                 estado.conversacion.mensajes.count < 6
                     || estado.compactando
@@ -295,61 +298,21 @@ struct ChatView: View {
 
     // MARK: - Hilo
 
-    /// Una fila del hilo: un mensaje real o un evento puramente visual.
-    private enum FilaHilo: Identifiable {
-        case mensaje(ChatMessage)
-        case evento(EventoVisual)
-
-        var id: String {
-            switch self {
-            case .mensaje(let mensaje):
-                return "mensaje-\(mensaje.id.uuidString)"
-            case .evento(let evento):
-                return "evento-\(evento.id.uuidString)"
-            }
-        }
-    }
-
-    /// Mensajes con los divisores intercalados en su punto exacto.
+    /// Lo que se pinta en el hilo lo decide la proyeccion de `EstadoApp`.
     ///
-    /// Los eventos se guardan aparte de `mensajes`, asi que esta mezcla es solo
-    /// de pintado: el payload sigue construyendose con `Historial` (SPEC §2.6).
-    private var filas: [FilaHilo] {
-        let mensajes = estado.conversacion.mensajes
-        let ids = Set(mensajes.map(\.id))
-        var resultado: [FilaHilo] = []
-
-        resultado.append(
-            contentsOf: estado.eventosVisuales
-                .filter { $0.trasMensaje == nil }
-                .map(FilaHilo.evento)
-        )
-
-        for mensaje in mensajes {
-            resultado.append(.mensaje(mensaje))
-            resultado.append(
-                contentsOf: estado.eventosVisuales
-                    .filter { $0.trasMensaje == mensaje.id }
-                    .map(FilaHilo.evento)
-            )
-        }
-
-        // Un evento cuyo ancla desaparecio (por ejemplo, al regenerar) no se
-        // pierde: se pinta al final para no ocultar informacion.
-        let huerfanos = estado.eventosVisuales.filter { evento in
-            guard let ancla = evento.trasMensaje else { return false }
-            return !ids.contains(ancla)
-        }
-        resultado.append(contentsOf: huerfanos.map(FilaHilo.evento))
-
-        return resultado
+    /// La vista no mezcla `mensajes` con `eventosVisuales` ni filtra roles: solo
+    /// recorre `[ElementoHiloVisible]`. Las busquedas de abajo recuperan
+    /// metadatos que el catalogo no pinta (pie de consumo, skills y el id del
+    /// evento para [Deshacer]); no deciden que filas existen.
+    private var contenido: some View {
+        cuerpoPrincipal(estado.elementosVisiblesDelHilo())
     }
 
     @ViewBuilder
-    private var contenido: some View {
-        if estado.conversacion.mensajes.isEmpty
-            && estado.eventosVisuales.isEmpty
-            && !estado.enviando {
+    private func cuerpoPrincipal(
+        _ elementos: [ElementoHiloVisible]
+    ) -> some View {
+        if elementos.isEmpty && !estado.enviando {
             // La Tarjeta de Bienvenida sustituye al estado vacio generico y se
             // alimenta solo de la configuracion real (§3.2).
             TarjetaBienvenidaView(
@@ -358,90 +321,108 @@ struct ChatView: View {
                 alGestionarModelos: alGestionarModelos
             )
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(filas) { fila in
-                            filaDeHilo(fila)
-                                .id(fila.id)
-                        }
+            cuerpoDelHilo(elementos)
+        }
+    }
 
-                        if estado.enviando {
-                            BurbujaEnCurso(texto: estado.textoEnCurso)
-                                .id(Self.marcaEnCurso)
-                        }
+    /// Cuerpo desplazable del hilo, ya con la proyeccion resuelta.
+    private func cuerpoDelHilo(
+        _ elementos: [ElementoHiloVisible]
+    ) -> some View {
+        let fuentes = estado.fuentesDeBurbujaVisibles(elementos)
+        let memorias = estado.eventosDeMemoriaVisibles(elementos)
 
-                        if !estado.enviando, let error = estado.errorDeTurno {
-                            BurbujaErrorTurno(
-                                texto: error,
-                                otrosProveedores: otrosProveedores,
-                                nombreDeProveedor: { nombreDeModelo($0) },
-                                alReintentar: { estado.reintentar() },
-                                alCambiarModelo: { proveedor in
-                                    estado.cambiarProveedor(proveedor)
-                                    estado.reintentar()
-                                }
-                            )
-                            .id(Self.marcaError)
-                        }
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(elementos.indices, id: \.self) { indice in
+                        vistaDeElemento(
+                            elementos[indice],
+                            indice: indice,
+                            fuentes: fuentes,
+                            memorias: memorias
+                        )
+                        .id(Self.idDeElemento(indice))
                     }
-                    .padding(.horizontal, Tema.margen)
-                    .padding(.vertical, 12)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: estado.conversacion.mensajes.count) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.eventosVisuales.count) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.textoEnCurso) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.enviando) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.errorDeTurno) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onAppear { desplazarAlFinal(proxy) }
+                .padding(.horizontal, Tema.margen)
+                .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
+            // El desplazamiento sigue a la PROYECCION, no a los arreglos
+            // internos: cualquier cambio visible (mensaje, evento, texto en
+            // curso, error o fin de turno) llega por la misma via.
+            .onChange(of: estado.elementosVisiblesDelHilo()) { _, _ in
+                desplazarAlFinal(proxy)
+            }
+            .onAppear { desplazarAlFinal(proxy) }
         }
     }
 
     @ViewBuilder
-    private func filaDeHilo(_ fila: FilaHilo) -> some View {
-        switch fila {
-        case .mensaje(let mensaje):
-            filaDeMensajeNormal(mensaje)
+    private func vistaDeElemento(
+        _ elemento: ElementoHiloVisible,
+        indice: Int,
+        fuentes: [Int: ChatMessage],
+        memorias: [Int: EventoVisual]
+    ) -> some View {
+        switch elemento {
+        case .burbujaUsuario(let texto):
+            BurbujaUsuarioProyectada(
+                texto: texto,
+                skills: fuentes[indice]?.skillsAplicadas ?? [],
+                alRamificar: fuentes[indice].flatMap { accionRamificar($0) }
+            )
 
-        case .evento(let evento):
-            if evento.cambioMemoria != nil {
-                TarjetaMemoria(
-                    evento: evento,
-                    alVer: alVerMemoria,
-                    alDeshacer: {
-                        _ = estado.deshacerCambioDeMemoria(id: evento.id)
-                    }
-                )
-            } else {
-                Text(evento.texto)
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 2)
-                    .accessibilityLabel(evento.texto)
-            }
+        case .burbujaAsistente(let segmentos):
+            BurbujaAsistenteProyectada(
+                segmentos: segmentos,
+                pie: fuentes[indice].flatMap { pieDe($0) },
+                alRamificar: fuentes[indice].flatMap { accionRamificar($0) }
+            )
+
+        case .lineaMemoria(let texto, let puedeDeshacer, let deshecho):
+            LineaMemoriaProyectada(
+                texto: texto,
+                puedeDeshacer: puedeDeshacer,
+                deshecho: deshecho,
+                alVer: alVerMemoria,
+                alDeshacer: {
+                    guard let evento = memorias[indice] else { return }
+                    _ = estado.deshacerCambioDeMemoria(id: evento.id)
+                }
+            )
+
+        case .divisor(let texto):
+            Text(texto)
+                .font(.caption2)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 2)
+                .accessibilityLabel(texto)
+
+        case .burbujaEnCurso(let texto):
+            BurbujaEnCurso(texto: texto)
+
+        case .errorTurno(let texto):
+            BurbujaErrorTurno(
+                texto: texto,
+                otrosProveedores: otrosProveedores,
+                nombreDeProveedor: { nombreDeModelo($0) },
+                alReintentar: { estado.reintentar() },
+                alCambiarModelo: { proveedor in
+                    estado.cambiarProveedor(proveedor)
+                    estado.reintentar()
+                }
+            )
+
+        case .hojaAprobacionMemoria(let texto, let categoria, let estadoAprobacion):
+            HojaAprobacionMemoriaProyectada(
+                texto: texto,
+                categoriaSensible: categoria,
+                estado: estadoAprobacion
+            )
         }
-    }
-
-    @ViewBuilder
-    private func filaDeMensajeNormal(_ mensaje: ChatMessage) -> some View {
-        BurbujaMensaje(
-            mensaje: mensaje,
-            pie: pieDe(mensaje),
-            alRamificar: accionRamificar(mensaje)
-        )
     }
 
     /// La pulsacion larga de una burbuja de usuario o asistente ofrece
@@ -454,22 +435,15 @@ struct ChatView: View {
         return { estado.ramificar(desde: mensaje) }
     }
 
-    private static let marcaEnCurso = "nodo-en-curso"
-    private static let marcaError = "nodo-error-turno"
+    private static func idDeElemento(_ indice: Int) -> String {
+        "elemento-\(indice)"
+    }
 
     private func desplazarAlFinal(_ proxy: ScrollViewProxy) {
-        let destino: String?
-        if estado.enviando {
-            destino = Self.marcaEnCurso
-        } else if estado.errorDeTurno != nil {
-            destino = Self.marcaError
-        } else {
-            destino = filas.last?.id
-        }
-
-        guard let destino else { return }
+        let elementos = estado.elementosVisiblesDelHilo()
+        guard let ultimo = elementos.indices.last else { return }
         withAnimation(.easeOut(duration: 0.18)) {
-            proxy.scrollTo(destino, anchor: .bottom)
+            proxy.scrollTo(Self.idDeElemento(ultimo), anchor: .bottom)
         }
     }
 
@@ -897,6 +871,312 @@ struct ChatView: View {
     // para poder probarlo sin SwiftUI ni hardware.
 }
 
+/// Burbuja de usuario construida desde la proyeccion.
+///
+/// Pinta solo el texto que entrega `.burbujaUsuario`. Las skills y la accion
+/// de ramificar son metadatos de la fuente y no cambian que fila se pinta.
+private struct BurbujaUsuarioProyectada: View {
+    let texto: String
+    let skills: [String]
+    let alRamificar: (() -> Void)?
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            burbuja
+        }
+    }
+
+    @ViewBuilder
+    private var burbuja: some View {
+        if let alRamificar {
+            contenido.contextMenu {
+                Button(action: alRamificar) {
+                    Label(
+                        "🔀 Ramificar chat desde aquí",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                }
+            }
+        } else {
+            contenido
+        }
+    }
+
+    private var contenido: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !skills.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(skills, id: \.self) { nombre in
+                        Text("⚡ \(nombre)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Tema.acento)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Tema.acento.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
+                .accessibilityIdentifier("skills-aplicadas")
+            }
+
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Tema.acento.opacity(0.22))
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+}
+
+/// Burbuja del asistente construida desde los segmentos de la proyeccion.
+///
+/// El contenido se pinta tal como lo entrega `.burbujaAsistente`: prosa y
+/// bloques de codigo ya separados. El pie de consumo sigue pegado a la burbuja.
+private struct BurbujaAsistenteProyectada: View {
+    let segmentos: [SegmentoRespuesta]
+    let pie: PieRespuesta?
+    let alRamificar: (() -> Void)?
+
+    var body: some View {
+        HStack {
+            burbuja
+            Spacer(minLength: 48)
+        }
+    }
+
+    @ViewBuilder
+    private var burbuja: some View {
+        if let alRamificar {
+            contenido.contextMenu {
+                Button(action: alRamificar) {
+                    Label(
+                        "🔀 Ramificar chat desde aquí",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                }
+            }
+        } else {
+            contenido
+        }
+    }
+
+    private var contenido: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(segmentos.indices, id: \.self) { indice in
+                    vistaDeSegmento(segmentos[indice])
+                }
+            }
+
+            if let pie {
+                pie
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func vistaDeSegmento(_ segmento: SegmentoRespuesta) -> some View {
+        switch segmento {
+        case .texto(let texto):
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .codigo(let lenguaje, let textoCrudo):
+            BloqueCodigoProyectado(
+                lenguaje: lenguaje,
+                textoCrudo: textoCrudo
+            )
+        }
+    }
+}
+
+/// Bloque de codigo de una respuesta, con su cabecera y su boton Copiar.
+///
+/// La cabecera dice «Código» cuando la cerca no declaro lenguaje. El texto se
+/// pinta exacto, sin las cercas de Markdown.
+private struct BloqueCodigoProyectado: View {
+    let lenguaje: String?
+    let textoCrudo: String
+
+    private var titulo: String {
+        guard let lenguaje, !lenguaje.isEmpty else { return "Código" }
+        return lenguaje
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(titulo)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Tema.textoSuave)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    UIPasteboard.general.string = textoCrudo
+                } label: {
+                    Label("Copiar código", systemImage: "doc.on.doc")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.acento)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copiar código")
+                .accessibilityIdentifier("copiar-codigo")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 7)
+            .padding(.bottom, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(textoCrudo)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 9)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+/// Linea de memoria construida desde la proyeccion.
+///
+/// Mantiene la tarjeta actual de MEM.3 (texto, [Ver] y [Deshacer]) hasta que
+/// B1.2 cambie el componente visual. No recibe el nombre de la herramienta ni
+/// un id: el texto es el de `CambioMemoria.textoDeTarjeta`.
+private struct LineaMemoriaProyectada: View {
+    let texto: String
+    let puedeDeshacer: Bool
+    let deshecho: Bool
+    let alVer: () -> Void
+    let alDeshacer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.caption2)
+                    .foregroundStyle(Tema.acento)
+
+                Text(texto)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button(action: alVer) {
+                    Text("Ver")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Tema.superficieAlta)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("memoria-evento-ver")
+
+                if deshecho {
+                    Text("Deshecho")
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityIdentifier("memoria-evento-deshecho")
+                } else if puedeDeshacer {
+                    Button(action: alDeshacer) {
+                        Text("Deshacer")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Tema.acento.opacity(0.22))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("memoria-evento-deshacer")
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memoria-evento")
+    }
+}
+
+/// Hoja de aprobacion de una escritura sensible, tal como la proyecta P0.2.
+///
+/// Muestra el texto exacto que se guardaria y la categoria tipada. No hay
+/// campo para el nombre de la herramienta ni para un id.
+private struct HojaAprobacionMemoriaProyectada: View {
+    let texto: String
+    let categoriaSensible: CategoriaSensible
+    let estado: EstadoAprobacion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Aprobación necesaria", systemImage: "hand.raised.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.orange)
+
+            Text(texto)
+                .font(.body)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("aprobacion-memoria-texto")
+
+            HStack(spacing: 8) {
+                Text(categoriaSensible.etiquetaVisible)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Tema.acento)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Tema.acento.opacity(0.15))
+                    .clipShape(Capsule())
+
+                Text(estado.titulo)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Tema.radio, style: .continuous)
+                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("aprobacion-memoria")
+    }
+}
+
 /// Burbuja de error en linea al final del hilo (§3.7).
 ///
 /// El mensaje del usuario sigue en su sitio; desde aqui se puede reintentar el
@@ -971,77 +1251,5 @@ private struct BurbujaErrorTurno: View {
             Spacer(minLength: 48)
         }
         .accessibilityIdentifier("error-turno")
-    }
-}
-
-/// Tarjeta de evento de Memoria (MEM.3).
-///
-/// No es un mensaje: vive en `eventosVisuales` y nunca viaja en el payload.
-/// [Ver] lleva a Mi Contexto para revisar la lista y [Deshacer] revierte
-/// EXACTAMENTE el cambio que esta tarjeta representa. Una vez deshecha, la
-/// tarjeta queda como constancia y ya no ofrece deshacer otra vez.
-private struct TarjetaMemoria: View {
-    let evento: EventoVisual
-    let alVer: () -> Void
-    let alDeshacer: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "brain")
-                    .font(.caption2)
-                    .foregroundStyle(Tema.acento)
-
-                Text(evento.texto)
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 8) {
-                Button(action: alVer) {
-                    Text("Ver")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Tema.superficieAlta)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("memoria-evento-ver")
-
-                if evento.deshecho {
-                    Text("Deshecho")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.textoSuave)
-                        .accessibilityIdentifier("memoria-evento-deshecho")
-                } else {
-                    Button(action: alDeshacer) {
-                        Text("Deshacer")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Tema.acento.opacity(0.22))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("memoria-evento-deshacer")
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta.opacity(0.8))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("memoria-evento")
     }
 }
