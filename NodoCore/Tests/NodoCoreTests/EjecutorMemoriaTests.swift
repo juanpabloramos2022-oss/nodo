@@ -243,8 +243,11 @@ final class EjecutorMemoriaTests: XCTestCase {
             ],
             "La propuesta llega UNA vez al aplicador, con su categoria tipada"
         )
-        XCTAssertTrue(resultado.contains("Error"))
-        XCTAssertTrue(resultado.contains("denegado"))
+        XCTAssertEqual(
+            resultado,
+            Memoria.rechazoDenegado,
+            "El rechazo del dueno viaja como decision, no como error tecnico"
+        )
         XCTAssertEqual(caja.entradas, semilla())
     }
 

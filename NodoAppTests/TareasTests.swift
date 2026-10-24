@@ -429,7 +429,7 @@ final class TareasTests: XCTestCase {
         )
     }
 
-    func testEnTareaNoSeOfreceMemoriaChatYEnChatNoSeOfreceProponerMemoria() async throws {
+    func testEnTareaNoSeOfrecenLasHerramientasDeChatYEnChatNoSeOfreceProponerMemoria() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 

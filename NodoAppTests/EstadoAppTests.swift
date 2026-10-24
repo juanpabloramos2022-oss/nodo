@@ -75,10 +75,10 @@ final class EstadoAppTests: XCTestCase {
     // MARK: - Memoria en el payload (MEM.2)
 
     /// En un chat con Memoria el payload lleva las tres piezas juntas: bloque
-    /// de capacidad, entradas sembradas con sus ids y categorias, y las tres
-    /// herramientas tipadas de escritura. Se mira el cuerpo grabado por el
-    /// transporte, no solo el estado interno, porque lo que importa es lo que
-    /// sale a la red.
+    /// de capacidad, entradas sembradas con sus ids y categorias, y las cuatro
+    /// herramientas tipadas de escritura (B2.4 suma la sensible). Se mira el
+    /// cuerpo grabado por el transporte, no solo el estado interno, porque lo
+    /// que importa es lo que sale a la red.
     func testPayloadDeChatConMemoriaLlevaBloqueEntradasYHerramientas() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }

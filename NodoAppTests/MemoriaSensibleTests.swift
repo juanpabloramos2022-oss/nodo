@@ -76,7 +76,7 @@ final class MemoriaSensibleTests: XCTestCase {
         let pendientes = arnes.estado.elementosVisiblesDelHilo()
         XCTAssertEqual(pendientes.count, 2, "\(pendientes)")
         XCTAssertEqual(
-            pendientes.last,
+            try XCTUnwrap(pendientes.last),
             .hojaAprobacionMemoria(
                 texto: textoSalud,
                 categoriaSensible: .health,

@@ -97,6 +97,10 @@ public final class EjecutorMemoriaDelTurno {
         case .aplicada(let cambio):
             return cambio.resultadoHerramienta
         case .rechazada(let motivo):
+            // Una denegacion del dueno no es un error tecnico: viaja con el
+            // MISMO texto que usa el Modo Tarea, para que el modelo lo lea
+            // como decision del dueno. Cualquier otro motivo si se rotula.
+            if motivo == Memoria.rechazoDenegado { return motivo }
             return "Error: \(motivo)"
         }
     }

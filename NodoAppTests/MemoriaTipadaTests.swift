@@ -459,7 +459,10 @@ final class MemoriaTipadaTests: XCTestCase {
 
         XCTAssertEqual(arnes.estado.config.memoria, original)
         XCTAssertNil(eventoDeMemoria(arnes))
-        XCTAssertTrue(try resultadoDeHerramienta(arnes).contains("Error"))
+        XCTAssertEqual(
+            try resultadoDeHerramienta(arnes),
+            Memoria.rechazoDenegado
+        )
 
         let cuerpo = try cuerpoDeLaPeticion(arnes, indice: 0)
         XCTAssertTrue(

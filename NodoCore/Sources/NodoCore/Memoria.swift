@@ -265,6 +265,15 @@ public enum Memoria {
     /// `delete_memory`: borra una entrada existente por su `entry_id`.
     public static let nombreBorrar = "delete_memory"
 
+    /// Texto del resultado interno cuando el dueno deniega una escritura.
+    ///
+    /// Es EXACTAMENTE el que devuelve el bucle del Modo Tarea cuando el dueno
+    /// pulsa Denegar, para que el modelo lea una decision del dueno y no un
+    /// fallo tecnico. B2.4 lo reutiliza en Chat: una propuesta sensible
+    /// denegada (o cerrada sin decidir) cierra su `tool_call_id` con este
+    /// texto, que solo viaja al modelo y nunca es un elemento del hilo.
+    public static let rechazoDenegado = "denegado por el dueno"
+
     /// Nombre reservado para el Modo Tarea (partida TASK).
     ///
     /// Politica de nombres y contexto, para que TASK la conecte sin inventar
