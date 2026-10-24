@@ -128,6 +128,41 @@ class TrazaValidaTest(unittest.TestCase):
             fallos = verificador.verificar_traza(ruta, "B2.1")
             self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
 
+    def test_b22_cierra_con_cero_lineas_de_memoria(self) -> None:
+        # B2.2 archiva un hilo TEMPORAL: no hay ninguna operacion de memoria
+        # posible, asi que la traza solo lleva burbujas.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi palabra clave de prueba es LUNA-7 y '
+            'prefiero respuestas cortas")',
+            '[t=0.2s] AssistantBubble("Entendido: LUNA-7, respuestas cortas.")',
+            '  [t=0.2s] TextSegment("Entendido: LUNA-7, respuestas cortas.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.2.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B2.2"), [])
+
+    def test_b22_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        # Una sola linea en la traza temporal es el fallo exacto que la partida
+        # previene: el hilo ofrecio una herramienta de memoria al modelo.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi palabra clave de prueba es LUNA-7")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: LUNA-7", '
+            'hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Entendido.")',
+            '  [t=0.2s] TextSegment("Entendido.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.2.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.2")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b22_exige_cero_lineas_y_su_humo_vivo(self) -> None:
+        # La expectativa tiene que ser explicita (0), no el "como mucho uno"
+        # que se aplica a las partidas sin entrada propia.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
+        self.assertIn("b22-turno1.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B2.2", verificador.PARTIDAS_CON_PUERTA_B)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
