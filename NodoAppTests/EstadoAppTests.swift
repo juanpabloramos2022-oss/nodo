@@ -252,6 +252,7 @@ final class EstadoAppTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ],
             "Un chat normal no debe ofrecer herramientas de Tarea"
