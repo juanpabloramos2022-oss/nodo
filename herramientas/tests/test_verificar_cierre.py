@@ -163,6 +163,87 @@ class TrazaValidaTest(unittest.TestCase):
         self.assertIn("b22-turno1.json", verificador.HUMOS_EXIGIDOS)
         self.assertIn("B2.2", verificador.PARTIDAS_CON_PUERTA_B)
 
+    def test_b23_cierra_con_dos_lineas_de_memoria(self) -> None:
+        # B2.3 archiva 3 turnos con el interruptor en ON: guardado (turno 1) y
+        # correccion (turno 2) dejan una linea cada uno; la traduccion del
+        # turno 3 no deja ninguna.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: '
+            'mi color favorito de prueba es el verde", hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Guardado. El verde queda como tu '
+            'color de prueba.")',
+            '  [t=0.2s] TextSegment("Guardado. El verde queda como tu '
+            'color de prueba.")',
+            '[t=0.3s] UserBubble("Ya no es el verde, mi color favorito de '
+            'prueba ahora es el azul")',
+            '[t=0.4s] MemoryLineNotice(text: "Memoria actualizada: '
+            'mi color favorito de prueba es el azul", hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Actualizado: ahora es el azul.")',
+            '  [t=0.5s] TextSegment("Actualizado: ahora es el azul.")',
+            '[t=0.6s] UserBubble("Traduce al inglés: la casa es grande")',
+            '[t=0.7s] AssistantBubble("The house is big.")',
+            '  [t=0.7s] TextSegment("The house is big.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.3.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B2.3"), [])
+
+    def test_b23_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        # Una sola linea es la traza que perdio el turno de la correccion.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: '
+            'mi color favorito de prueba es el verde", hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Guardado.")',
+            '  [t=0.2s] TextSegment("Guardado.")',
+            '[t=0.3s] UserBubble("Traduce al inglés: la casa es grande")',
+            '[t=0.4s] AssistantBubble("The house is big.")',
+            '  [t=0.4s] TextSegment("The house is big.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.3.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.3")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b23_con_tres_lineas_de_memoria_falla_el_conteo_3(self) -> None:
+        # Tres lineas es el turno efimero que llamo a memoria: justo el fallo
+        # negativo que B2.3 previene.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: verde", '
+            'hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Guardado.")',
+            '  [t=0.2s] TextSegment("Guardado.")',
+            '[t=0.3s] UserBubble("Ahora es el azul")',
+            '[t=0.4s] MemoryLineNotice(text: "Memoria actualizada: azul", '
+            'hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Actualizado.")',
+            '  [t=0.5s] TextSegment("Actualizado.")',
+            '[t=0.6s] UserBubble("Traduce al inglés: la casa es grande")',
+            '[t=0.7s] MemoryLineNotice(text: "Guardado en memoria: '
+            'la casa es grande", hasUndo: true)',
+            '[t=0.8s] AssistantBubble("The house is big.")',
+            '  [t=0.8s] TextSegment("The house is big.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.3.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.3")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b23_exige_dos_lineas_y_sus_tres_humos(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+        for nombre in [
+            "b23-turno1.json", "b23-turno2.json", "b23-turno3.json"
+        ]:
+            self.assertIn(nombre, verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B2.3", verificador.PARTIDAS_CON_PUERTA_B)
+
+    def test_b23_no_debilita_las_expectativas_vigentes(self) -> None:
+        # B2.1 = 3 y B2.2 = 0 siguen intactas: la partida nueva solo suma.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '

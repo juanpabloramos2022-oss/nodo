@@ -60,6 +60,10 @@ HUMOS_EXIGIDOS = [
     "b21-turno3.json",
     # B2.2: Chat Temporal. Un turno con el payload sin herramientas de memoria.
     "b22-turno1.json",
+    # B2.3: guardado por juicio y correccion sin duplicar, tres turnos.
+    "b23-turno1.json",
+    "b23-turno2.json",
+    "b23-turno3.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -113,6 +117,10 @@ GUARDADOS_ESPERADOS = {
     # B2.2 archiva un hilo TEMPORAL: no hay operacion de memoria posible, asi
     # que la traza no puede tener ni una sola linea de aviso.
     "B2.2": 0,
+    # B2.3 archiva 3 turnos con el interruptor en ON: guardado (turno 1) y
+    # correccion (turno 2) dejan una linea cada uno; la traduccion del turno 3
+    # no deja ninguna. Total: 2.
+    "B2.3": 2,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).
