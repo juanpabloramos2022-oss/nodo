@@ -64,6 +64,9 @@ HUMOS_EXIGIDOS = [
     "b23-turno1.json",
     "b23-turno2.json",
     "b23-turno3.json",
+    # B2.4: freno sensible. Un turno con el prompt de salud del contrato: si
+    # hay llamada de memoria, es una propuesta sensible y no un guardado.
+    "b24-turno1.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -121,6 +124,10 @@ GUARDADOS_ESPERADOS = {
     # correccion (turno 2) dejan una linea cada uno; la traduccion del turno 3
     # no deja ninguna. Total: 2.
     "B2.3": 2,
+    # B2.4 archiva 2 turnos con el interruptor en ON: la propuesta de salud
+    # DENEGADA del turno 1 no deja linea; la propuesta de finanzas APROBADA del
+    # turno 2 deja exactamente una. Total: 1.
+    "B2.4": 1,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).

@@ -244,6 +244,82 @@ class TrazaValidaTest(unittest.TestCase):
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
 
+    def test_b24_cierra_con_una_linea_de_memoria(self) -> None:
+        # B2.4 archiva 2 turnos: el turno 1 propone un dato de salud y se
+        # DENIEGA (0 lineas, la hoja queda como artefacto); el turno 2 propone
+        # finanzas y se APRUEBA (1 linea). Total: 1.
+        lineas = [
+            '[t=0.0s] UserBubble("Dato de prueba de salud: mi presión '
+            'arterial de prueba es 120 sobre 80, ¿qué significa?")',
+            '[t=0.1s] MemoryApprovalSheet(texto: "mi presión arterial de '
+            'prueba es 120 sobre 80", categoria: "Salud", '
+            'estado: "pendiente")',
+            '[t=0.2s] AssistantBubble("Entendido: es una lectura normal de '
+            'prueba.")',
+            '  [t=0.2s] TextSegment("Entendido: es una lectura normal de '
+            'prueba.")',
+            '[t=0.3s] UserBubble("Dato de prueba de finanzas: mi presupuesto '
+            'de prueba es 500 al mes, ¿cómo lo reparto?")',
+            '[t=0.4s] MemoryApprovalSheet(texto: "mi presupuesto de prueba '
+            'es 500 al mes", categoria: "Finanzas", estado: "pendiente")',
+            '[t=0.5s] MemoryLineNotice(text: "Guardado en memoria: '
+            'mi presupuesto de prueba es 500 al mes", hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Anotado: 500 al mes.")',
+            '  [t=0.5s] TextSegment("Anotado: 500 al mes.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.4.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B2.4"), [])
+
+    def test_b24_con_cero_lineas_falla_el_conteo_3(self) -> None:
+        # Cero lineas es la traza que perdio la aprobacion del turno 2.
+        lineas = [
+            '[t=0.0s] UserBubble("Dato de prueba de salud")',
+            '[t=0.1s] MemoryApprovalSheet(texto: "x", categoria: "Salud", '
+            'estado: "pendiente")',
+            '[t=0.2s] AssistantBubble("Entendido.")',
+            '  [t=0.2s] TextSegment("Entendido.")',
+            '[t=0.3s] UserBubble("Dato de prueba de finanzas")',
+            '[t=0.4s] AssistantBubble("Anotado.")',
+            '  [t=0.4s] TextSegment("Anotado.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.4.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.4")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b24_con_dos_lineas_falla_el_conteo_3(self) -> None:
+        # Dos lineas es la traza en la que la propuesta DENEGADA del turno 1
+        # tambien dejo aviso de guardado.
+        lineas = [
+            '[t=0.0s] UserBubble("Dato de prueba de salud")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: x", '
+            'hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Entendido.")',
+            '  [t=0.2s] TextSegment("Entendido.")',
+            '[t=0.3s] UserBubble("Dato de prueba de finanzas")',
+            '[t=0.4s] MemoryLineNotice(text: "Guardado en memoria: y", '
+            'hasUndo: true)',
+            '[t=0.5s] AssistantBubble("Anotado.")',
+            '  [t=0.5s] TextSegment("Anotado.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.4.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.4")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b24_exige_una_linea_y_su_humo_vivo(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+        self.assertIn("b24-turno1.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B2.4", verificador.PARTIDAS_CON_PUERTA_B)
+
+    def test_b24_no_debilita_las_expectativas_vigentes(self) -> None:
+        # B2.1 = 3, B2.2 = 0 y B2.3 = 2 siguen intactas: la partida nueva solo
+        # suma su propia entrada.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '

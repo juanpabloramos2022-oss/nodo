@@ -42,3 +42,7 @@ capturas-export/
 
 # Toolchain local de sesiones (nunca se versiona)
 .swift-toolchain/
+
+# Python (herramientas de la Puerta C)
+__pycache__/
+*.pyc
