@@ -61,6 +61,29 @@ class TrazaValidaTest(unittest.TestCase):
                 verificador.verificar_traza(ruta, "P0.2"), []
             )
 
+    def test_b12_cierra_con_dos_lineas_de_memoria(self) -> None:
+        lineas = [
+            '[t=0.0s] UserBubble("Recuerda que mi palabra clave personal '
+            'de ejemplo es LUNA-7")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: '
+            'LUNA-7", hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Listo.")',
+            '  [t=0.2s] TextSegment("Listo.")',
+            '[t=0.3s] UserBubble("¿Cuál es mi palabra clave personal '
+            'de ejemplo?")',
+            '[t=0.4s] AssistantBubble("LUNA-7.")',
+            '  [t=0.4s] TextSegment("LUNA-7.")',
+            '[t=0.5s] UserBubble("Actualiza mi memoria: mi palabra clave '
+            'ahora es LUNA-9")',
+            '[t=0.6s] MemoryLineNotice(text: "Memoria actualizada: '
+            'LUNA-9", hasUndo: true)',
+            '[t=0.7s] AssistantBubble("Memoria actualizada.")',
+            '  [t=0.7s] TextSegment("Memoria actualizada.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B1.2.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B1.2"), [])
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '

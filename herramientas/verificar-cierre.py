@@ -97,7 +97,9 @@ GUARDADOS_ESPERADOS = {
     "P0.2": 1,
     "P0.3": 0,
     "B1.1": 1,
-    "B1.2": 1,
+    # B1.2 archiva 3 turnos: guardado (turno 1) y actualizacion (turno 3)
+    # dejan una linea cada uno; la consulta del turno 2 no deja ninguna.
+    "B1.2": 2,
     "B1.3": 1,
 }
 
