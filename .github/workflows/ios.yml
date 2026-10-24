@@ -107,6 +107,9 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Puerta de cierre (coherencia de version)
+        run: python3 herramientas/verificar-cierre.py --solo-repo
+
       - name: Empaquetar el .ipa
         run: |
           mkdir -p Payload
