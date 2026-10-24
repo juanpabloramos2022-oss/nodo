@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Recuerda que mi palabra clave de la barbería es LUNA-7 y que prefiero respuestas cortas.")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Palabra clave de la barbería: LUNA-7", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo: lo guarde en tu Memoria.")
+  [t=0.0s] TextSegment("Listo: lo guarde en tu Memoria.")
