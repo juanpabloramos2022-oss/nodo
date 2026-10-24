@@ -35,10 +35,15 @@ public enum Historial {
     /// usos resumidos. Cuando la conversacion ya aporta su resumen por la via
     /// de la Memoria (o el bloque ya lo trae), el respaldo no se anade: el
     /// mismo bloque nunca viaja dos veces.
+    /// B2.3: `disparoMemoria` decide SOLO la instruccion de disparo del bloque
+    /// de sistema. El conjunto de herramientas lo decide `usaMemoriaEnPayload`
+    /// en la capa app y no cambia con el interruptor: ON y OFF ofrecen las
+    /// mismas herramientas tipadas de B2.1.
     public static func paraEnviar(
         conversacion: Conversation,
         memoria: [EntradaMemoria],
-        resumenGuardado: String? = nil
+        resumenGuardado: String? = nil,
+        disparoMemoria: DisparoMemoria = .ordenExplicita
     ) -> [ChatMessage] {
         var historial: [ChatMessage] = []
 
@@ -49,7 +54,10 @@ public enum Historial {
         // y el ofrecimiento de herramientas no puedan divergir.
         let usaMemoria = conversacion.usaMemoriaEnPayload
         let bloqueMemoria = usaMemoria
-            ? Memoria.bloqueSistema(entradas: memoria)
+            ? Memoria.bloqueSistema(
+                entradas: memoria,
+                disparo: disparoMemoria
+            )
             : nil
         if let bloqueMemoria {
             historial.append(ChatMessage(rol: .sistema, texto: bloqueMemoria))

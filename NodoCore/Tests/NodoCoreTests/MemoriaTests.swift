@@ -234,6 +234,108 @@ final class MemoriaTests: XCTestCase {
         XCTAssertTrue(bloque.contains(entradas[0].texto))
     }
 
+    // MARK: - Interruptor «Memoria inteligente» (B2.3)
+
+    /// La rama ON presenta las cuatro categorias y el criterio de §5.5.2, y
+    /// ordena expresar el juicio SOLO con las herramientas.
+    func testLaRamaDeJuicioPresentaLasCuatroCategoriasYElCriterio() {
+        let bloque = Memoria.bloqueSistema(
+            entradas: [EntradaMemoria(id: idUno, texto: "Vive en Madrid")],
+            disparo: .juicio
+        )
+
+        for categoria in [
+            "durable_fact", "preference", "correction", "commitment"
+        ] {
+            XCTAssertTrue(
+                bloque.contains(categoria),
+                "La rama ON tiene que presentar \(categoria)"
+            )
+        }
+        XCTAssertTrue(
+            bloque.contains("Ante la duda entre guardar y no guardar, no guardes")
+        )
+        XCTAssertTrue(bloque.contains("No guardes detalles efimeros"))
+        XCTAssertTrue(bloque.contains("SOLO invocando las herramientas"))
+        XCTAssertTrue(bloque.contains("update_memory con el entry_id"))
+
+        XCTAssertFalse(
+            bloque.contains(Memoria.instruccionDeOrdenExplicita),
+            "La rama ON no puede arrastrar el disparo de OFF"
+        )
+
+        // El parrafo de B1.3 y el candado son los mismos en las dos ramas y no
+        // se duplican al cambiar el disparo.
+        XCTAssertTrue(bloque.contains(Memoria.comunicacionDeMemoria))
+        XCTAssertTrue(bloque.contains(Memoria.candadoDeBorrado))
+        XCTAssertEqual(
+            bloque.components(
+                separatedBy: Memoria.comunicacionDeMemoria
+            ).count - 1,
+            1
+        )
+    }
+
+    /// La rama OFF conserva el disparo literal de la v0.3.1 y no trae juicio.
+    func testLaRamaOFFConservaElDisparoDeSiempreYNoTraeElJuicio() {
+        let entradas = [EntradaMemoria(id: idUno, texto: "Vive en Madrid")]
+
+        let porDefecto = Memoria.bloqueSistema(entradas: entradas)
+        let explicita = Memoria.bloqueSistema(
+            entradas: entradas,
+            disparo: .ordenExplicita
+        )
+
+        XCTAssertEqual(porDefecto, explicita, "El defecto es OFF")
+        XCTAssertTrue(
+            porDefecto.contains(Memoria.instruccionDeOrdenExplicita)
+        )
+        XCTAssertFalse(porDefecto.contains("Memoria inteligente activada"))
+        XCTAssertFalse(porDefecto.contains("cuatro categorias tipadas"))
+        XCTAssertEqual(
+            porDefecto.components(
+                separatedBy: Memoria.instruccionDeOrdenExplicita
+            ).count - 1,
+            1
+        )
+    }
+
+    /// Las dos ramas solo cambian el disparo: herramientas, comunicacion,
+    /// candado y entradas con id quedan identicos.
+    func testLasDosRamasSoloCambianElDisparo() {
+        let entradas = [
+            EntradaMemoria(
+                id: idUno,
+                texto: "Vive en Madrid",
+                categoria: .durableFact
+            ),
+            EntradaMemoria(
+                id: idDos,
+                texto: "Prefiere respuestas breves",
+                categoria: .preference
+            )
+        ]
+
+        let off = Memoria.bloqueSistema(
+            entradas: entradas,
+            disparo: .ordenExplicita
+        )
+        let on = Memoria.bloqueSistema(
+            entradas: entradas,
+            disparo: .juicio
+        )
+
+        let restoOFF = off.replacingOccurrences(
+            of: Memoria.instruccionDeOrdenExplicita,
+            with: "<DISPARO>"
+        )
+        let restoON = on.replacingOccurrences(
+            of: Memoria.instruccionDeJuicio,
+            with: "<DISPARO>"
+        )
+        XCTAssertEqual(restoOFF, restoON)
+    }
+
     // MARK: - Esquemas tipados (B2.1)
 
     func testLasCuatroHerramientasTipadasDeclaranSusCamposYObligatorios() {

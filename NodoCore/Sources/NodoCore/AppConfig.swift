@@ -54,6 +54,17 @@ public struct AppConfig: Codable, Equatable {
     /// POR QUE una lista: cada entrada tiene identidad propia para que el dueno
     /// pueda pedir que se guarde, actualice o borre una sin reescribir el resto.
     public var memoria: [EntradaMemoria]
+    /// Interruptor «Memoria inteligente» de Mi Contexto (B2.3).
+    ///
+    /// ON: el modelo guarda por juicio propio, sin esperar una orden. OFF: la
+    /// instruccion de disparo vuelve a «solo ante orden explicita» y las
+    /// herramientas tipadas de B2.1 siguen ofrecidas con su mismo ejecutor.
+    ///
+    /// POR QUE nace en OFF: el guardado autonomo no se activa por defecto sin
+    /// las puertas del bloque en verde (R7). El dueno lo enciende en Mi
+    /// Contexto; el valor se persiste con la configuracion y cambiarlo nunca
+    /// toca la lista de entradas.
+    public var memoriaInteligente: Bool
     public var servidor: ServerConfig
     /// Tope de aviso por chat, en dolares estimados. nil usa el valor por
     /// defecto; 0 o negativo desactiva el aviso.
@@ -84,6 +95,7 @@ public struct AppConfig: Codable, Equatable {
         proveedores: [ProviderConfig] = [],
         proveedorActivo: UUID? = nil,
         memoria: [EntradaMemoria] = [],
+        memoriaInteligente: Bool = false,
         servidor: ServerConfig = ServerConfig(),
         topeAvisoCosto: Double? = nil,
         herramientasSinAprobacion: [String]? = nil,
@@ -96,6 +108,7 @@ public struct AppConfig: Codable, Equatable {
         self.proveedores = proveedores
         self.proveedorActivo = proveedorActivo
         self.memoria = memoria
+        self.memoriaInteligente = memoriaInteligente
         self.servidor = servidor
         self.topeAvisoCosto = topeAvisoCosto
         self.herramientasSinAprobacion = herramientasSinAprobacion
@@ -110,6 +123,7 @@ public struct AppConfig: Codable, Equatable {
         case proveedores
         case proveedorActivo
         case memoria
+        case memoriaInteligente
         case servidor
         case topeAvisoCosto
         case herramientasSinAprobacion
@@ -143,6 +157,12 @@ public struct AppConfig: Codable, Equatable {
         proveedores = try contenedor.decode([ProviderConfig].self, forKey: .proveedores)
         proveedorActivo = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorActivo)
         memoria = try Self.leerMemoria(de: contenedor, decoder: decoder)
+        // B2.3: las configuraciones anteriores al interruptor se leen en OFF.
+        // Es el valor seguro: sin la marca, la app no empieza a guardar sola.
+        memoriaInteligente = try contenedor.decodeIfPresent(
+            Bool.self,
+            forKey: .memoriaInteligente
+        ) ?? false
         servidor = try contenedor.decode(ServerConfig.self, forKey: .servidor)
         topeAvisoCosto = try contenedor.decodeIfPresent(Double.self, forKey: .topeAvisoCosto)
         herramientasSinAprobacion = try contenedor.decodeIfPresent(

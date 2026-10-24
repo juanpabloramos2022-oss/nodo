@@ -202,6 +202,19 @@ public enum CambioMemoria: Equatable {
     }
 }
 
+/// Politica de disparo de las herramientas de memoria en Chat (B2.3).
+///
+/// POR QUE dos casos nombrados y no un `Bool`: la rama OFF no es "lo contrario"
+/// de la ON, es la instruccion literal de la v0.3.1 («solo ante orden
+/// explicita») conservada como regimen. Nombrarlas evita que una sesion futura
+/// las trate como un flag de interfaz o borre el mecanismo viejo (R16).
+public enum DisparoMemoria: Equatable {
+    /// ON: el modelo decide por juicio propio (interruptor «Memoria inteligente»).
+    case juicio
+    /// OFF: sin orden explicita del dueno no se invoca ninguna herramienta.
+    case ordenExplicita
+}
+
 /// Reglas de la Memoria viva compartidas por el almacenamiento y el payload.
 public enum Memoria {
     /// Cabecera unica del bloque de sistema.
@@ -601,28 +614,89 @@ public enum Memoria {
         entradas.map(\.texto).joined(separator: "\n\n")
     }
 
+    // MARK: - Instrucciones de disparo (B2.3)
+
+    /// Instruccion de disparo de la rama OFF (y del regimen de Tarea).
+    ///
+    /// Es el texto literal de la v0.3.1: B2.3 demuele la POLITICA como defecto
+    /// del Chat, no el mecanismo, que sigue vivo como rama OFF del interruptor
+    /// (R16). Se conserva palabra por palabra para que el payload de OFF sea
+    /// exactamente el de siempre.
+    public static let instruccionDeOrdenExplicita = """
+    Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio.
+    """
+
+    /// Instruccion de disparo de la rama ON: juicio del modelo por categorias.
+    ///
+    /// Presenta las cuatro categorias tipadas y el criterio de la direccion
+    /// §5.5.2 (durable / preferencia / correccion / compromiso; efimero no;
+    /// ante la duda, no) y ordena expresar el juicio SOLO invocando las
+    /// herramientas. No repite el parrafo de comunicacion de B1.3 ni su
+    /// instruccion de brevedad: esas viven una sola vez en el bloque.
+    public static let instruccionDeJuicio = """
+    Memoria inteligente activada: decide tu, por juicio propio, que datos del dueno merecen sobrevivir a esta conversacion. No esperes a que te lo pida ni le pidas permiso para guardarlos.
+
+    Clasifica lo que el dueno cuenta en una de las cuatro categorias tipadas: durable_fact (un hecho que seguira siendo cierto dentro de un mes), preference (un gusto, formato o forma de trabajo estable), correction (un valor nuevo que reemplaza el de una entrada existente) o commitment (una decision o un compromiso vigente). No guardes detalles efimeros: lo que solo sirve para este turno no es memoria. La naturaleza del dato manda sobre como lo presenta el dueno: un gusto estable (un color, una comida, un formato que prefiere) es preference aunque lo mencione al pasar o como ejemplo. Ante la duda entre guardar y no guardar, no guardes.
+
+    Expresa ese juicio SOLO invocando las herramientas: save_memory para un dato nuevo y update_memory con el entry_id de la entrada vigente para una correccion. No crees una entrada nueva para corregir un dato que ya esta en la lista.
+
+    """
+
+    /// Linea que declara el conjunto tipado ofrecido en Chat.
+    ///
+    /// Es identica en las dos ramas del interruptor: OFF conserva las
+    /// herramientas tipadas de B2.1 y su ejecutor, y solo cambia el disparo.
+    public static let lineaHerramientasTipadas = """
+    Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible: no existe via para guardar salud, finanzas, documentos de identidad ni datos intimos.
+    """
+
+    /// Parrafo de comunicacion de B1.3, literal y sin duplicar.
+    ///
+    /// Su regla 2 es la anti-confabulacion que exige B2.3 (R35): el modelo no
+    /// puede afirmar un guardado que no ejecuto en ese turno. Su regla 3 pone
+    /// el tope del acuse verbal (1 frase, 20 palabras) que mide la traza.
+    public static let comunicacionDeMemoria = """
+    Comunicacion de memoria:
+    1. Si en este turno no ejecutas la herramienta de memoria, responde solo al contenido de la conversacion: no menciones la memoria, ni que no guardaste nada, ni bajo que reglas guardas o dejas de guardar.
+    2. Nunca afirmes haber guardado, anotado o recordado algo que no hayas ejecutado con la herramienta en este turno. Prohibido «anotado mentalmente» y cualquier equivalente.
+    3. Si ejecutas la herramienta, la app ya lo avisa en su linea: tu acuse en palabras es opcional y, si lo haces, es maximo 1 frase simple de 20 palabras o menos, tras lo cual sigues con la respuesta normal.
+    4. Explica la politica de memoria unicamente si el dueno pregunta literalmente como funciona la memoria.
+    """
+
+    /// Candado de borrado (PDE-A1): identico en ON y en OFF.
+    public static let candadoDeBorrado = """
+    Candado de borrado: delete_memory solo ante orden explicita del dueno en ese turno; nunca por iniciativa propia del modelo, ni siquiera con la memoria inteligente activada.
+    """
+
     /// Bloque de sistema que declara la capacidad y lista las entradas.
     ///
-    /// Se manda SOLO en chats con memoria. La capacidad se limita a una orden
-    /// explicita del dueno: sin esa frontera el modelo podria "recordar" por su
-    /// cuenta y ensuciar la Memoria sin que nadie se lo pida. B2.1 inyecta cada
-    /// entrada con su id, su categoria y su texto, y deja el candado de borrado
-    /// (PDE-A1) siempre en «solo ante orden explicita del dueno en ese turno».
-    public static func bloqueSistema(entradas: [EntradaMemoria]) -> String {
-        var lineas: [String] = [
-            cabeceraBloque,
-            "Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio.",
-            "Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible: no existe via para guardar salud, finanzas, documentos de identidad ni datos intimos.",
-            "",
-            "Comunicacion de memoria:",
-            "1. Si en este turno no ejecutas la herramienta de memoria, responde solo al contenido de la conversacion: no menciones la memoria, ni que no guardaste nada, ni bajo que reglas guardas o dejas de guardar.",
-            "2. Nunca afirmes haber guardado, anotado o recordado algo que no hayas ejecutado con la herramienta en este turno. Prohibido «anotado mentalmente» y cualquier equivalente.",
-            "3. Si ejecutas la herramienta, la app ya lo avisa en su linea: tu acuse en palabras es opcional y, si lo haces, es maximo 1 frase simple de 20 palabras o menos, tras lo cual sigues con la respuesta normal.",
-            "4. Explica la politica de memoria unicamente si el dueno pregunta literalmente como funciona la memoria.",
-            "",
-            "Candado de borrado: delete_memory solo ante orden explicita del dueno en ese turno; nunca por iniciativa propia del modelo, ni siquiera con la memoria inteligente activada.",
-            ""
-        ]
+    /// Se manda SOLO en chats con memoria. B2.1 inyecta cada entrada con su id,
+    /// su categoria y su texto, y deja el candado de borrado (PDE-A1) siempre
+    /// en «solo ante orden explicita del dueno en ese turno».
+    ///
+    /// B2.3: el interruptor «Memoria inteligente» decide UNICAMENTE la
+    /// instruccion de disparo. Con ON el modelo juzga por categorias; con OFF
+    /// vuelve el disparo de la v0.3.1. El conjunto de herramientas, el ejecutor
+    /// local y el candado de borrado no cambian en ninguna de las dos ramas.
+    public static func bloqueSistema(
+        entradas: [EntradaMemoria],
+        disparo: DisparoMemoria = .ordenExplicita
+    ) -> String {
+        var lineas: [String] = [cabeceraBloque]
+
+        switch disparo {
+        case .juicio:
+            lineas.append(instruccionDeJuicio)
+        case .ordenExplicita:
+            lineas.append(instruccionDeOrdenExplicita)
+        }
+
+        lineas.append(lineaHerramientasTipadas)
+        lineas.append("")
+        lineas.append(comunicacionDeMemoria)
+        lineas.append("")
+        lineas.append(candadoDeBorrado)
+        lineas.append("")
 
         if entradas.isEmpty {
             lineas.append("Entradas actuales: ninguna.")
@@ -644,9 +718,16 @@ public enum Memoria {
     ///
     /// No existe ningun campo de categoria sensible: clasificar algo sensible
     /// por esta via es estructuralmente imposible.
+    ///
+    /// B2.3: la descripcion NO repite la politica de disparo. Antes decia
+    /// «solo cuando el dueno lo ordene explicitamente», que es la rama OFF:
+    /// dejarla asi contradecia la instruccion de juicio y el modelo se negaba
+    /// a guardar con el interruptor en ON (medido en el humo vivo). El
+    /// disparo vive SOLO en `bloqueSistema`, de modo que ON y OFF ofrecen el
+    /// mismo esquema y solo cambia la instruccion.
     public static let herramientaGuardar = ToolDefinition(
         nombre: nombreGuardar,
-        descripcion: "Guarda una entrada nueva en la Memoria del usuario. Solo debe usarse cuando el dueno lo ordene explicitamente.",
+        descripcion: "Guarda una entrada nueva y no sensible en la Memoria del usuario. Requiere content y category.",
         parametros: JSONSchema(
             propiedades: [
                 "content": JSONSchema.Propiedad(
@@ -668,9 +749,13 @@ public enum Memoria {
     )
 
     /// Esquema de `update_memory`.
+    ///
+    /// B2.3: igual que `save_memory`, la descripcion no fija la politica de
+    /// disparo; esa vive solo en el bloque de sistema. El `entry_id` sigue
+    /// siendo obligatorio y se valida contra la lista vigente del turno.
     public static let herramientaActualizar = ToolDefinition(
         nombre: nombreActualizar,
-        descripcion: "Corrige una entrada existente de la Memoria del usuario. Solo debe usarse cuando el dueno lo ordene explicitamente.",
+        descripcion: "Corrige una entrada existente de la Memoria del usuario. Requiere el entry_id de una entrada vigente, el content nuevo y la category.",
         parametros: JSONSchema(
             propiedades: [
                 "entry_id": JSONSchema.Propiedad(

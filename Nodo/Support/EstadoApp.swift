@@ -1275,6 +1275,16 @@ final class EstadoApp: ObservableObject {
         config.topeAvisoCosto = valor
     }
 
+    /// Enciende o apaga «Memoria inteligente» desde Mi Contexto (B2.3).
+    ///
+    /// Cambiar el interruptor NO crea, borra ni edita ninguna entrada: solo
+    /// elige la instruccion de disparo del siguiente payload. La lista de
+    /// entradas queda intacta y el valor se persiste con la configuracion.
+    func fijarMemoriaInteligente(_ activa: Bool) {
+        guard config.memoriaInteligente != activa else { return }
+        config.memoriaInteligente = activa
+    }
+
     /// "Seguir igual" de la franja: silencia el tope solo en este chat.
     func ignorarTopeEnEsteChat() {
         guard !conversacion.topeIgnorado else { return }
@@ -3770,6 +3780,12 @@ final class EstadoApp: ObservableObject {
             // `propose_sensitive_memory` NO se ofrece todavia: su hoja de
             // aprobacion es B2.4 y ofrecerla sin hoja seria forma sin fondo.
             //
+            // B2.3: este conjunto NO depende del interruptor «Memoria
+            // inteligente». ON y OFF ofrecen exactamente las mismas
+            // herramientas tipadas con el mismo ejecutor; lo unico que cambia
+            // entre ramas es la instruccion de disparo del bloque de sistema
+            // (ver `historialParaEnviar`).
+            //
             // B2.2: en un hilo temporal `usaMemoria` es false por construccion
             // (`Conversation.usaMemoriaEnPayload`), asi que el array `tools` de
             // la peticion sale vacio y el cliente ni siquiera manda la clave.
@@ -4394,7 +4410,13 @@ final class EstadoApp: ObservableObject {
             // conversacion no aporta el resumen por la via de la Memoria.
             resumenGuardado: resumenesCompactadosPorConversacion[
                 conversacion.id.uuidString
-            ]
+            ],
+            // B2.3: el interruptor decide SOLO la instruccion de disparo. El
+            // conjunto de herramientas se decide mas abajo, en ejecutarTurno,
+            // y es el mismo con ON y con OFF.
+            disparoMemoria: config.memoriaInteligente
+                ? .juicio
+                : .ordenExplicita
         )
     }
 

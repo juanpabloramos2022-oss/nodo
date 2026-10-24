@@ -921,6 +921,197 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (5) Traza de la partida B2.3 (guion literal de 3 turnos)
+
+    /// Guion literal de B2.3 con el interruptor «Memoria inteligente» en ON.
+    ///
+    /// Turno 1: un dato de preferencia sin verbos de orden; el modelo juzga y
+    /// guarda. Turno 2: la correccion usa el `entry_id` real del turno 1, de
+    /// modo que el conteo no crece (N = N). Turno 3: una traduccion puntual,
+    /// sin llamada de memoria. La traza tiene que dejar 2 `MemoryLineNotice` en
+    /// total (1 + 1 + 0), 0 UUIDs y 0 bloques crudos.
+    private static let promptB23Turno1 =
+        "Mi color favorito de prueba es el verde"
+    private static let promptB23Turno2 =
+        "Ya no es el verde, mi color favorito de prueba ahora es el azul"
+    private static let promptB23Turno3 =
+        "Traduce al inglés: la casa es grande"
+
+    func testElGuionB23ProduceLaTrazaB23() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        // Chat nuevo: sin entradas previas. El interruptor se enciende de
+        // forma explicita, como en el humo vivo de la ficha (nace en OFF).
+        arnes.estado.config.memoria = []
+        arnes.estado.config.memoriaInteligente = true
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B2.3.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Turno 1: guardado por juicio, sin orden explicita del dueno.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b23-turno1",
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"mi color favorito de prueba es el verde","category":"preference"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Guardado. El verde queda como tu color de prueba.",
+            uso: UsoTokens(entrada: 60, salida: 10)
+        )
+        arnes.estado.enviar(Self.promptB23Turno1)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            1,
+            "El turno 1 crea exactamente una entrada"
+        )
+        let creada = try XCTUnwrap(arnes.estado.config.memoria.first)
+        XCTAssertEqual(creada.categoria, .preference)
+        XCTAssertEqual(
+            creada.texto,
+            "mi color favorito de prueba es el verde"
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            1,
+            "El turno 1 deja exactamente un aviso de guardado"
+        )
+        XCTAssertTrue(
+            sesion.contenido.contains(
+                "MemoryLineNotice(text: \"Guardado en memoria: "
+                    + "mi color favorito de prueba es el verde\", "
+                    + "hasUndo: true)"
+            ),
+            sesion.contenido
+        )
+
+        // Turno 2: correccion sobre la MISMA entrada (entry_id real del
+        // turno 1). El conteo no crece: N = N.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b23-turno2",
+                    nombre: Memoria.nombreActualizar,
+                    argumentos: #"{"entry_id":"\#(creada.id.uuidString)","content":"mi color favorito de prueba es el azul","category":"correction"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Actualizado: ahora es el azul.",
+            uso: UsoTokens(entrada: 70, salida: 8)
+        )
+        arnes.estado.enviar(Self.promptB23Turno2)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            1,
+            "Actualizar no hace crecer el conteo (N = N)"
+        )
+        XCTAssertEqual(arnes.estado.config.memoria.first?.id, creada.id)
+        XCTAssertEqual(
+            arnes.estado.config.memoria.first?.texto,
+            "mi color favorito de prueba es el azul"
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            2,
+            "El turno 2 anade exactamente una linea"
+        )
+        XCTAssertTrue(
+            sesion.contenido.contains(
+                "MemoryLineNotice(text: \"Memoria actualizada: "
+                    + "mi color favorito de prueba es el azul\", "
+                    + "hasUndo: true)"
+            ),
+            sesion.contenido
+        )
+
+        // Turno 3 (negativo): una traduccion puntual no llama a memoria.
+        arnes.transporte.guionar(
+            texto: "The house is big.",
+            uso: UsoTokens(entrada: 40, salida: 5)
+        )
+        arnes.estado.enviar(Self.promptB23Turno3)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            2,
+            "El turno 3 no deja ninguna linea: total 2"
+        )
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "AssistantBubble"
+            ],
+            "Un aviso por turno con operacion y ninguno en el turno efimero"
+        )
+
+        // El turno 3 no ejecuto ninguna herramienta de memoria: solo los dos
+        // turnos con operacion dejaron resultado interno en el historial.
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.filter {
+                $0.rol == .herramienta
+            }.count,
+            2,
+            "El turno 3 no puede dejar un resultado de herramienta"
+        )
+        let respuestaTurno3 = try XCTUnwrap(
+            arnes.estado.conversacion.mensajes.last { $0.rol == .asistente }
+        ).texto.lowercased()
+        XCTAssertFalse(respuestaTurno3.contains("guard"))
+        XCTAssertFalse(respuestaTurno3.contains("memoria"))
+        XCTAssertFalse(respuestaTurno3.contains("anot"))
+
+        // El payload del turno 1 lleva la instruccion de juicio con las cuatro
+        // categorias; el del turno 3 inyecta la entrada corregida con su id.
+        let peticiones = arnes.transporte.peticionesRegistradas
+        let primerCuerpo = try XCTUnwrap(peticiones.first?.cuerpo)
+        let primerPayload = try XCTUnwrap(
+            String(data: primerCuerpo, encoding: .utf8)
+        )
+        XCTAssertTrue(primerPayload.contains("Memoria inteligente activada"))
+        for categoria in [
+            "durable_fact", "preference", "correction", "commitment"
+        ] {
+            XCTAssertTrue(primerPayload.contains(categoria), categoria)
+        }
+        let ultimoCuerpo = try XCTUnwrap(peticiones.last?.cuerpo)
+        let ultimoPayload = try XCTUnwrap(
+            String(data: ultimoCuerpo, encoding: .utf8)
+        )
+        XCTAssertTrue(
+            ultimoPayload.contains(
+                "mi color favorito de prueba es el azul"
+            )
+        )
+        XCTAssertTrue(ultimoPayload.contains(creada.id.uuidString))
+
+        XCTAssertFalse(contenido.contains("{"))
+        XCTAssertFalse(contenido.contains("tool_calls"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {

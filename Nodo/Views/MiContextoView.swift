@@ -94,6 +94,33 @@ struct MiContextoView: View {
 
     private var seccionMemoria: some View {
         Section {
+            // B2.3 (HP1 reubicada): el interruptor vive en Mi Contexto, junto
+            // a la lista, con el patron de controles que ya existe. Cambiarlo
+            // solo elige la instruccion de disparo del proximo payload; no
+            // crea, borra ni edita ninguna entrada.
+            Toggle(
+                isOn: Binding(
+                    get: { estado.config.memoriaInteligente },
+                    set: { estado.fijarMemoriaInteligente($0) }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Memoria inteligente")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(
+                        estado.config.memoriaInteligente
+                            ? "Encendida: guarda por su cuenta lo que merezca recordarse."
+                            : "Apagada: solo guarda cuando se lo pides."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityIdentifier("memoria-inteligente")
+            .accessibilityLabel("Memoria inteligente")
+
             Text("Lo que escribas aquí se envía automáticamente a todos los modelos para que te conozcan sin que tengas que presentarte en cada chat.")
                 .font(.footnote)
                 .foregroundStyle(Tema.textoSuave)
