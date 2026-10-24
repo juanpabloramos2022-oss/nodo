@@ -238,6 +238,104 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (3) Traza de la partida B1.1 (guion literal de 2 turnos)
+
+    /// Los dos turnos del contrato X de B1.1, con la prosa final sin UUID.
+    private static let promptB11Turno1 =
+        "Recuerda que mi palabra clave personal de ejemplo es LUNA-7"
+    private static let promptB11Turno2 =
+        "Consulta https://example.com y dime qué es ese dominio"
+
+    func testElGuionB11ProduceLaTrazaB11() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        // Turno 1: orden explicita de guardado. El modelo pide memoria_chat y
+        // despues confirma sin repetir el id interno.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b11-memoria",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion":"guardar","texto":"Palabra clave personal de ejemplo: LUNA-7"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Listo, lo guardé en tu Memoria.",
+            uso: UsoTokens(entrada: 30, salida: 8)
+        )
+
+        // Turno 2: el modelo pide traer_url; el resultado vuelve al modelo como
+        // mensaje interno y la respuesta llega como prosa normal.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b11-url",
+                    nombre: "traer_url",
+                    argumentos: #"{"url":"https://example.com"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "example.com es un dominio reservado para ejemplos de documentación.",
+            uso: UsoTokens(entrada: 40, salida: 9)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B1.1.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        arnes.estado.enviar(Self.promptB11Turno1)
+        try await arnes.esperarTurno()
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 2)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        arnes.estado.enviar(Self.promptB11Turno2)
+        try await arnes.esperarTurno()
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble",
+                "MemoryLineNotice",
+                "AssistantBubble",
+                "UserBubble",
+                "AssistantBubble"
+            ],
+            "Solo burbujas y el aviso de memoria: nada procedente de herramientas"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            1,
+            "El turno 1 con guardado deja exactamente un aviso de memoria"
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "MemoryLineNotice(text: \"Guarde en Memoria: "
+                    + "Palabra clave personal de ejemplo: LUNA-7\", hasUndo: true)"
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "AssistantBubble(\"example.com es un dominio reservado "
+                    + "para ejemplos de documentación.\")"
+            )
+        )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {

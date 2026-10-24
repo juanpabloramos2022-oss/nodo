@@ -24,7 +24,13 @@ enum Tema {
     static let margen: CGFloat = 16
 }
 
-/// Burbuja de un mensaje.
+/// Burbuja de un mensaje de usuario o de asistente.
+///
+/// B1.1 demolió de aquí todo lo que procedía de una herramienta: la rama del
+/// rol `.herramienta` (fondo atenuado y texto suave), el rótulo «herramienta»
+/// y la fila con el icono y el nombre técnico de cada `toolCall`. Un resultado
+/// de herramienta sigue existiendo como metadato del payload, pero no tiene
+/// ninguna representación posible en esta vista (`UI_INVARIANTS.md`, reglas 1-3).
 struct BurbujaMensaje: View {
     let mensaje: ChatMessage
     /// Pie de la respuesta (tokens, costo, regenerar y copiar). Lo llevan
@@ -47,7 +53,6 @@ struct BurbujaMensaje: View {
     }
 
     var esDelUsuario: Bool { mensaje.rol == .usuario }
-    var esHerramienta: Bool { mensaje.rol == .herramienta }
 
     var body: some View {
         HStack {
@@ -78,10 +83,6 @@ struct BurbujaMensaje: View {
 
     private var burbuja: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if esHerramienta {
-                etiquetaHerramienta
-            }
-
             // Skills aplicadas en este envio: la etiqueta visual ⚡ nombre
             // (§4.4). Las instrucciones viajan solo en el payload del turno.
             if !mensaje.skillsAplicadas.isEmpty {
@@ -101,26 +102,14 @@ struct BurbujaMensaje: View {
             }
 
             if !mensaje.texto.isEmpty {
-                if esDelUsuario || esHerramienta {
+                if esDelUsuario {
                     Text(mensaje.texto)
                         .font(.body)
                         .textSelection(.enabled)
-                        .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
+                        .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     ContenidoAsistente(texto: mensaje.texto)
-                }
-            }
-
-            if !mensaje.toolCalls.isEmpty {
-                ForEach(mensaje.toolCalls, id: \.id) { llamada in
-                    HStack(spacing: 6) {
-                        Image(systemName: "wrench.and.screwdriver")
-                            .font(.caption2)
-                        Text(llamada.nombre)
-                            .font(.caption.monospaced())
-                    }
-                    .foregroundStyle(Tema.acento)
                 }
             }
 
@@ -134,16 +123,8 @@ struct BurbujaMensaje: View {
         .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
     }
 
-    private var etiquetaHerramienta: some View {
-        Text("herramienta")
-            .font(.caption2.weight(.semibold))
-            .textCase(.uppercase)
-            .foregroundStyle(Tema.acento.opacity(0.8))
-    }
-
     private var fondo: Color {
         if esDelUsuario { return Tema.acento.opacity(0.22) }
-        if esHerramienta { return Tema.superficie.opacity(0.7) }
         return Tema.superficie
     }
 }

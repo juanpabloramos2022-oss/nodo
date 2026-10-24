@@ -76,9 +76,9 @@ final class ViewModelSnapshotTest: XCTestCase {
             uso: UsoTokens(entrada: 30, salida: 8)
         )
 
-        arnes.estado.enviar(
+        let orden =
             "Recuerda que mi palabra clave de la barbería es LUNA-7 y que prefiero respuestas cortas."
-        )
+        arnes.estado.enviar(orden)
         try await arnes.esperarTurno()
 
         XCTAssertNil(arnes.estado.errorDeTurno)
@@ -87,29 +87,28 @@ final class ViewModelSnapshotTest: XCTestCase {
 
         let elementos = arnes.estado.elementosVisiblesDelHilo()
 
+        // B1.1: la lista es EXACTAMENTE usuario + aviso de memoria + respuesta.
+        // Ningun mensaje de rol herramienta ni ningun `toolCall` deja elemento.
+        XCTAssertEqual(
+            elementos,
+            [
+                .burbujaUsuario(texto: orden),
+                .lineaMemoria(
+                    texto: "Guarde en Memoria: Palabra clave de la barbería: LUNA-7",
+                    puedeDeshacer: true,
+                    deshecho: false
+                ),
+                .burbujaAsistente(
+                    segmentos: [.texto("Listo: lo guarde en tu Memoria.")]
+                )
+            ]
+        )
+
         let lineas = elementos.filter { elemento in
             if case .lineaMemoria = elemento { return true }
             return false
         }
         XCTAssertEqual(lineas.count, 1, "Un guardado deja exactamente una linea")
-        XCTAssertEqual(
-            lineas,
-            [
-                .lineaMemoria(
-                    texto: "Guarde en Memoria: Palabra clave de la barbería: LUNA-7",
-                    puedeDeshacer: true,
-                    deshecho: false
-                )
-            ]
-        )
-
-        XCTAssertTrue(
-            elementos.contains(where: { elemento in
-                if case .burbujaAsistente = elemento { return true }
-                return false
-            }),
-            "El turno conserva la burbuja del asistente"
-        )
 
         // El texto del resultado de la herramienta (con UUID) no esta en
         // ningun elemento de la lista.
@@ -120,6 +119,8 @@ final class ViewModelSnapshotTest: XCTestCase {
             let descripcion = String(describing: elemento)
             XCTAssertFalse(descripcion.contains(resultadoHerramienta))
             XCTAssertFalse(descripcion.contains(entrada.id.uuidString))
+            XCTAssertFalse(descripcion.contains(Memoria.nombreHerramientaChat))
+            XCTAssertFalse(descripcion.contains("{"))
         }
     }
 
@@ -172,6 +173,57 @@ final class ViewModelSnapshotTest: XCTestCase {
             let descripcion = String(describing: elemento)
             XCTAssertFalse(descripcion.contains("traer_url"))
             XCTAssertFalse(descripcion.contains("texto interno"))
+            XCTAssertFalse(descripcion.contains("{"))
+        }
+    }
+
+    // MARK: - (c bis) `toolCalls` de una burbuja visible (D-B1.1-b)
+
+    func testLosToolCallsDeUnaBurbujaVisibleNoAportanNingunElemento() {
+        let arnes = try! ArnesApp()
+        defer { arnes.limpiar() }
+
+        let idLlamada = "call-memoria"
+        let uuid = "123E4567-E89B-12D3-A456-426614174000"
+        arnes.estado.conversacion = Conversation(
+            titulo: "Llamada visible",
+            mensajes: [
+                ChatMessage(rol: .usuario, texto: "Guarda que vivo en Madrid"),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Lo guardo.",
+                    toolCalls: [
+                        ToolCall(
+                            id: idLlamada,
+                            nombre: Memoria.nombreHerramientaChat,
+                            argumentos: #"{"accion":"guardar","texto":"Vivo en Madrid"}"#
+                        )
+                    ]
+                ),
+                ChatMessage(
+                    rol: .herramienta,
+                    texto: "Guarde en Memoria la entrada \(uuid).",
+                    toolCallId: idLlamada
+                ),
+                ChatMessage(rol: .asistente, texto: "Listo.")
+            ]
+        )
+
+        let elementos = arnes.estado.elementosVisiblesDelHilo()
+        XCTAssertEqual(
+            elementos,
+            [
+                .burbujaUsuario(texto: "Guarda que vivo en Madrid"),
+                .burbujaAsistente(segmentos: [.texto("Lo guardo.")]),
+                .burbujaAsistente(segmentos: [.texto("Listo.")])
+            ],
+            "La burbuja del asistente no pinta la fila de toolCalls"
+        )
+
+        for elemento in elementos {
+            let descripcion = String(describing: elemento)
+            XCTAssertFalse(descripcion.contains(Memoria.nombreHerramientaChat))
+            XCTAssertFalse(descripcion.contains(uuid))
             XCTAssertFalse(descripcion.contains("{"))
         }
     }
