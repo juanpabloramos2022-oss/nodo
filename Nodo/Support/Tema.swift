@@ -8,6 +8,10 @@ import NodoCore
 ///
 /// Se definen aqui y no en cada pantalla para que el tono no se vaya
 /// desviando a medida que se anaden vistas.
+///
+/// Estos tokens son obligatorios: `UI_INVARIANTS.md` (raiz del repo, regla 6)
+/// prohibe que una vista nueva introduzca colores, radios o tamanos fuera de
+/// aqui.
 enum Tema {
     static let fondo = Color(red: 0.05, green: 0.055, blue: 0.075)
     static let superficie = Color(red: 0.11, green: 0.12, blue: 0.15)

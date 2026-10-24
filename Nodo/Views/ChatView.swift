@@ -5,6 +5,10 @@ import NodoCore
 
 /// La pantalla de conversacion, empujada dentro de la pila de Chats.
 ///
+/// Invariantes de presentacion: `UI_INVARIANTS.md` (raiz del repo) manda
+/// sobre todo lo que se pinta aqui; esta vista no muestra nada fuera de su
+/// catalogo (nada de UUIDs, roles de herramienta ni rotulos tecnicos).
+///
 /// La cabecera se construye con el `.toolbar` nativo de NavigationStack: el
 /// boton de volver lo pone el sistema y por eso el gesto de borde izquierdo
 /// sigue funcionando (ley n. 1). Solo hay tres elementos: volver, pildora y •••.
