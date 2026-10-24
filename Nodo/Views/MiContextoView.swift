@@ -121,6 +121,50 @@ struct MiContextoView: View {
             .accessibilityIdentifier("memoria-inteligente")
             .accessibilityLabel("Memoria inteligente")
 
+            // B2.5: el contador es SIEMPRE visible, también por debajo de 40.
+            Text(estado.estadoMemoria.contador)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .accessibilityIdentifier("memoria-contador")
+
+            // B2.5: banda de aviso desde N=40, con acceso en UN toque a la
+            // revisión de compactación (la misma lista agrupada por categoría,
+            // con el editor y el borrado que ya existen por entrada).
+            if estado.estadoMemoria.muestraBanda {
+                NavigationLink {
+                    RevisionCompactacionView()
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
+                        Text("Memoria casi llena: revisa y libera espacio.")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(Tema.textoSuave)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .accessibilityIdentifier("memoria-banda-aviso")
+                .accessibilityLabel(
+                    "Memoria casi llena: revisa y libera espacio."
+                )
+            }
+
+            if estado.estadoMemoria.enTope {
+                Text("Tope alcanzado: borra una entrada para liberar espacio.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("memoria-tope")
+            }
+
             Text("Lo que escribas aquí se envía automáticamente a todos los modelos para que te conozcan sin que tengas que presentarte en cada chat.")
                 .font(.footnote)
                 .foregroundStyle(Tema.textoSuave)
@@ -135,20 +179,30 @@ struct MiContextoView: View {
                 // MEM.4: una fila por entrada. Tocar la fila abre su editor;
                 // deslizar hacia la izquierda pide confirmacion antes de
                 // borrarla. Ya no hay un unico bloque de texto editable.
-                ForEach(estado.config.memoria) { entrada in
-                    Button {
-                        hoja = .entrada(entrada)
-                    } label: {
-                        filaEntrada(entrada)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("memoria-entrada")
-                    .accessibilityLabel("Editar entrada de Memoria: \(entrada.texto)")
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            entradaAConfirmar = entrada
+                //
+                // B2.5: la lista se agrupa por categoría tipada, que es la
+                // misma revisión de compactación a la que lleva la banda.
+                ForEach(estado.estadoMemoria.grupos) { grupo in
+                    Text(grupo.titulo)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityIdentifier("memoria-grupo")
+
+                    ForEach(grupo.entradas) { entrada in
+                        Button {
+                            hoja = .entrada(entrada)
                         } label: {
-                            Label("Borrar", systemImage: "trash")
+                            FilaEntradaMemoria(entrada: entrada)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("memoria-entrada")
+                        .accessibilityLabel("Editar entrada de Memoria: \(entrada.texto)")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                entradaAConfirmar = entrada
+                            } label: {
+                                Label("Borrar", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -181,6 +235,8 @@ struct MiContextoView: View {
             } label: {
                 Label("Añadir entrada", systemImage: "plus.circle")
             }
+            // B2.5: con el tope lleno no hay alta manual posible.
+            .disabled(estado.estadoMemoria.enTope)
             // Se conserva el identificador de las capturas de la Fase 4: ahora
             // abre el editor de una entrada nueva, no el bloque unico.
             .accessibilityIdentifier("memoria-editar")
@@ -189,41 +245,6 @@ struct MiContextoView: View {
         } footer: {
             Text("Se aplica desde el siguiente mensaje que envíes.")
         }
-    }
-
-    /// Fila de una entrada: texto completo (hasta 3 lineas) y acceso al editor.
-    ///
-    /// B2.4: si la entrada entro con aprobacion sensible, la fila lo dice en
-    /// lenguaje llano (Salud, Finanzas, Documentos e identificadores, Íntimo).
-    /// La marca es la prueba visible de que hubo [Aprobar] en ese turno.
-    private func filaEntrada(_ entrada: EntradaMemoria) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entrada.texto)
-                    .foregroundStyle(.white)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-
-                if let sensible = entrada.categoriaSensible {
-                    Text(sensible.etiquetaVisible)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Tema.acento)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Tema.acento.opacity(0.15))
-                        .clipShape(Capsule())
-                        .accessibilityIdentifier("memoria-entrada-sensible")
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(Tema.textoSuave)
-                .accessibilityHidden(true)
-        }
-        .contentShape(Rectangle())
     }
 
     // MARK: - Bloque 2: Tope de gasto
@@ -516,6 +537,49 @@ struct MiContextoView: View {
             .clipShape(Capsule())
             .fixedSize()
             .accessibilityIdentifier("skill-origen-fabrica")
+    }
+}
+
+/// Fila de una entrada: texto completo (hasta 3 líneas) y acceso al editor.
+///
+/// B2.4: si la entrada entró con aprobación sensible, la fila lo dice en
+/// lenguaje llano (Salud, Finanzas, Documentos e identificadores, Íntimo).
+/// La marca es la prueba visible de que hubo [Aprobar] en ese turno.
+///
+/// B2.5: la comparten Mi Contexto y la revisión de compactación para que la
+/// misma entrada se vea igual en los dos sitios y no haya dos filas que
+/// desincronicen.
+struct FilaEntradaMemoria: View {
+    let entrada: EntradaMemoria
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entrada.texto)
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+
+                if let sensible = entrada.categoriaSensible {
+                    Text(sensible.etiquetaVisible)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Tema.acento)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Tema.acento.opacity(0.15))
+                        .clipShape(Capsule())
+                        .accessibilityIdentifier("memoria-entrada-sensible")
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
     }
 }
 

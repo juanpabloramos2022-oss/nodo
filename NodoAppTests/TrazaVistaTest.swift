@@ -1269,6 +1269,115 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (5c) Traza de la partida B2.5 (creación rechazada en tope)
+
+    /// Guion literal de B2.5 en un chat normal con el interruptor en ON y una
+    /// semilla de 50 entradas.
+    ///
+    /// Turno 1: el dueño enuncia un dato de preferencia sin pedir guardarlo; el
+    /// modelo invoca `save_memory` y el ejecutor lo rechaza por tope. La traza
+    /// tiene que quedar en 0 `MemoryLineNotice` (no hubo guardado), 0 UUIDs, 0
+    /// bloques crudos y 0 nombres técnicos, y el payload tiene que inyectar
+    /// exactamente 50 entradas.
+    private static let promptB25 = "Mi color favorito de prueba es el verde"
+
+    private static func semillaB25(_ cantidad: Int) -> [EntradaMemoria] {
+        let categorias = CategoriaMemoria.paraActualizar
+        return (1...cantidad).map { numero in
+            EntradaMemoria(
+                id: UUID(
+                    uuidString: String(
+                        format: "%08X-0000-4000-8000-%012X",
+                        numero,
+                        numero
+                    )
+                )!,
+                texto: String(format: "prueba-%02d", numero),
+                fecha: Date(timeIntervalSince1970: TimeInterval(numero)),
+                categoria: categorias[numero % categorias.count]
+            )
+        }
+    }
+
+    func testElGuionB25ProduceLaTrazaB25() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = Self.semillaB25(50)
+        arnes.estado.config.memoriaInteligente = true
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B2.5.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b25-traza-1",
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"mi color favorito de prueba es el verde","category":"preference"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Entendido: tu color de prueba es el verde.",
+            uso: UsoTokens(entrada: 60, salida: 8)
+        )
+        arnes.estado.enviar(Self.promptB25)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // El ejecutor rechazó la creación: 0 entradas nuevas y 0 avisos.
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            50,
+            "Con el tope lleno no puede entrar ninguna entrada nueva"
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            0,
+            "Sin guardado no hay línea de aviso en el hilo"
+        )
+        let rechazo = try XCTUnwrap(
+            arnes.estado.conversacion.mensajes.last { $0.rol == .herramienta }
+        )
+        XCTAssertEqual(rechazo.toolCallId, "call-b25-traza-1")
+        XCTAssertTrue(rechazo.texto.contains("memoria en tope"), rechazo.texto)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "Solo las dos burbujas: la herramienta no es un elemento visible"
+        )
+        XCTAssertFalse(contenido.contains("{"))
+        XCTAssertFalse(contenido.contains("tool_calls"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // El payload inyecta exactamente 50 entradas, ni una más.
+        let cuerpo = try XCTUnwrap(
+            arnes.transporte.peticionesRegistradas.first?.cuerpo
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: cuerpo) as? [String: Any]
+        )
+        let mensajes = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        let sistemaMensaje = try XCTUnwrap(
+            mensajes.first { $0["role"] as? String == "system" }
+        )
+        let sistema = try XCTUnwrap(sistemaMensaje["content"] as? String)
+        XCTAssertEqual(
+            sistema.components(separatedBy: "\n- id: ").count - 1,
+            50,
+            "El bloque inyectado suma exactamente 50 entradas"
+        )
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {

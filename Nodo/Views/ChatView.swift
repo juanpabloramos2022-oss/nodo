@@ -486,6 +486,7 @@ struct ChatView: View {
                 texto: texto,
                 categoriaSensible: categoria,
                 estado: estadoAprobacion,
+                enTope: estado.avisoTopeEnPropuestaSensible,
                 alAprobar: { estado.aprobarPropuestaSensible() },
                 alDenegar: { estado.denegarPropuestaSensible() }
             )
@@ -1185,6 +1186,9 @@ private struct HojaAprobacionMemoriaProyectada: View {
     let texto: String
     let categoriaSensible: CategoriaSensible
     let estado: EstadoAprobacion
+    /// B2.5: la hoja avisa antes de decidir que la Memoria está en el tope.
+    /// Aun con [Aprobar] no se creará la entrada.
+    let enTope: Bool
     let alAprobar: () -> Void
     let alDenegar: () -> Void
 
@@ -1212,6 +1216,14 @@ private struct HojaAprobacionMemoriaProyectada: View {
                 Text(estado.titulo)
                     .font(.caption2)
                     .foregroundStyle(Tema.textoSuave)
+            }
+
+            if enTope {
+                Text("La Memoria está en el tope de 50 entradas: aunque apruebes, no se guardará nada nuevo. Borra una entrada en Mi Contexto para liberar espacio.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("aprobacion-memoria-tope")
             }
 
             if estado == .pendiente {

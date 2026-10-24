@@ -37,6 +37,12 @@ struct HojaEntradaMemoriaView: View {
         borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// B2.5: una entrada NUEVA no cabe con el tope lleno. Editar una existente
+    /// sigue permitido (no hace crecer N).
+    private var bloqueadaPorTope: Bool {
+        esNueva && estado.estadoMemoria.enTope
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -59,7 +65,13 @@ struct HojaEntradaMemoriaView: View {
                 } header: {
                     Text("Entrada de Memoria")
                 } footer: {
-                    Text("Se aplica desde el siguiente mensaje que envíes en los chats con Memoria activa.")
+                    if bloqueadaPorTope {
+                        Text("La Memoria está en el tope de 50 entradas: borra una en Mi Contexto para poder añadir otra.")
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("memoria-entrada-tope")
+                    } else {
+                        Text("Se aplica desde el siguiente mensaje que envíes en los chats con Memoria activa.")
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -79,8 +91,9 @@ struct HojaEntradaMemoriaView: View {
                     }
                     .fontWeight(.semibold)
                     // Sin texto no hay entrada que guardar, y sin cambios no
-                    // hay nada que escribir.
-                    .disabled(estaVacia || !hayCambios)
+                    // hay nada que escribir. B2.5: con el tope lleno tampoco
+                    // se puede crear una entrada nueva.
+                    .disabled(estaVacia || !hayCambios || bloqueadaPorTope)
                     .accessibilityIdentifier("memoria-entrada-guardar")
                 }
             }

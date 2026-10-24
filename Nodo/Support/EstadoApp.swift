@@ -1162,15 +1162,35 @@ final class EstadoApp: ObservableObject {
         return (costo, nombre)
     }
 
+    /// Estado visible de la Memoria en Mi Contexto (B2.5).
+    ///
+    /// El contador, la banda y la agrupación viven en el nucleo para probarse
+    /// sin simulador; la vista solo pinta lo que este valor declara.
+    var estadoMemoria: EstadoMemoriaMiContexto {
+        EstadoMemoriaMiContexto(entradas: config.memoria)
+    }
+
+    /// True mientras la hoja de una propuesta sensible está pendiente y ya no
+    /// cabe ninguna entrada más (B2.5).
+    ///
+    /// La hoja lo muestra antes de decidir y, aun con [Aprobar], el ejecutor
+    /// rechaza la creación con «memoria en tope».
+    var avisoTopeEnPropuestaSensible: Bool {
+        propuestaMemoriaSensible != nil && estadoMemoria.enTope
+    }
+
     /// Anade una entrada escrita a mano desde Mi Contexto (MEM.4).
     ///
     /// Aqui no hay tarjeta ni Deshacer: el dueno esta en la pantalla de edicion
     /// y el cambio es directo. La tarjeta es para los cambios que ordena al
     /// modelo dentro de un chat.
+    ///
+    /// B2.5: el tope rige también la creación manual; la hoja ya deshabilita
+    /// Guardar con el tope lleno y esta guarda es la segunda barrera.
     @discardableResult
     func agregarEntradaMemoria(_ texto: String) -> EntradaMemoria? {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpio.isEmpty else { return nil }
+        guard !limpio.isEmpty, !estadoMemoria.enTope else { return nil }
 
         let entrada = EntradaMemoria(texto: limpio)
         config.memoria.append(entrada)
