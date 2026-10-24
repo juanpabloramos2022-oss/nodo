@@ -137,6 +137,12 @@ class TrazasNegativasTest(unittest.TestCase):
             fallos,
         )
 
+    def test_traza_vacia_falla(self) -> None:
+        fallos = self._fallos([])
+        self.assertTrue(
+            any("no contiene ningun elemento" in f for f in fallos), fallos
+        )
+
     def test_linea_sin_formato_falla(self) -> None:
         fallos = self._fallos(["UserBubble sin tiempo"])
         self.assertTrue(any("no tiene el formato" in f for f in fallos), fallos)

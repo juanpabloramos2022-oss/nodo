@@ -302,6 +302,9 @@ def verificar_traza(
                 )
             en_burbuja_asistente = etiqueta == "AssistantBubble"
 
+    if not etiquetas:
+        fallos.append("La traza no contiene ningun elemento")
+
     texto_completo = ruta.read_text(encoding="utf-8")
 
     # Conteo 1: el rotulo HERRAMIENTA no aparece nunca.
