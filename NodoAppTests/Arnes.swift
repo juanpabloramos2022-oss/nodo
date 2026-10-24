@@ -146,6 +146,8 @@ final class ArnesApp {
 
 enum ErrorArnes: Error {
     case sinSuiteDePreferencias
+    /// El archivo de humo no trae la forma `{http, peticion, respuesta}`.
+    case archivoDeHumoInvalido
 }
 
 /// Respuesta que el transporte falso devolvera al siguiente turno.
@@ -199,6 +201,69 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
         candado.lock()
         defer { candado.unlock() }
         respuestasUnarias.append(respuesta)
+    }
+
+    /// Encola la respuesta viva archivada de una Puerta B.
+    ///
+    /// El archivo es el registro crudo `{http, peticion, respuesta}` que deja
+    /// el humo. No inventa nada: traduce el mensaje archivado (prosa,
+    /// `tool_calls` y `usage`) al mismo guion SSE que usa el transporte falso.
+    /// Es el doble permitido: reproduce la corrida real, no la sustituye.
+    func guionarDesdeArchivo(_ ruta: URL) throws {
+        let guion = try Self.leerGuionDesdeArchivo(ruta)
+        guionar(texto: guion.texto, uso: guion.uso, toolCalls: guion.toolCalls)
+    }
+
+    /// Lee el guion exacto de un archivo de humo, sin encolarlo.
+    ///
+    /// Lo usan el arnes y los tests que necesitan afirmar sobre el contenido
+    /// archivado (por ejemplo, que la traza reproduce esa misma prosa).
+    static func leerGuionDesdeArchivo(_ ruta: URL) throws -> GuionRespuesta {
+        let datos = try Data(contentsOf: ruta)
+        guard
+            let raiz = try JSONSerialization.jsonObject(with: datos) as? [String: Any],
+            let respuesta = raiz["respuesta"] as? [String: Any],
+            let choices = respuesta["choices"] as? [[String: Any]],
+            let mensaje = choices.first?["message"] as? [String: Any]
+        else {
+            throw ErrorArnes.archivoDeHumoInvalido
+        }
+
+        let texto = mensaje["content"] as? String ?? ""
+        let uso: UsoTokens? = {
+            guard let crudo = respuesta["usage"] as? [String: Any],
+                  let entrada = crudo["prompt_tokens"] as? Int,
+                  let salida = crudo["completion_tokens"] as? Int
+            else { return nil }
+            return UsoTokens(entrada: entrada, salida: salida)
+        }()
+
+        var llamadas: [ToolCall] = []
+        if let crudas = mensaje["tool_calls"] as? [[String: Any]] {
+            for cruda in crudas {
+                guard let id = cruda["id"] as? String,
+                      let funcion = cruda["function"] as? [String: Any],
+                      let nombre = funcion["name"] as? String
+                else { continue }
+                llamadas.append(
+                    ToolCall(
+                        id: id,
+                        nombre: nombre,
+                        argumentos: funcion["arguments"] as? String ?? "{}"
+                    )
+                )
+            }
+        }
+
+        return GuionRespuesta(texto: texto, uso: uso, toolCalls: llamadas)
+    }
+
+    /// Guiones que aun no consumio el turno. Si el arnes solo reproduce la
+    /// corrida archivada, al cerrar el turno debe ser 0.
+    var guionesPendientes: Int {
+        candado.lock()
+        defer { candado.unlock() }
+        return guiones.count
     }
 
     /// Retiene la respuesta de streaming numero `numero` (1-based).
