@@ -21,7 +21,12 @@ Puerta B de la SPEC revisa con git.
 
 Reglas (deliberadamente ruidosas: la evidencia ausente nunca es silencio):
   - Un bloque empieza en una linea `TRAZA <nombre> (<ruta>):` y termina en la
-    siguiente linea `TRAZA` o al final del archivo.
+    primera linea NO vacia que no es una linea de traza (o al final del
+    archivo). Una linea es de traza si casa con `[t=...s] Etiqueta(...)`, con
+    sangria opcional cuando es un segmento anidado; la primera linea del
+    bloque puede ser ademas una declaracion `modo: ...`. Asi el ruido que el
+    runner de tests imprime despues de la traza (`Test Case ... passed`,
+    resumenes de suites, `** TEST SUCCEEDED **`...) no se cuela en el .txt.
   - El nombre debe tener la forma `ui_transcript_<ID>.txt` o
     `ui_transcript_<ID>-<caso>.txt`, con `<ID>` un codigo de partida (P0.3,
     B2.6, B4-COD...). Cualquier otro nombre es error.
@@ -57,6 +62,13 @@ PATRON_LINEA_TRAZA = re.compile(
     r"^[ \t]*TRAZA (?P<nombre>[^\s]+) \((?P<ruta>.*)\):[ \t]*$"
 )
 
+# Linea de contenido de una traza: `[t=...s] Etiqueta(...)`, con sangria
+# opcional para los segmentos anidados de una AssistantBubble. Es el mismo
+# formato que exige la Puerta C (`verificar-cierre.py`).
+PATRON_LINEA_CONTENIDO = re.compile(
+    r"^[ \t]*\[t=[0-9]+(?:\.[0-9]+)?s\]\s+[A-Za-z][A-Za-z0-9]*\b"
+)
+
 
 def _validar_nombre(nombre: str) -> bool:
     """True si el nombre es un `ui_transcript_<ID>[-<caso>].txt` valido."""
@@ -65,17 +77,52 @@ def _validar_nombre(nombre: str) -> bool:
     return PATRON_NOMBRE_TRAZA.match(nombre) is not None
 
 
+def _es_linea_de_traza(linea: str, primera: bool) -> bool:
+    """True si `linea` es contenido de traza (o el `modo:` inicial)."""
+    if PATRON_LINEA_CONTENIDO.match(linea):
+        return True
+    if primera and linea.strip().lower().startswith("modo:"):
+        return True
+    return False
+
+
 def _bloques(lineas):
-    """Recorre el log y devuelve (numero_de_linea, nombre, contenido) por bloque."""
+    """Recorre el log y devuelve (numero_de_linea, nombre, contenido) por bloque.
+
+    El bloque termina en la primera linea no vacia que no es de traza: esa
+    linea no se incluye. Las lineas en blanco intermedias se conservan y las
+    finales se recortan en `main`, igual que antes.
+    """
     actual = None
+    primera_pendiente = False
     for numero, linea in enumerate(lineas, start=1):
         coincide = PATRON_LINEA_TRAZA.match(linea)
         if coincide:
             if actual is not None:
                 yield actual
             actual = [numero, coincide.group("nombre"), []]
-        elif actual is not None:
+            primera_pendiente = True
+            continue
+
+        if actual is None:
+            continue
+
+        if not linea.strip():
             actual[2].append(linea)
+            primera_pendiente = False
+            continue
+
+        if _es_linea_de_traza(linea, primera_pendiente):
+            actual[2].append(linea)
+            primera_pendiente = False
+            continue
+
+        # Primera linea no vacia que no es traza: el bloque acaba aqui y el
+        # resto del ruido del runner queda fuera hasta la siguiente `TRAZA`.
+        yield actual
+        actual = None
+        primera_pendiente = False
+
     if actual is not None:
         yield actual
 
