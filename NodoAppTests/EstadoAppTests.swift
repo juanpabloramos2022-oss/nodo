@@ -129,6 +129,7 @@ final class EstadoAppTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ]
         )
@@ -150,9 +151,24 @@ final class EstadoAppTests: XCTestCase {
             propiedades["sensitive_category"],
             "save_memory no puede tener campo para una categoria sensible"
         )
-        XCTAssertFalse(
-            cuerpo.contains(Memoria.nombreProponerSensible),
-            "propose_sensitive_memory no se ofrece en Chat hasta B2.4"
+
+        // B2.4: la via sensible se ofrece aparte, con su categoria tipada.
+        let proponer = try XCTUnwrap(
+            funciones.first {
+                $0["name"] as? String == Memoria.nombreProponerSensible
+            }
+        )
+        let parametrosProponer = try XCTUnwrap(
+            proponer["parameters"] as? [String: Any]
+        )
+        let propiedadesProponer = try XCTUnwrap(
+            parametrosProponer["properties"] as? [String: Any]
+        )
+        XCTAssertNotNil(propiedadesProponer["content"])
+        XCTAssertNotNil(propiedadesProponer["sensitive_category"])
+        XCTAssertNil(
+            propiedadesProponer["category"],
+            "propose_sensitive_memory no usa la categoria no sensible"
         )
     }
 

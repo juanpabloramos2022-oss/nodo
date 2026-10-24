@@ -192,12 +192,29 @@ struct MiContextoView: View {
     }
 
     /// Fila de una entrada: texto completo (hasta 3 lineas) y acceso al editor.
+    ///
+    /// B2.4: si la entrada entro con aprobacion sensible, la fila lo dice en
+    /// lenguaje llano (Salud, Finanzas, Documentos e identificadores, Íntimo).
+    /// La marca es la prueba visible de que hubo [Aprobar] en ese turno.
     private func filaEntrada(_ entrada: EntradaMemoria) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(entrada.texto)
-                .foregroundStyle(.white)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entrada.texto)
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+
+                if let sensible = entrada.categoriaSensible {
+                    Text(sensible.etiquetaVisible)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Tema.acento)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Tema.acento.opacity(0.15))
+                        .clipShape(Capsule())
+                        .accessibilityIdentifier("memoria-entrada-sensible")
+                }
+            }
 
             Spacer(minLength: 0)
 

@@ -104,9 +104,10 @@ final class ChatTemporalTests: XCTestCase {
         XCTAssertEqual(arnes.estado.conversacion.mensajes.count, 2)
     }
 
-    /// Contraste positivo: el MISMO guion en un chat normal ofrece las tres
-    /// herramientas tipadas y lleva el bloque con sus entradas.
-    func testElMismoGuionEnUnChatNormalSiOfreceLasTresHerramientas() async throws {
+    /// Contraste positivo: el MISMO guion en un chat normal ofrece las cuatro
+    /// herramientas tipadas (la sensible incluida) y lleva el bloque con sus
+    /// entradas.
+    func testElMismoGuionEnUnChatNormalSiOfreceLasCuatroHerramientas() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -137,6 +138,7 @@ final class ChatTemporalTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ]
         )

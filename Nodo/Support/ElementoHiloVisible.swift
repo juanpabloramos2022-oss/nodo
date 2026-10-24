@@ -4,26 +4,11 @@ import NodoCore
 
 /// Categoria tipada de una escritura sensible propuesta (B2.4).
 ///
-/// POR QUE un enum y no una etiqueta de texto: la categoria la decide la
-/// politica de producto y la vista solo la pinta. Con un `String` libre, un
-/// nombre tecnico de herramienta o un id podrian colarse en la hoja; con estos
-/// cuatro casos no hay donde ponerlos.
-enum CategoriaSensible: String, Equatable, CaseIterable {
-    case health
-    case finances
-    case documents_identifiers
-    case intimate
-
-    /// Rotulo humano de la categoria. Nunca es el nombre tecnico de nada.
-    var etiquetaVisible: String {
-        switch self {
-        case .health: return "Salud"
-        case .finances: return "Finanzas"
-        case .documents_identifiers: return "Documentos e identificadores"
-        case .intimate: return "Íntimo"
-        }
-    }
-}
+/// Es el MISMO tipo del nucleo (`CategoriaSensibleMemoria`): la hoja, el
+/// ejecutor y Mi Contexto no pueden discrepar de categoria ni de rotulo. El
+/// rotulo visible (`etiquetaVisible`) vive en el nucleo para que no existan
+/// dos listas que se desincronicen.
+typealias CategoriaSensible = CategoriaSensibleMemoria
 
 /// Propuesta de escritura sensible pendiente de aprobacion (B2.4).
 ///

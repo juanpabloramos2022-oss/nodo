@@ -415,9 +415,9 @@ final class MemoriaTipadaTests: XCTestCase {
 
     // MARK: - Memoria sensible
 
-    /// B2.1 define y valida `propose_sensitive_memory`, pero NO la ofrece en
-    /// Chat: su hoja de aprobacion es B2.4. Un intento del modelo no muta nada.
-    func testProposeSensitiveMemoryNoSeOfreceYNoMutaElRegistro() async throws {
+    /// B2.4 cablea `propose_sensitive_memory` a la hoja: se ofrece, invocarla
+    /// no muta el registro y sin [Aprobar] el turno cierra con rechazo.
+    func testProposeSensitiveMemorySeOfreceYNoMutaSinAprobacion() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -440,11 +440,21 @@ final class MemoriaTipadaTests: XCTestCase {
             ]
         )
         arnes.transporte.guionar(
-            texto: "No puedo guardar eso.",
+            texto: "No puedo guardar eso sin tu aprobación.",
             uso: UsoTokens(entrada: 30, salida: 8)
         )
 
         arnes.estado.enviar("Recuerda que tomo insulina")
+        try await arnes.esperar(
+            { arnes.estado.propuestaMemoriaSensible != nil },
+            mensaje: "La propuesta sensible no abrió su hoja"
+        )
+
+        // Invocar la propuesta no muta nada: la hoja espera la decision.
+        XCTAssertEqual(arnes.estado.config.memoria, original)
+        XCTAssertNil(eventoDeMemoria(arnes))
+
+        arnes.estado.denegarPropuestaSensible()
         try await arnes.esperarTurno()
 
         XCTAssertEqual(arnes.estado.config.memoria, original)
@@ -452,9 +462,9 @@ final class MemoriaTipadaTests: XCTestCase {
         XCTAssertTrue(try resultadoDeHerramienta(arnes).contains("Error"))
 
         let cuerpo = try cuerpoDeLaPeticion(arnes, indice: 0)
-        XCTAssertFalse(
+        XCTAssertTrue(
             cuerpo.contains(Memoria.nombreProponerSensible),
-            "propose_sensitive_memory no se ofrece en Chat en B2.1"
+            "B2.4 ofrece propose_sensitive_memory en Chat"
         )
     }
 
@@ -560,8 +570,8 @@ final class MemoriaTipadaTests: XCTestCase {
     // MARK: - Payload
 
     /// El payload de Chat lleva cada entrada con su id y su categoria, y ofrece
-    /// solo las tres herramientas de escritura (la sensible queda fuera).
-    func testElPayloadIncluyeIdCategoriaYLasTresHerramientasDeChat() async throws {
+    /// las cuatro herramientas de escritura: B2.4 cablea la sensible a su hoja.
+    func testElPayloadIncluyeIdCategoriaYLasCuatroHerramientasDeChat() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -597,11 +607,11 @@ final class MemoriaTipadaTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ],
-            "Chat ofrece las tres herramientas tipadas y no la sensible"
+            "Chat ofrece las cuatro herramientas tipadas, la sensible incluida"
         )
-        XCTAssertFalse(nombres.contains(Memoria.nombreProponerSensible))
         XCTAssertFalse(nombres.contains(Memoria.nombreHerramientaTarea))
     }
 

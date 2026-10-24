@@ -36,6 +36,21 @@ public enum CategoriaSensibleMemoria: String, Codable, Equatable, CaseIterable, 
     case finances
     case documentsIdentifiers = "documents_identifiers"
     case intimate
+
+    /// Rotulo humano de la categoria (B2.4).
+    ///
+    /// La hoja de aprobacion y Mi Contexto pintan esto, nunca el `rawValue` ni
+    /// el nombre de una herramienta: el texto visible es lenguaje llano. Vive
+    /// en el nucleo para que la hoja, Mi Contexto y sus pruebas no mantengan
+    /// tres listas que se desincronicen.
+    public var etiquetaVisible: String {
+        switch self {
+        case .health: return "Salud"
+        case .finances: return "Finanzas"
+        case .documentsIdentifiers: return "Documentos e identificadores"
+        case .intimate: return "Íntimo"
+        }
+    }
 }
 
 /// Una entrada de la Memoria viva.
@@ -50,17 +65,27 @@ public struct EntradaMemoria: Codable, Equatable, Identifiable, Hashable {
     public var texto: String
     public var fecha: Date
     public var categoria: CategoriaMemoria
+    /// Categoria sensible con la que el dueno aprobo esta entrada (B2.4).
+    ///
+    /// `nil` en todo lo que entro por las vias no sensibles. Cuando tiene
+    /// valor, la entrada solo pudo crearse con `[Aprobar]` en la hoja de ese
+    /// turno: es la marca que Mi Contexto pinta y la que impide que
+    /// `update_memory` la reescriba sin aprobacion. No sustituye a
+    /// `categoria`: son ejes distintos (base tipada + marca sensible).
+    public var categoriaSensible: CategoriaSensibleMemoria?
 
     public init(
         id: UUID = UUID(),
         texto: String,
         fecha: Date = Date(),
-        categoria: CategoriaMemoria = .durableFact
+        categoria: CategoriaMemoria = .durableFact,
+        categoriaSensible: CategoriaSensibleMemoria? = nil
     ) {
         self.id = id
         self.texto = texto
         self.fecha = fecha
         self.categoria = categoria
+        self.categoriaSensible = categoriaSensible
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -68,10 +93,12 @@ public struct EntradaMemoria: Codable, Equatable, Identifiable, Hashable {
         case texto
         case fecha
         case categoria
+        case categoriaSensible
     }
 
     /// Las entradas guardadas antes de B2.1 no traen categoria. Se leen como
     /// `durable_fact` para no perder ni trocear ninguna entrada existente.
+    /// Las de antes de B2.4 tampoco traen marca sensible: se leen sin ella.
     public init(from decoder: Decoder) throws {
         let contenedor = try decoder.container(keyedBy: CodingKeys.self)
         id = try contenedor.decode(UUID.self, forKey: .id)
@@ -81,6 +108,10 @@ public struct EntradaMemoria: Codable, Equatable, Identifiable, Hashable {
             CategoriaMemoria.self,
             forKey: .categoria
         ) ?? .durableFact
+        categoriaSensible = try contenedor.decodeIfPresent(
+            CategoriaSensibleMemoria.self,
+            forKey: .categoriaSensible
+        )
     }
 }
 
@@ -427,6 +458,15 @@ public enum Memoria {
                     "no existe ninguna entrada de Memoria con ese entry_id."
                 )
             }
+            // B2.4: una entrada sensible solo pudo entrar con [Aprobar]. Dejarla
+            // reescribir por `update_memory` abriria la puerta que la hoja
+            // cierra: la actualizacion sensible tambien exige aprobacion y esa
+            // via no existe en este turno.
+            guard entradas[indice].categoriaSensible == nil else {
+                return .rechazada(
+                    "esa entrada es sensible y no se reescribe por esta via."
+                )
+            }
             let anterior = entradas[indice].texto
             let categoriaAnterior = entradas[indice].categoria
             entradas[indice].texto = contenido
@@ -453,6 +493,67 @@ public enum Memoria {
             }
             let entrada = entradas.remove(at: indice)
             return .aplicada(.borrada(entrada, indice: indice))
+        }
+    }
+
+    /// Escribe la entrada de una propuesta sensible YA aprobada (B2.4).
+    ///
+    /// Es la unica via que crea una entrada con `categoriaSensible`. NO la
+    /// llama el ejecutor ni `aplicarTipada`: solo la capa app, despues de que
+    /// el dueno toco [Aprobar] en la hoja de ese turno. Mantenerla separada es
+    /// el freno estructural: ninguna otra operacion puede rellenar la marca.
+    public static func aplicarSensibleAprobada(
+        contenido: String,
+        categoria: CategoriaSensibleMemoria,
+        en entradas: inout [EntradaMemoria],
+        fecha: Date = Date(),
+        id: UUID = UUID()
+    ) -> ResultadoAccionMemoria {
+        let entrada = EntradaMemoria(
+            id: id,
+            texto: contenido,
+            fecha: fecha,
+            categoria: .durableFact,
+            categoriaSensible: categoria
+        )
+        entradas.append(entrada)
+        return .aplicada(.guardada(entrada))
+    }
+
+    /// Traduce una accion del Modo Tarea al esquema tipado (B2.4).
+    ///
+    /// En Tarea el regimen NO cambia: `proponer_memoria` sigue pasando por la
+    /// hoja del dueno y nada se escribe antes de [Aprobar]. Lo que cambia es la
+    /// via de escritura: en vez de la aplicacion sin tipo de la v0.3.1, la
+    /// accion aprobada se expresa como `OperacionMemoriaTipada` y entra por
+    /// `aplicarTipada`, el mismo esquema que Chat. `guardar` no puede declarar
+    /// una categoria sensible (el caso `.proponerSensible` no se produce
+    /// aqui), y `actualizar` conserva la categoria base de la entrada, igual
+    /// que hacia la via vieja.
+    public static func operacionTipada(
+        _ accion: AccionMemoria,
+        en entradas: [EntradaMemoria]
+    ) -> OperacionMemoriaTipada {
+        switch accion {
+        case .guardar(let texto):
+            return .guardar(
+                contenido: texto,
+                categoria: .durableFact,
+                confianza: nil
+            )
+
+        case .actualizar(let id, let texto):
+            let categoria = entradas.first { $0.id == id }?.categoria
+                ?? .durableFact
+            return .actualizar(
+                id: id,
+                contenido: texto,
+                categoria: categoria,
+                confianza: nil
+            )
+
+        case .borrar(let id):
+            return .borrar(id: id)
         }
     }
 
@@ -646,8 +747,11 @@ public enum Memoria {
     ///
     /// Es identica en las dos ramas del interruptor: OFF conserva las
     /// herramientas tipadas de B2.1 y su ejecutor, y solo cambia el disparo.
+    /// B2.4 anade la unica via sensible: `propose_sensitive_memory`, que nunca
+    /// escribe por su cuenta. No fija cuando invocarla (eso es el disparo); si
+    /// el modelo canaliza un dato sensible, esta es la unica puerta.
     public static let lineaHerramientasTipadas = """
-    Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible: no existe via para guardar salud, finanzas, documentos de identidad ni datos intimos.
+    Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible. Un dato sensible (salud, finanzas, documentos de identidad o datos intimos) nunca va por save_memory ni por update_memory: su unica via es propose_sensitive_memory (content + sensitive_category), y la app pedira aprobacion al dueno antes de escribir nada.
     """
 
     /// Parrafo de comunicacion de B1.3, literal y sin duplicar.
@@ -703,10 +807,16 @@ public enum Memoria {
         } else {
             lineas.append("Entradas actuales:")
             for entrada in entradas {
-                lineas.append(
-                    "- id: \(entrada.id.uuidString) · categoria: "
-                        + "\(entrada.categoria.rawValue) · texto: \(entrada.texto)"
-                )
+                var linea = "- id: \(entrada.id.uuidString) · categoria: "
+                    + "\(entrada.categoria.rawValue)"
+                if let sensible = entrada.categoriaSensible {
+                    // B2.4: el modelo tiene que saber que esa entrada entro con
+                    // aprobacion. La marca no es una categoria de `update_memory`:
+                    // solo informa de por que esa entrada no se reescribe sola.
+                    linea += " · sensible: \(sensible.rawValue)"
+                }
+                linea += " · texto: \(entrada.texto)"
+                lineas.append(linea)
             }
         }
         return lineas.joined(separator: "\n")

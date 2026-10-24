@@ -485,7 +485,9 @@ struct ChatView: View {
             HojaAprobacionMemoriaProyectada(
                 texto: texto,
                 categoriaSensible: categoria,
-                estado: estadoAprobacion
+                estado: estadoAprobacion,
+                alAprobar: { estado.aprobarPropuestaSensible() },
+                alDenegar: { estado.denegarPropuestaSensible() }
             )
         }
     }
@@ -1174,10 +1176,17 @@ private struct LineaMemoria: View {
 ///
 /// Muestra el texto exacto que se guardaria y la categoria tipada. No hay
 /// campo para el nombre de la herramienta ni para un id.
+///
+/// B2.4: las dos salidas son botones reales del hilo. [Aprobar] es la UNICA
+/// puerta que escribe; [Denegar] (y cerrar el hilo sin decidir) deja el
+/// registro intacto. Con la hoja resuelta deja de proyectarse y las acciones
+/// desaparecen.
 private struct HojaAprobacionMemoriaProyectada: View {
     let texto: String
     let categoriaSensible: CategoriaSensible
     let estado: EstadoAprobacion
+    let alAprobar: () -> Void
+    let alDenegar: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1203,6 +1212,28 @@ private struct HojaAprobacionMemoriaProyectada: View {
                 Text(estado.titulo)
                     .font(.caption2)
                     .foregroundStyle(Tema.textoSuave)
+            }
+
+            if estado == .pendiente {
+                HStack(spacing: 12) {
+                    Button(role: .destructive) {
+                        alDenegar()
+                    } label: {
+                        Text("Denegar")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("denegar-propuesta-memoria")
+
+                    Button {
+                        alAprobar()
+                    } label: {
+                        Text("Aprobar")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("aprobar-propuesta-memoria")
+                }
             }
         }
         .padding(12)

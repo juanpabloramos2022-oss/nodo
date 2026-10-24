@@ -214,14 +214,17 @@ final class EjecutorMemoriaTests: XCTestCase {
         XCTAssertEqual(caja.entradas, semilla())
     }
 
-    // MARK: - Memoria sensible
+    // MARK: - Memoria sensible (B2.4)
 
-    func testProposeSensitiveMemoryNoPersisteEnNingunCaso() async throws {
+    /// B2.4: la propuesta deja de cortarse en el ejecutor y llega al aplicador,
+    /// que es quien presenta la hoja. Si el dueno no aprueba (aplicador que
+    /// rechaza), no se escribe nada.
+    func testLaPropuestaSensibleLlegaAlAplicadorYNoPersisteSinAprobacion() async throws {
         let caja = RegistroDePrueba(semilla())
         var aplicadas: [OperacionMemoriaTipada] = []
         let ejecutor = EjecutorMemoriaDelTurno(entradas: caja.entradas) { [caja] operacion in
             aplicadas.append(operacion)
-            return Memoria.aplicarTipada(operacion, en: &caja.entradas)
+            return .rechazada("denegado por el dueno")
         }
 
         let resultado = try await ejecutor.ejecutar(
@@ -229,12 +232,98 @@ final class EjecutorMemoriaTests: XCTestCase {
             argumentos: #"{"content":"Toma insulina","sensitive_category":"health"}"#
         )
 
-        XCTAssertTrue(resultado.contains("Error"))
-        XCTAssertTrue(
-            aplicadas.isEmpty,
-            "Una propuesta sensible nunca llega al aplicador"
+        XCTAssertEqual(
+            aplicadas,
+            [
+                .proponerSensible(
+                    contenido: "Toma insulina",
+                    categoria: .health,
+                    confianza: nil
+                )
+            ],
+            "La propuesta llega UNA vez al aplicador, con su categoria tipada"
         )
+        XCTAssertTrue(resultado.contains("Error"))
+        XCTAssertTrue(resultado.contains("denegado"))
         XCTAssertEqual(caja.entradas, semilla())
+    }
+
+    /// Con [Aprobar], el aplicador escribe exactamente 1 entrada con la marca
+    /// sensible declarada; la propuesta en si no muta el registro.
+    func testLaPropuestaAprobadaEscribeUnaEntradaConSuCategoriaSensible() async throws {
+        let caja = RegistroDePrueba(semilla())
+        var invocaciones = 0
+        let ejecutor = EjecutorMemoriaDelTurno(entradas: caja.entradas) { [caja] operacion in
+            invocaciones += 1
+            switch operacion {
+            case .proponerSensible(let contenido, let categoria, _):
+                // El registro NO cambia al invocar: solo el [Aprobar] escribe.
+                XCTAssertEqual(caja.entradas, self.semilla())
+                return Memoria.aplicarSensibleAprobada(
+                    contenido: contenido,
+                    categoria: categoria,
+                    en: &caja.entradas
+                )
+            default:
+                return Memoria.aplicarTipada(operacion, en: &caja.entradas)
+            }
+        }
+
+        let resultado = try await ejecutor.ejecutar(
+            herramienta: Memoria.nombreProponerSensible,
+            argumentos: #"{"content":"mi presion de prueba es 120 sobre 80","sensitive_category":"health"}"#
+        )
+
+        XCTAssertEqual(invocaciones, 1)
+        XCTAssertFalse(resultado.contains("Error"))
+        XCTAssertEqual(caja.entradas.count, 3)
+        XCTAssertEqual(
+            caja.entradas.last?.categoriaSensible,
+            .health,
+            "La entrada aprobada conserva la categoria sensible declarada"
+        )
+    }
+
+    /// Una propuesta cuenta como la operacion de memoria del turno.
+    func testUnaPropuestaConsumeElTopeDeUnaOperacionPorTurno() async throws {
+        let caja = RegistroDePrueba(semilla())
+        let ejecutor = EjecutorMemoriaDelTurno(entradas: caja.entradas) { [caja] operacion in
+            Memoria.aplicarTipada(operacion, en: &caja.entradas)
+        }
+
+        _ = try await ejecutor.ejecutar(
+            herramienta: Memoria.nombreProponerSensible,
+            argumentos: #"{"content":"Toma insulina","sensitive_category":"health"}"#
+        )
+        let segunda = try await ejecutor.ejecutar(
+            herramienta: Memoria.nombreGuardar,
+            argumentos: #"{"content":"Otra cosa","category":"durable_fact"}"#
+        )
+
+        XCTAssertTrue(segunda.contains("Error"))
+        XCTAssertTrue(segunda.contains("maximo 1 por turno"))
+        XCTAssertEqual(caja.entradas, semilla())
+    }
+
+    /// Una entrada sensible no se reescribe por `update_memory`.
+    func testActualizarUnaEntradaSensibleSeRechazaSinMutarla() async throws {
+        let sensible = EntradaMemoria(
+            id: idUno,
+            texto: "mi presion de prueba es 120 sobre 80",
+            categoria: .durableFact,
+            categoriaSensible: .health
+        )
+        let caja = RegistroDePrueba([sensible])
+        let ejecutor = caja.ejecutor()
+
+        let resultado = try await ejecutor.ejecutar(
+            herramienta: Memoria.nombreActualizar,
+            argumentos: #"{"entry_id":"11111111-1111-4111-8111-111111111111","content":"mi presion ahora es 130","category":"correction"}"#
+        )
+
+        XCTAssertTrue(resultado.contains("Error"))
+        XCTAssertTrue(resultado.contains("sensible"))
+        XCTAssertEqual(caja.entradas, [sensible])
     }
 
     func testUnaHerramientaDesconocidaSeRechaza() async throws {

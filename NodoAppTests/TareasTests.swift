@@ -372,6 +372,63 @@ final class TareasTests: XCTestCase {
         XCTAssertTrue(aprobado.resultado?.contains("Guarde en Memoria") == true)
     }
 
+    /// B2.4: la via de Tarea queda tipificada SIN cambiar su regimen. La prueba
+    /// observable es el freno: aprobar una propuesta que reescribe una entrada
+    /// sensible se rechaza igual que en Chat. La via vieja sin tipo la habria
+    /// reescrito sin hoja.
+    func testTareaNoReescribeUnaEntradaSensibleNiAprobandoLaHoja() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let sensible = EntradaMemoria(
+            id: UUID(uuidString: "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD")!,
+            texto: "mi presión de prueba es 120 sobre 80",
+            fecha: Date(timeIntervalSince1970: 400),
+            categoria: .durableFact,
+            categoriaSensible: .health
+        )
+        arnes.estado.config.memoria = [sensible]
+        XCTAssertTrue(arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor))
+        arnes.transporte.guionar(texto: "1. Actualizar el dato")
+
+        let tarea = arnes.estado.crearTarea(instruccion: "Actualiza mi presión")
+        await arnes.estado.generarPlan(id: tarea.id)
+
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "c-b24-tarea",
+                    nombre: Memoria.nombreHerramientaTarea,
+                    argumentos: #"{"accion":"actualizar","id":"DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD","texto":"mi presión ahora es 130 sobre 90"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(texto: "No se pudo actualizar.")
+
+        XCTAssertTrue(arnes.estado.empezarTarea(id: tarea.id))
+        try await arnes.esperar(
+            { arnes.estado.solicitudAprobacion != nil },
+            mensaje: "No se abrió la aprobación de proponer_memoria"
+        )
+
+        arnes.estado.aprobarSolicitud()
+        try await arnes.esperarTarea(id: tarea.id, estado: .completada)
+
+        XCTAssertEqual(
+            arnes.estado.config.memoria,
+            [sensible],
+            "Aprobar no puede reescribir una entrada sensible desde Tarea"
+        )
+
+        let store = try TareaStore(directorio: arnes.directorioTareas)
+        let paso = try XCTUnwrap(store.cargar(id: tarea.id)?.pasos.first)
+        XCTAssertTrue(
+            paso.resultado?.contains("sensible") == true,
+            "El rechazo interno explica por qué no se escribió: \(paso.resultado ?? "nil")"
+        )
+    }
+
     func testEnTareaNoSeOfreceMemoriaChatYEnChatNoSeOfreceProponerMemoria() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
@@ -398,9 +455,9 @@ final class TareasTests: XCTestCase {
             "Sin servidor MCP configurado no puede aparecer ninguna herramienta remota"
         )
 
-        // Chat normal con Memoria: ofrece las tres herramientas tipadas de
-        // escritura y nunca la propuesta del Modo Tarea (la frontera es por
-        // contexto, no por texto).
+        // Chat normal con Memoria: ofrece las herramientas tipadas de escritura
+        // (incluida la sensible de B2.4) y nunca la propuesta del Modo Tarea
+        // (la frontera es por contexto, no por texto).
         arnes.transporte.guionar(texto: "Hola")
         arnes.estado.enviar("Hola")
         try await arnes.esperarTurno()
@@ -408,6 +465,7 @@ final class TareasTests: XCTestCase {
         let herramientasChat = try nombresDeHerramientas(arnes, indice: 2)
         XCTAssertTrue(herramientasChat.contains(Memoria.nombreGuardar))
         XCTAssertTrue(herramientasChat.contains(Memoria.nombreActualizar))
+        XCTAssertTrue(herramientasChat.contains(Memoria.nombreProponerSensible))
         XCTAssertTrue(herramientasChat.contains(Memoria.nombreBorrar))
         XCTAssertFalse(herramientasChat.contains(Memoria.nombreHerramientaTarea))
     }

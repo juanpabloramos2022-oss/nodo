@@ -46,9 +46,10 @@ final class MemoriaInteligenteTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ],
-            "ON ofrece el conjunto cableado de B2.1"
+            "ON ofrece el conjunto cableado de B2.1 con la via sensible de B2.4"
         )
 
         let bloque = try bloqueDeSistema(json)
@@ -110,6 +111,7 @@ final class MemoriaInteligenteTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ]
         )
@@ -273,6 +275,7 @@ final class MemoriaInteligenteTests: XCTestCase {
             [
                 Memoria.nombreGuardar,
                 Memoria.nombreActualizar,
+                Memoria.nombreProponerSensible,
                 Memoria.nombreBorrar
             ],
             "OFF conserva las herramientas tipadas con su ejecutor"

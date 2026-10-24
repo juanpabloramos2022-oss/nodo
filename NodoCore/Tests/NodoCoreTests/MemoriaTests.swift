@@ -198,7 +198,7 @@ final class MemoriaTests: XCTestCase {
         let bloque = Memoria.bloqueSistema(entradas: entradas)
 
         let disparo = "Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio."
-        let herramienta = "Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible: no existe via para guardar salud, finanzas, documentos de identidad ni datos intimos."
+        let herramienta = "Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible. Un dato sensible (salud, finanzas, documentos de identidad o datos intimos) nunca va por save_memory ni por update_memory: su unica via es propose_sensitive_memory (content + sensitive_category), y la app pedira aprobacion al dueno antes de escribir nada."
         let candado = "Candado de borrado: delete_memory solo ante orden explicita del dueno en ese turno; nunca por iniciativa propia del modelo, ni siquiera con la memoria inteligente activada."
 
         XCTAssertTrue(bloque.contains(disparo), "El disparo general no cambia en B2.1")
@@ -702,6 +702,172 @@ final class MemoriaOperacionesTests: XCTestCase {
             try Memoria.accion(
                 desdeArgumentos: #"{"accion":"actualizar","texto":"sin id"}"#
             )
+        )
+    }
+
+    // MARK: - Freno sensible con aprobacion (B2.4)
+
+    /// La unica via que crea una entrada con marca sensible es la aprobada.
+    func testAplicarSensibleAprobadaEscribeExactamenteUnaEntradaConSuCategoria() {
+        var entradas = [EntradaMemoria(id: idUno, texto: "Vive en Madrid")]
+
+        let resultado = Memoria.aplicarSensibleAprobada(
+            contenido: "mi presion arterial de prueba es 120 sobre 80",
+            categoria: .health,
+            en: &entradas,
+            fecha: Date(timeIntervalSince1970: 300),
+            id: idDos
+        )
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una entrada escrita")
+        }
+        XCTAssertEqual(entradas.count, 2)
+        XCTAssertEqual(entradas[1].id, idDos)
+        XCTAssertEqual(
+            entradas[1].texto,
+            "mi presion arterial de prueba es 120 sobre 80"
+        )
+        XCTAssertEqual(entradas[1].categoriaSensible, .health)
+        XCTAssertEqual(entradas[1].categoria, .durableFact)
+        XCTAssertEqual(cambio.textoDeLinea, "Guardado en memoria: mi presion arterial de prueba es 120 sobre 80")
+    }
+
+    /// `aplicarTipada` sigue siendo la segunda barrera: la propuesta nunca
+    /// escribe por ahi.
+    func testAplicarTipadaSigueRechazandoLaPropuestaSensible() {
+        var entradas = [EntradaMemoria(id: idUno, texto: "Vive en Madrid")]
+
+        let resultado = Memoria.aplicarTipada(
+            .proponerSensible(
+                contenido: "mi presion arterial de prueba es 120 sobre 80",
+                categoria: .health,
+                confianza: nil
+            ),
+            en: &entradas
+        )
+
+        guard case .rechazada = resultado else {
+            return XCTFail("La propuesta sensible no puede aplicarse sin hoja")
+        }
+        XCTAssertEqual(entradas.count, 1)
+    }
+
+    /// Una entrada aprobada como sensible no se reescribe por `update_memory`.
+    func testAplicarTipadaRechazaActualizarUnaEntradaSensible() {
+        let sensible = EntradaMemoria(
+            id: idUno,
+            texto: "mi presion arterial de prueba es 120 sobre 80",
+            categoria: .durableFact,
+            categoriaSensible: .health
+        )
+        var entradas = [sensible]
+
+        let resultado = Memoria.aplicarTipada(
+            .actualizar(
+                id: idUno,
+                contenido: "mi presion ahora es 130 sobre 90",
+                categoria: .correction,
+                confianza: nil
+            ),
+            en: &entradas
+        )
+
+        guard case .rechazada(let motivo) = resultado else {
+            return XCTFail("Una entrada sensible no se actualiza sin aprobacion")
+        }
+        XCTAssertTrue(motivo.contains("sensible"), motivo)
+        XCTAssertEqual(entradas, [sensible])
+    }
+
+    /// El esquema tipado de Tarea conserva su regimen y su semantica.
+    func testOperacionTipadaMapeaLaAccionDeTareaSinAblandarNada() {
+        let preferencia = EntradaMemoria(
+            id: idUno,
+            texto: "Prefiere respuestas breves",
+            categoria: .preference
+        )
+        let entradas = [preferencia]
+
+        XCTAssertEqual(
+            Memoria.operacionTipada(.guardar(texto: "Hola"), en: entradas),
+            .guardar(
+                contenido: "Hola",
+                categoria: .durableFact,
+                confianza: nil
+            )
+        )
+        XCTAssertEqual(
+            Memoria.operacionTipada(
+                .actualizar(id: idUno, texto: "Prefiere informes breves"),
+                en: entradas
+            ),
+            .actualizar(
+                id: idUno,
+                contenido: "Prefiere informes breves",
+                categoria: .preference,
+                confianza: nil
+            ),
+            "Actualizar conserva la categoria base de la entrada"
+        )
+        XCTAssertEqual(
+            Memoria.operacionTipada(.borrar(id: idUno), en: entradas),
+            .borrar(id: idUno)
+        )
+    }
+
+    /// La marca sensible sobrevive al JSON y una entrada vieja se lee sin ella.
+    func testLaMarcaSensibleSobreviveAlJSONYEsToleranteConLoViejo() throws {
+        let sensible = EntradaMemoria(
+            id: idUno,
+            texto: "mi presupuesto de prueba es 500",
+            fecha: Date(timeIntervalSince1970: 100),
+            categoria: .durableFact,
+            categoriaSensible: .finances
+        )
+
+        let datos = try JSONEncoder().encode(sensible)
+        let vuelta = try JSONDecoder().decode(EntradaMemoria.self, from: datos)
+        XCTAssertEqual(vuelta, sensible)
+
+        let legado: [String: Any] = [
+            "id": idDos.uuidString,
+            "texto": "Vive en Madrid",
+            "fecha": 100
+        ]
+        let datosLegado = try JSONSerialization.data(withJSONObject: legado)
+        let sinMarca = try JSONDecoder().decode(
+            EntradaMemoria.self,
+            from: datosLegado
+        )
+        XCTAssertNil(sinMarca.categoriaSensible)
+        XCTAssertEqual(sinMarca.categoria, .durableFact)
+    }
+
+    /// La hoja y Mi Contexto pintan lenguaje llano, nunca el `rawValue`.
+    func testLasCategoriasSensiblesTienenRotuloLlano() {
+        XCTAssertEqual(
+            CategoriaSensibleMemoria.allCases.map(\.etiquetaVisible),
+            ["Salud", "Finanzas", "Documentos e identificadores", "Íntimo"]
+        )
+    }
+
+    /// El bloque inyectado declara la marca sensible de una entrada aprobada.
+    func testElBloqueDeclaraLaMarcaSensibleDeUnaEntradaAprobada() {
+        let sensible = EntradaMemoria(
+            id: idUno,
+            texto: "mi presion arterial de prueba es 120 sobre 80",
+            categoria: .durableFact,
+            categoriaSensible: .health
+        )
+
+        let bloque = Memoria.bloqueSistema(entradas: [sensible])
+
+        XCTAssertTrue(
+            bloque.contains(
+                "· categoria: durable_fact · sensible: health · texto: "
+            ),
+            bloque
         )
     }
 }

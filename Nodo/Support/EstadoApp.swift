@@ -305,6 +305,10 @@ final class EstadoApp: ObservableObject {
     /// Continuacion que espera la hoja de aprobacion. Se resuelve una sola vez.
     private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
     private var idSolicitudAprobacion: UUID?
+    /// Continuacion que espera la decision de una propuesta sensible de Chat
+    /// (B2.4). Es independiente de la de Tarea: el turno de Chat queda detenido
+    /// mientras la hoja del hilo esta pendiente.
+    private var continuacionPropuestaSensible: CheckedContinuation<Bool, Never>?
     /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
     private var tareaCompactado: Task<Void, Never>?
     /// Tarea de /plan en el chat, para cancelarla al cambiar de conversacion.
@@ -1195,10 +1199,22 @@ final class EstadoApp: ObservableObject {
     /// Se llama desde la herramienta, ya en el MainActor. La lista se escribe
     /// una sola vez y solo cuando la operacion se aplico: un id desconocido no
     /// toca nada.
+    ///
+    /// B2.4: `.proponerSensible` NO entra por `aplicarTipada` (que la rechaza
+    /// como segunda barrera). Se desvia a `proponerMemoriaSensible`, que
+    /// detiene el turno con la hoja y solo escribe tras [Aprobar].
     private func aplicarOperacionDeMemoria(
         _ operacion: OperacionMemoriaTipada,
         idConversacion: UUID
-    ) -> ResultadoAccionMemoria {
+    ) async -> ResultadoAccionMemoria {
+        if case .proponerSensible(let contenido, let categoria, _) = operacion {
+            return await proponerMemoriaSensible(
+                contenido: contenido,
+                categoria: categoria,
+                idConversacion: idConversacion
+            )
+        }
+
         var entradas = config.memoria
         let resultado = Memoria.aplicarTipada(operacion, en: &entradas)
         guard case .aplicada(let cambio) = resultado else {
@@ -1212,6 +1228,74 @@ final class EstadoApp: ObservableObject {
         // Si el dueno cambio de chat mientras el modelo respondia, el cambio
         // de Memoria sigue siendo real (es global), pero su linea no debe
         // aparecer en otro hilo.
+        if conversacion.id == idConversacion {
+            eventosVisuales.append(
+                EventoVisual(
+                    trasMensaje: conversacion.mensajes.last?.id,
+                    texto: cambio.textoDeLinea,
+                    cambioMemoria: cambio
+                )
+            )
+        }
+
+        return .aplicada(cambio)
+    }
+
+    /// Detiene el turno en la hoja y escribe SOLO si el dueno aprueba (B2.4).
+    ///
+    /// La hoja es el unico artefacto visible mientras esta pendiente: la
+    /// proyeccion la pinta al final del hilo y no anade burbuja en curso. Al
+    /// denegar, cerrar el hilo o cerrar la app sin decidir no se escribe nada:
+    /// el turno recibe un rechazo interno (rol `.herramienta`) que cierra ese
+    /// `tool_call_id`, de modo que el payload siguiente no lo reenvia como
+    /// pendiente.
+    private func proponerMemoriaSensible(
+        contenido: String,
+        categoria: CategoriaSensibleMemoria,
+        idConversacion: UUID
+    ) async -> ResultadoAccionMemoria {
+        // Si el dueno ya cambio de hilo, la hoja no puede aparecer en otro
+        // chat: la propuesta se cierra como denegada sin tocar el registro.
+        guard conversacion.id == idConversacion else {
+            return .rechazada("denegado por el dueno")
+        }
+        guard propuestaMemoriaSensible == nil else {
+            return .rechazada("ya hay una propuesta sensible pendiente en este turno.")
+        }
+
+        propuestaMemoriaSensible = PropuestaMemoriaSensible(
+            texto: contenido,
+            categoriaSensible: categoria
+        )
+
+        let aprobada = await withCheckedContinuation {
+            (continuacion: CheckedContinuation<Bool, Never>) in
+            self.continuacionPropuestaSensible = continuacion
+        }
+
+        propuestaMemoriaSensible = nil
+
+        guard !Task.isCancelled else {
+            return .rechazada("turno cancelado")
+        }
+        guard aprobada else {
+            return .rechazada("denegado por el dueno")
+        }
+
+        var entradas = config.memoria
+        let resultado = Memoria.aplicarSensibleAprobada(
+            contenido: contenido,
+            categoria: categoria,
+            en: &entradas
+        )
+        guard case .aplicada(let cambio) = resultado else {
+            return resultado
+        }
+
+        config.memoria = entradas
+
+        // La linea unica de aviso posterior se ancla al ultimo mensaje visible
+        // (la orden del dueno), igual que las escrituras no sensibles.
         if conversacion.id == idConversacion {
             eventosVisuales.append(
                 EventoVisual(
@@ -2142,6 +2226,38 @@ final class EstadoApp: ObservableObject {
         continuacion.resume(returning: aprobada)
     }
 
+    // MARK: - Hoja de propuesta sensible de Chat (B2.4)
+
+    /// Resuelve la hoja sensible a favor: recien entonces se escribe la
+    /// entrada en Mi Contexto.
+    func aprobarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: true)
+    }
+
+    /// Resuelve la hoja sensible en contra: no se escribe nada y el turno
+    /// recibe el rechazo interno.
+    func denegarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: false)
+    }
+
+    /// Cerrar la hoja (o el hilo) sin decidir es DENEGAR (B2.4).
+    ///
+    /// Mismo resultado interno de rechazo y cero persistencia. La hoja no se
+    /// puede arrastrar para cerrar, pero Detener, cambiar de chat o cerrar el
+    /// hilo pasan por `cancelar()`, que llama aqui antes de cortar el turno.
+    func cerrarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: false)
+    }
+
+    private func resolverPropuestaSensible(aprobada: Bool) {
+        // La hoja deja de proyectarse en el acto; el turno sigue (o se corta)
+        // con la decision tomada.
+        propuestaMemoriaSensible = nil
+        guard let continuacion = continuacionPropuestaSensible else { return }
+        continuacionPropuestaSensible = nil
+        continuacion.resume(returning: aprobada)
+    }
+
     // MARK: - Ejecucion de la tarea (TASK.3)
 
     /// Lanza el bucle en una tarea propia y sella la generacion.
@@ -2940,11 +3056,21 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    /// Aplica una accion de `proponer_memoria` YA aprobada en la hoja (TASK.4).
+    ///
+    /// B2.4: el regimen no cambia —toda escritura de Tarea sigue pasando por
+    /// propuesta y hoja—, pero la accion aprobada se expresa sobre el esquema
+    /// tipado y entra por `aplicarTipada`, el mismo camino que Chat. El mapeo
+    /// vive en `Memoria.operacionTipada`: `guardar` -> `save_memory`
+    /// (categoria `durable_fact`), `actualizar` -> `update_memory` conservando
+    /// la categoria base, `borrar` -> `delete_memory`. Una entrada sensible no
+    /// se reescribe por esta via: `aplicarTipada` la rechaza.
     private func aplicarAccionDeMemoriaTarea(
         _ accion: AccionMemoria
     ) -> ResultadoAccionMemoria {
         var entradas = config.memoria
-        let resultado = Memoria.aplicar(accion, en: &entradas)
+        let operacion = Memoria.operacionTipada(accion, en: entradas)
+        let resultado = Memoria.aplicarTipada(operacion, en: &entradas)
         if case .aplicada = resultado {
             config.memoria = entradas
         }
@@ -3775,10 +3901,11 @@ final class EstadoApp: ObservableObject {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
             // Un chat normal sigue SIN las herramientas del modo Tarea. La unica
-            // excepcion es la Memoria: si el chat la usa, se ofrecen las tres
+            // excepcion es la Memoria: si el chat la usa, se ofrecen las cuatro
             // herramientas tipadas de escritura y un ejecutor NUEVO por turno.
-            // `propose_sensitive_memory` NO se ofrece todavia: su hoja de
-            // aprobacion es B2.4 y ofrecerla sin hoja seria forma sin fondo.
+            // B2.4: `propose_sensitive_memory` ya se ofrece porque su hoja de
+            // aprobacion esta cableada en este mismo turno; ofrecerla sin hoja
+            // habria sido forma sin fondo.
             //
             // B2.3: este conjunto NO depende del interruptor «Memoria
             // inteligente». ON y OFF ofrecen exactamente las mismas
@@ -3803,7 +3930,7 @@ final class EstadoApp: ObservableObject {
                             "la Memoria no esta disponible en este turno."
                         )
                     }
-                    return self.aplicarOperacionDeMemoria(
+                    return await self.aplicarOperacionDeMemoria(
                         operacion,
                         idConversacion: idConversacion
                     )
@@ -3822,6 +3949,14 @@ final class EstadoApp: ObservableObject {
                     ) { argumentos in
                         try await ejecutorMemoria.ejecutar(
                             herramienta: Memoria.nombreActualizar,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaProponerSensible
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreProponerSensible,
                             argumentos: argumentos
                         )
                     },
@@ -3909,6 +4044,11 @@ final class EstadoApp: ObservableObject {
         // microfono no puede quedar escuchando en una conversacion que ya no
         // esta en pantalla.
         detenerDictado()
+        // B2.4: cortar el turno con la hoja sensible abierta es cerrarla sin
+        // aprobar. Se resuelve como denegacion para que el turno no quede
+        // colgado esperando una decision que ya no va a llegar; la tarea se
+        // cancela justo despues y no llega a escribir nada.
+        cerrarPropuestaSensible()
         tareaActual?.cancel()
         tareaActual = nil
         tareaCompactado?.cancel()

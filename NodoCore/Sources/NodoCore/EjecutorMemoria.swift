@@ -13,20 +13,32 @@ import Foundation
 /// `entry_id` del snapshot y freno sensible) se prueban con `swift test` sin
 /// simulador. La capa app solo inyecta el aplicador y decide donde se pinta la
 /// linea.
+///
+/// B2.4: el aplicador es `async` porque una propuesta sensible detiene el turno
+/// mientras el dueno decide en la hoja. Las validaciones NO cambian; lo unico
+/// que cambia es que `.proponerSensible` deja de cortarse aqui y llega al
+/// aplicador, que es quien presenta la hoja y, solo con [Aprobar], escribe.
 @MainActor
 public final class EjecutorMemoriaDelTurno {
     private let idsDelTurno: Set<UUID>
     private let categoriasDelTurno: [UUID: CategoriaMemoria]
+    /// Entradas que entraron con aprobacion sensible (B2.4). Una actualizacion
+    /// por `update_memory` sobre una de ellas se rechaza: reescribirla sin
+    /// hoja seria persistir contenido sensible sin [Aprobar].
+    private let sensiblesDelTurno: Set<UUID>
     private var invocaciones = 0
-    private let aplicar: @MainActor (OperacionMemoriaTipada) -> ResultadoAccionMemoria
+    private let aplicar: @MainActor (OperacionMemoriaTipada) async -> ResultadoAccionMemoria
 
     public init(
         entradas: [EntradaMemoria],
-        aplicar: @escaping @MainActor (OperacionMemoriaTipada) -> ResultadoAccionMemoria
+        aplicar: @escaping @MainActor (OperacionMemoriaTipada) async -> ResultadoAccionMemoria
     ) {
         self.idsDelTurno = Set(entradas.map(\.id))
         self.categoriasDelTurno = Dictionary(
             uniqueKeysWithValues: entradas.map { ($0.id, $0.categoria) }
+        )
+        self.sensiblesDelTurno = Set(
+            entradas.filter { $0.categoriaSensible != nil }.map(\.id)
         )
         self.aplicar = aplicar
     }
@@ -34,7 +46,8 @@ public final class EjecutorMemoriaDelTurno {
     public func ejecutar(herramienta: String, argumentos: String) async throws -> String {
         // El contador cuenta INVOCACIONES, no escrituras: la segunda llamada a
         // cualquier herramienta de memoria del turno se rechaza aunque la
-        // primera haya fallado.
+        // primera haya fallado. Una propuesta sensible tambien cuenta: es la
+        // operacion de memoria de ese turno.
         invocaciones += 1
         guard invocaciones == 1 else {
             return "Error: ya se ejecuto una operacion de memoria en este turno; maximo 1 por turno."
@@ -60,15 +73,19 @@ public final class EjecutorMemoriaDelTurno {
             guard idsDelTurno.contains(id) else {
                 return "Error: no existe ninguna entrada de Memoria con ese entry_id en este turno."
             }
+            if sensiblesDelTurno.contains(id) {
+                return "Error: esa entrada es sensible y no se reescribe por esta via."
+            }
             if categoria != .correction,
                categoriasDelTurno[id] != categoria {
                 return "Error: la categoria no coincide con la entrada que se corrige."
             }
 
         case .proponerSensible:
-            // B2.1 la define y la valida, pero no la ofrece en Chat: sin hoja
-            // de aprobacion no puede persistir nada.
-            return "Error: la memoria sensible necesita aprobacion del dueno y no se persiste en este turno."
+            // B2.4: la propuesta no escribe nada aqui. Pasa al aplicador, que
+            // detiene el turno y presenta la hoja; solo el [Aprobar] del dueno
+            // en ESE turno llega a crear la entrada.
+            break
 
         case .borrar(let id):
             guard idsDelTurno.contains(id) else {
@@ -76,7 +93,7 @@ public final class EjecutorMemoriaDelTurno {
             }
         }
 
-        switch aplicar(operacion) {
+        switch await aplicar(operacion) {
         case .aplicada(let cambio):
             return cambio.resultadoHerramienta
         case .rechazada(let motivo):

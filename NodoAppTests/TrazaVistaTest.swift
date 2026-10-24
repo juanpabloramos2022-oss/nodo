@@ -1112,6 +1112,163 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (5b) Traza de la partida B2.4 (freno sensible, 2 turnos)
+
+    /// Guion literal de B2.4 en un chat normal con el interruptor en ON.
+    ///
+    /// Turno 1: un dato de salud sin pedir que se guarde; el modelo propone y
+    /// el dueno DENIEGA. Turno 2: un dato de finanzas; el modelo propone y el
+    /// dueno APRUEBA. La traza tiene que dejar 0 avisos en el turno 1 y
+    /// exactamente 1 en el turno 2 (total 1), con la hoja como unico artefacto
+    /// mientras esta pendiente, 0 UUIDs, 0 bloques crudos y 0 nombres tecnicos.
+    private static let promptB24Turno1 =
+        "Dato de prueba de salud: mi presión arterial de prueba es 120 sobre 80, ¿qué significa?"
+    private static let promptB24Turno2 =
+        "Dato de prueba de finanzas: mi presupuesto de prueba es 500 al mes, ¿cómo lo reparto?"
+
+    func testElGuionB24ProduceLaTrazaB24() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        arnes.estado.config.memoriaInteligente = true
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B2.4.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Turno 1 (denegacion): propuesta de salud, hoja, [Denegar].
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b24-traza-1",
+                    nombre: Memoria.nombreProponerSensible,
+                    argumentos: #"{"content":"mi presión arterial de prueba es 120 sobre 80","sensitive_category":"health"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Entendido: es una lectura normal de prueba.",
+            uso: UsoTokens(entrada: 60, salida: 9)
+        )
+        arnes.estado.enviar(Self.promptB24Turno1)
+        try await arnes.esperar(
+            { arnes.estado.propuestaMemoriaSensible != nil },
+            mensaje: "La hoja de la propuesta de salud no apareció"
+        )
+
+        // Mientras la hoja esta pendiente es el UNICO artefacto del turno.
+        let pendientes = arnes.estado.elementosVisiblesDelHilo()
+        XCTAssertEqual(
+            pendientes,
+            [
+                .burbujaUsuario(texto: Self.promptB24Turno1),
+                .hojaAprobacionMemoria(
+                    texto: "mi presión arterial de prueba es 120 sobre 80",
+                    categoriaSensible: .health,
+                    estado: .pendiente
+                )
+            ]
+        )
+        try sesion.capturar(pendientes)
+
+        arnes.estado.denegarPropuestaSensible()
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(
+            arnes.estado.config.memoria,
+            [],
+            "El turno 1 denegado no deja ninguna entrada"
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            0,
+            "El turno 1 no puede dejar aviso de guardado"
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryApprovalSheet"),
+            1,
+            "El turno 1 deja la hoja como artefacto"
+        )
+        let rechazo = try XCTUnwrap(
+            arnes.estado.conversacion.mensajes.last { $0.rol == .herramienta }
+        )
+        XCTAssertEqual(rechazo.toolCallId, "call-b24-traza-1")
+        XCTAssertEqual(rechazo.texto, "denegado por el dueno")
+
+        // Turno 2 (aprobacion): propuesta de finanzas, hoja, [Aprobar].
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b24-traza-2",
+                    nombre: Memoria.nombreProponerSensible,
+                    argumentos: #"{"content":"mi presupuesto de prueba es 500 al mes","sensitive_category":"finances"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Anotado: 500 al mes.",
+            uso: UsoTokens(entrada: 70, salida: 8)
+        )
+        arnes.estado.enviar(Self.promptB24Turno2)
+        try await arnes.esperar(
+            { arnes.estado.propuestaMemoriaSensible != nil },
+            mensaje: "La hoja de la propuesta de finanzas no apareció"
+        )
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        arnes.estado.aprobarPropuestaSensible()
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Exactamente una entrada nueva, con su categoria sensible y su aviso.
+        XCTAssertEqual(arnes.estado.config.memoria.count, 1)
+        let creada = try XCTUnwrap(arnes.estado.config.memoria.first)
+        XCTAssertEqual(creada.texto, "mi presupuesto de prueba es 500 al mes")
+        XCTAssertEqual(creada.categoriaSensible, .finances)
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            1,
+            "El turno 2 anade exactamente una linea (total 1)"
+        )
+        XCTAssertTrue(
+            sesion.contenido.contains(
+                "MemoryLineNotice(text: \"Guardado en memoria: "
+                    + "mi presupuesto de prueba es 500 al mes\", "
+                    + "hasUndo: true)"
+            ),
+            sesion.contenido
+        )
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryApprovalSheet"),
+            2,
+            "Cada turno deja constancia de su hoja"
+        )
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble", "MemoryApprovalSheet", "AssistantBubble",
+                "UserBubble", "MemoryApprovalSheet", "MemoryLineNotice",
+                "AssistantBubble"
+            ],
+            "Solo burbujas, la hoja de cada turno y una unica linea de aviso"
+        )
+        XCTAssertFalse(contenido.contains("{"))
+        XCTAssertFalse(contenido.contains("tool_calls"))
+        XCTAssertFalse(contenido.contains("health"))
+        XCTAssertFalse(contenido.contains("finances"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {
