@@ -47,6 +47,52 @@ final class ViewModelSnapshotTest: XCTestCase {
         )
     }
 
+    // MARK: - (a2) Turno sin guardado (F4): solo burbujas
+
+    /// B1.3: el dueno dice un dato suelto sin ordenar guardarlo. El turno no
+    /// ejecuta `memoria_chat` y la proyeccion no puede inventar una linea de
+    /// memoria: solo las dos burbujas.
+    func testTurnoSinOrdenDeGuardadoProyectaSoloLasBurbujas() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let respuesta = "El verde es un buen color."
+        arnes.transporte.guionar(
+            texto: respuesta,
+            uso: UsoTokens(entrada: 20, salida: 6)
+        )
+
+        arnes.estado.enviar("Mi color favorito es el verde")
+        try await arnes.esperarTurno()
+
+        XCTAssertNil(arnes.estado.errorDeTurno)
+        XCTAssertTrue(
+            arnes.estado.config.memoria.isEmpty,
+            "El caso sin orden no guarda: eso cambia en el Bloque 2, no aqui"
+        )
+
+        let elementos = arnes.estado.elementosVisiblesDelHilo()
+        XCTAssertEqual(
+            elementos,
+            [
+                .burbujaUsuario(texto: "Mi color favorito es el verde"),
+                .burbujaAsistente(segmentos: [.texto(respuesta)])
+            ],
+            "Sin guardado la proyeccion son solo las burbujas"
+        )
+        XCTAssertFalse(
+            elementos.contains(where: { elemento in
+                if case .lineaMemoria = elemento { return true }
+                return false
+            }),
+            "Sin guardado no puede aparecer `.lineaMemoria`"
+        )
+    }
+
     // MARK: - (b) Guardado de memoria con la respuesta archivada de v0.3.1
 
     func testGuardadoDeMemoriaProduceUnaLineaYNoFiltraElResultadoDeLaHerramienta() async throws {

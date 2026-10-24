@@ -280,7 +280,13 @@ public enum Memoria {
         var lineas: [String] = [
             cabeceraBloque,
             "Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio.",
-            "Usa la herramienta \(nombreHerramientaChat): accion guardar (texto nuevo), actualizar (id + texto) o borrar (id)."
+            "Usa la herramienta \(nombreHerramientaChat): accion guardar (texto nuevo), actualizar (id + texto) o borrar (id).",
+            "",
+            "Comunicacion de memoria:",
+            "1. Si en este turno no ejecutas la herramienta de memoria, responde solo al contenido de la conversacion: no menciones la memoria, ni que no guardaste nada, ni bajo que reglas guardas o dejas de guardar.",
+            "2. Nunca afirmes haber guardado, anotado o recordado algo que no hayas ejecutado con la herramienta en este turno. Prohibido «anotado mentalmente» y cualquier equivalente.",
+            "3. Si ejecutas la herramienta, la app ya lo avisa en su linea: tu acuse en palabras es opcional y, si lo haces, es maximo 1 frase simple de 20 palabras o menos, tras lo cual sigues con la respuesta normal.",
+            "4. Explica la politica de memoria unicamente si el dueno pregunta literalmente como funciona la memoria."
         ]
 
         if entradas.isEmpty {

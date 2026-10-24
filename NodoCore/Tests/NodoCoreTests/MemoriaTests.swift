@@ -125,6 +125,48 @@ final class MemoriaTests: XCTestCase {
         }
     }
 
+    /// B1.3: el bloque gana la comunicacion SIN tocar el disparo.
+    ///
+    /// Las dos lineas de disparo se copian literales de la v0.3.1/B1.2: si una
+    /// sesion futura las cambia, esta prueba falla y delata que se salio del
+    /// alcance de B1.3 (el cuándo es del Bloque 2).
+    func testElBloqueAnadeLaComunicacionSinTocarElParrafoDeDisparo() {
+        let entradas = [
+            EntradaMemoria(id: idUno, texto: "Vive en Madrid")
+        ]
+
+        let bloque = Memoria.bloqueSistema(entradas: entradas)
+
+        let disparo = "Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio."
+        let herramienta = "Usa la herramienta memoria_chat: accion guardar (texto nuevo), actualizar (id + texto) o borrar (id)."
+
+        XCTAssertTrue(bloque.contains(disparo), "El disparo no puede cambiar en B1.3")
+        XCTAssertTrue(bloque.contains(herramienta), "La linea de herramienta no puede cambiar en B1.3")
+        XCTAssertEqual(
+            bloque.components(separatedBy: disparo).count - 1,
+            1,
+            "El disparo aparece exactamente una vez y sin reescrituras"
+        )
+        XCTAssertTrue(
+            bloque.contains(disparo + "\n" + herramienta + "\n\n"),
+            "La comunicacion va en un parrafo separado, despues del disparo"
+        )
+
+        // Las 4 reglas normativas de la spec, afirmadas sobre el texto real.
+        XCTAssertTrue(bloque.contains("no menciones la memoria"))
+        XCTAssertTrue(bloque.contains("Nunca afirmes haber guardado"))
+        XCTAssertTrue(bloque.contains("«anotado mentalmente»"))
+        XCTAssertTrue(bloque.contains("acuse en palabras es opcional"))
+        XCTAssertTrue(bloque.contains("maximo 1 frase simple de 20 palabras"))
+        XCTAssertTrue(
+            bloque.contains("pregunta literalmente como funciona la memoria")
+        )
+
+        // Las entradas y sus ids siguen viajando igual que hoy.
+        XCTAssertTrue(bloque.contains(entradas[0].id.uuidString))
+        XCTAssertTrue(bloque.contains(entradas[0].texto))
+    }
+
     func testLaHerramientaDeChatDeclaraAccionTextoEId() {
         let definicion = Memoria.herramientaChat
 

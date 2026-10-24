@@ -488,6 +488,162 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (3) Traza de la partida B1.3 (guion literal de 4 turnos)
+
+    /// Los cuatro turnos del contrato X de B1.3: dato suelto sin orden,
+    /// orden explicita de guardado, detalle efimero y pregunta literal sobre
+    /// la memoria. Las respuestas son las de la corrida viva archivada en
+    /// `humos/b13-turno*.json`.
+    private static let promptB13Turno1 = "Mi color favorito es el verde"
+    private static let promptB13Turno2 =
+        "Recuerda que mi color favorito es el verde"
+    private static let promptB13Turno3 =
+        "Traduce al inglés: la casa es grande"
+    private static let promptB13Turno4 = "¿Cómo funciona tu memoria?"
+
+    private static let respuestaB13Turno1 =
+        "El verde es un color muy versátil: relajante y a la vez con mucha "
+        + "energía, sobre todo en tonos más vivos como el esmeralda o el lima. "
+        + "¿Te gusta más en un verde natural (bosque, oliva) o en algo más eléctrico?"
+    private static let respuestaB13Turno2 =
+        "Anotado: tu color favorito es el verde."
+    private static let respuestaB13Turno3 = "The house is big."
+    private static let respuestaB13Turno4 =
+        "Funciona así:\n\n"
+        + "- Tengo una lista de entradas de memoria asociadas a ti, cada una "
+        + "con un identificador y un texto (por ejemplo, ahora mismo hay una "
+        + "entrada que dice que tu color favorito es el verde).\n"
+        + "- Solo guardo, actualizo o borro algo cuando tú me lo pides de forma "
+        + "explícita. No lo hago por iniciativa propia ni en silencio.\n"
+        + "- Cuando lo haces, uso la herramienta de memoria correspondiente: "
+        + "guardar (con el texto nuevo), actualizar (con el id de la entrada y "
+        + "el texto) o borrar (con el id).\n"
+        + "- Si en un turno no ejecuto esa herramienta, no afirmo haber "
+        + "guardado ni recordado nada; simplemente respondo a lo que me preguntas.\n"
+        + "- El aviso de que se guardó o modificó algo lo muestra la aplicación; "
+        + "mi confirmación es opcional y breve.\n\n"
+        + "Si quieres cambiar o eliminar esa entrada del color, dímelo y lo hago."
+
+    func testElGuionB13ProduceLaTrazaB13() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B1.3.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Turno 1: dato suelto SIN orden. No hay tool_call y la respuesta habla
+        // solo del color: cero lineas de memoria.
+        arnes.transporte.guionar(
+            texto: Self.respuestaB13Turno1,
+            uso: UsoTokens(entrada: 657, salida: 91)
+        )
+        arnes.estado.enviar(Self.promptB13Turno1)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        XCTAssertTrue(arnes.estado.config.memoria.isEmpty)
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            0,
+            "El turno sin orden no puede dejar linea de memoria"
+        )
+
+        // Turno 2: orden explicita. El modelo pide guardar y la app pinta la
+        // linea unica; el acuse verbal es una sola frase de 8 palabras.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b13-guardar",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion": "guardar", "texto": "Su color favorito es el verde."}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: Self.respuestaB13Turno2,
+            uso: UsoTokens(entrada: 850, salida: 13)
+        )
+        arnes.estado.enviar(Self.promptB13Turno2)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        XCTAssertEqual(arnes.estado.config.memoria.count, 1)
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            1,
+            "El turno con guardado deja exactamente un aviso de memoria"
+        )
+
+        // Turno 3: detalle efimero, sin herramienta ni menciones.
+        arnes.transporte.guionar(
+            texto: Self.respuestaB13Turno3,
+            uso: UsoTokens(entrada: 689, salida: 14)
+        )
+        arnes.estado.enviar(Self.promptB13Turno3)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Turno 4: pregunta literal sobre el funcionamiento. Aqui SI se
+        // explica, y aun asi no aparece otra linea de memoria.
+        arnes.transporte.guionar(
+            texto: Self.respuestaB13Turno4,
+            uso: UsoTokens(entrada: 686, salida: 229)
+        )
+        arnes.estado.enviar(Self.promptB13Turno4)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        XCTAssertEqual(
+            arnes.estado.config.memoria.first?.texto,
+            "Su color favorito es el verde."
+        )
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble", "AssistantBubble",
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "AssistantBubble",
+                "UserBubble", "AssistantBubble"
+            ],
+            "Solo burbujas y una unica linea, en el turno con guardado"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            1,
+            "El guion completo deja exactamente 1 MemoryLineNotice"
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "MemoryLineNotice(text: \"Guardado en memoria: "
+                    + "Su color favorito es el verde.\", hasUndo: true)"
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "AssistantBubble(\"El verde es un color muy versátil"
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains("AssistantBubble(\"The house is big.\")")
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "AssistantBubble(\"Funciona así:\\n\\n- Tengo una lista "
+                    + "de entradas de memoria"
+            )
+        )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {
