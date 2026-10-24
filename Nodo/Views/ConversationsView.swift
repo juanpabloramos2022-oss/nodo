@@ -16,6 +16,8 @@ import NodoCore
 struct ConversationsView: View {
     @EnvironmentObject private var estado: EstadoApp
     let alNuevo: (Bool) -> Void
+    /// Abre un hilo de Chat Temporal (B2.2) con UN toque desde la lista (R41).
+    let alTemporal: () -> Void
 
     @State private var aBorrar: Conversation?
     @State private var aRenombrar: Conversation?
@@ -65,6 +67,9 @@ struct ConversationsView: View {
             prompt: "Buscar en tus conversaciones"
         )
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                botonTemporal
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 botonNuevo
             }
@@ -116,6 +121,25 @@ struct ConversationsView: View {
         .padding(.vertical, 8)
         .background(Tema.fondo)
         .accessibilityIdentifier("segmento-chats")
+    }
+
+    /// Boton «Chat temporal»: UN toque desde la pantalla principal (R41).
+    ///
+    /// Abre un hilo que no se guarda en la lista, no usa la Memoria y lo
+    /// declara en su cabecera. Es la entrada propia del modo temporal (B2.2);
+    /// el chat normal conserva su camino de siempre (el + y su pulsacion
+    /// larga sin memoria, sin cambios).
+    private var botonTemporal: some View {
+        Button {
+            alTemporal()
+        } label: {
+            Image(systemName: "timer")
+        }
+        .accessibilityIdentifier("nuevo-chat-temporal")
+        .accessibilityLabel("Chat temporal")
+        .accessibilityHint(
+            "Abre un chat que no se guarda en la lista ni usa tu memoria"
+        )
     }
 
     /// Boton + Nuevo: un toque crea un chat normal; mantener pulsado lo crea ya

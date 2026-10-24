@@ -832,6 +832,95 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (4) Traza de la partida B2.2 (Chat Temporal)
+
+    /// Prompt literal de la ficha B2.2: un dato durable sin verbos de orden.
+    private static let promptB22 =
+        "Mi palabra clave de prueba es LUNA-7 y prefiero respuestas cortas, úsalo en esta conversación"
+
+    private static let semillaB22 = EntradaMemoria(
+        id: UUID(uuidString: "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD")!,
+        texto: "Prefiere respuestas breves",
+        fecha: Date(timeIntervalSince1970: 400),
+        categoria: .preference
+    )
+
+    /// Guion literal de B2.2: un hilo temporal con el prompt de la ficha.
+    ///
+    /// La traza tiene que salir con 0 `MemoryLineNotice`: en un hilo temporal no
+    /// hay ninguna operacion de Memoria que avisar. Al cerrar y releer el
+    /// almacen no queda ni una conversacion ni una entrada nueva. El contraste
+    /// positivo (el mismo guion en un chat normal si ofrece las herramientas)
+    /// vive en `ChatTemporalTests`, para no mezclar dos hilos en una traza.
+    func testElGuionB22ProduceLaTrazaB22() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = [Self.semillaB22]
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B2.2.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        arnes.transporte.guionar(
+            texto: "Entendido: LUNA-7, respuestas cortas.",
+            uso: UsoTokens(entrada: 45, salida: 8)
+        )
+
+        arnes.estado.nuevaConversacionTemporal()
+        let idTemporal = arnes.estado.conversacion.id
+        arnes.estado.enviar(Self.promptB22)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // El payload del turno no ofrecio ninguna herramienta de Memoria.
+        let peticion = try XCTUnwrap(
+            arnes.transporte.peticionesRegistradas.first?.cuerpo
+        )
+        let cuerpo = try XCTUnwrap(String(data: peticion, encoding: .utf8))
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(cuerpo.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(json["tools"], "El hilo temporal ofrecio herramientas")
+        XCTAssertFalse(cuerpo.contains(Self.semillaB22.texto), cuerpo)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            0,
+            "Un hilo temporal no deja ninguna linea de aviso de memoria"
+        )
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "Solo la burbuja del dueno y la respuesta"
+        )
+        XCTAssertFalse(contenido.contains("{"))
+        XCTAssertFalse(contenido.contains("tool_calls"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // Salida sin rastro: al cerrar y releer el almacen no hay conversacion
+        // nueva, ni entrada nueva, ni archivo en disco.
+        let memoriaAntes = arnes.estado.config.memoria
+        arnes.estado.cerrarHiloTemporal()
+        arnes.estado.recargarConversaciones()
+
+        XCTAssertTrue(arnes.estado.conversaciones.isEmpty)
+        XCTAssertEqual(arnes.estado.config.memoria, memoriaAntes)
+        XCTAssertNil(arnes.estado.conversaciones.first { $0.id == idTemporal })
+        let archivos = (try? FileManager.default.contentsOfDirectory(
+            atPath: arnes.directorioStore.path
+        )) ?? []
+        XCTAssertTrue(
+            archivos.filter { $0.hasSuffix(".json") }.isEmpty,
+            "El hilo temporal dejo archivo: \(archivos)"
+        )
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - (3b) Captura tras deshacer (si aplica)
 
     func testLaSesionRegistraElDeshacerDeLaLineaDeMemoria() async throws {

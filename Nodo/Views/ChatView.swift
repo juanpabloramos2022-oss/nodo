@@ -51,6 +51,9 @@ struct ChatView: View {
                 pildora
             }
             ToolbarItem(placement: .topBarTrailing) {
+                botonTemporal
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 menuAcciones
             }
         }
@@ -189,6 +192,7 @@ struct ChatView: View {
 
     private var memoriaActiva: Bool {
         !estado.conversacion.sinMemoria
+            && !estado.conversacion.esTemporal
             && !estado.textoMemoria
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
@@ -211,9 +215,72 @@ struct ChatView: View {
         estado.config.proveedorSeleccionado?.id == proveedor.id
     }
 
+    // MARK: - Cabecera: Chat Temporal (B2.2)
+
+    /// Indicador y alternancia del Chat Temporal, en la cabecera nativa.
+    ///
+    /// Antes del primer mensaje es UN Button directo: un toque lo enciende y
+    /// otro lo apaga (R19), sin pasar por el menu ••• (que costaria dos
+    /// gestos). Con mensajes ya enviados el modo queda fijado y el mismo chip
+    /// pasa a ser el INDICADOR que acompana todo el hilo: no hay control muerto
+    /// porque ya no es un boton.
+    @ViewBuilder
+    private var botonTemporal: some View {
+        if estado.conversacion.esTemporal {
+            if estado.conversacion.mensajes.isEmpty {
+                Button {
+                    estado.alternarChatTemporal()
+                } label: {
+                    chipTemporal(activo: true)
+                }
+                .accessibilityIdentifier("chat-temporal")
+                .accessibilityLabel("Chat temporal activo")
+                .accessibilityHint("Toca para volver a un chat normal")
+            } else {
+                chipTemporal(activo: true)
+                    .accessibilityIdentifier("indicador-temporal")
+                    .accessibilityLabel("Chat temporal: no se guarda ni usa memoria")
+            }
+        } else if estado.conversacion.mensajes.isEmpty {
+            Button {
+                estado.alternarChatTemporal()
+            } label: {
+                chipTemporal(activo: false)
+            }
+            .accessibilityIdentifier("chat-temporal")
+            .accessibilityLabel("Activar chat temporal")
+            .accessibilityHint(
+                "Este chat no se guarda en la lista ni usa tu memoria"
+            )
+        }
+    }
+
+    /// Chip de la cabecera. Solo usa tokens de `Tema` (UI_INVARIANTS §6).
+    private func chipTemporal(activo: Bool) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "timer")
+                .font(.system(size: 9, weight: .bold))
+            Text("Temporal")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(activo ? Tema.acento : Tema.textoSuave)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            activo
+                ? Tema.acento.opacity(0.15)
+                : Tema.superficieAlta
+        )
+        .clipShape(Capsule())
+    }
+
     // MARK: - Cabecera: menu •••
 
     /// Menu de acciones con solo lo que existe en esta fase.
+    ///
+    /// En un hilo temporal solo queda «Estado del chat»: fijar, archivar,
+    /// compactar, apagar la memoria y borrar son controles de persistencia que
+    /// en ese modo no tendrian efecto observable (forma sin fondo, regla 11).
     private var menuAcciones: some View {
         Menu {
             Button {
@@ -222,52 +289,54 @@ struct ChatView: View {
                 Label("Estado del chat", systemImage: "chart.bar.xaxis")
             }
 
-            Button {
-                alternarFijado()
-            } label: {
-                Label(
-                    estado.conversacion.fijada ? "Desfijar" : "Fijar",
-                    systemImage: estado.conversacion.fijada ? "pin.slash" : "pin"
-                )
-            }
-
-            Button {
-                estado.archivar(estado.conversacion)
-            } label: {
-                Label("Archivar", systemImage: "archivebox")
-            }
-
-            Button {
-                estado.alternarSinMemoria()
-            } label: {
-                if estado.conversacion.sinMemoria {
-                    Label("Chat sin memoria", systemImage: "checkmark")
-                } else {
-                    Text("Chat sin memoria")
+            if !estado.conversacion.esTemporal {
+                Button {
+                    alternarFijado()
+                } label: {
+                    Label(
+                        estado.conversacion.fijada ? "Desfijar" : "Fijar",
+                        systemImage: estado.conversacion.fijada ? "pin.slash" : "pin"
+                    )
                 }
-            }
 
-            Button {
-                estado.compactar()
-            } label: {
-                Label("Compactar", systemImage: "rectangle.compress.vertical")
-            }
-            // Compactar entra al menu en esta fase, pero solo cuando el hilo
-            // ya tiene suficiente historial (§4.2). Es la unica lectura directa
-            // de `mensajes` que queda en la vista: decide si el comando esta
-            // disponible, no que filas se pintan (eso lo decide la proyeccion).
-            .disabled(
-                estado.conversacion.mensajes.count < 6
-                    || estado.compactando
-                    || estado.enviando
-            )
+                Button {
+                    estado.archivar(estado.conversacion)
+                } label: {
+                    Label("Archivar", systemImage: "archivebox")
+                }
 
-            Divider()
+                Button {
+                    estado.alternarSinMemoria()
+                } label: {
+                    if estado.conversacion.sinMemoria {
+                        Label("Chat sin memoria", systemImage: "checkmark")
+                    } else {
+                        Text("Chat sin memoria")
+                    }
+                }
 
-            Button(role: .destructive) {
-                confirmarBorrado = true
-            } label: {
-                Label("Borrar", systemImage: "trash")
+                Button {
+                    estado.compactar()
+                } label: {
+                    Label("Compactar", systemImage: "rectangle.compress.vertical")
+                }
+                // Compactar entra al menu en esta fase, pero solo cuando el hilo
+                // ya tiene suficiente historial (§4.2). Es la unica lectura directa
+                // de `mensajes` que queda en la vista: decide si el comando esta
+                // disponible, no que filas se pintan (eso lo decide la proyeccion).
+                .disabled(
+                    estado.conversacion.mensajes.count < 6
+                        || estado.compactando
+                        || estado.enviando
+                )
+
+                Divider()
+
+                Button(role: .destructive) {
+                    confirmarBorrado = true
+                } label: {
+                    Label("Borrar", systemImage: "trash")
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -425,6 +494,9 @@ struct ChatView: View {
     /// "Ramificar chat desde aqui" (§5.4). Las burbujas internas de
     /// herramienta no son un punto de corte util.
     private func accionRamificar(_ mensaje: ChatMessage) -> (() -> Void)? {
+        // B2.2: de un hilo temporal no se ramifica; la rama es un chat nuevo
+        // que si se guarda. La accion no se ofrece en ese hilo.
+        guard estado.conversacion.sePersiste else { return nil }
         guard mensaje.rol == .usuario || mensaje.rol == .asistente else {
             return nil
         }

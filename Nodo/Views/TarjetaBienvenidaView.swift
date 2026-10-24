@@ -149,23 +149,39 @@ struct TarjetaBienvenidaView: View {
                 .accessibilityIdentifier("memoria-tarjeta")
             }
 
-            Toggle(
-                isOn: Binding(
-                    get: { !estado.conversacion.sinMemoria },
-                    set: { _ in estado.alternarSinMemoria() }
-                )
-            ) {
+            if estado.conversacion.esTemporal {
+                // B2.2: en un hilo temporal el interruptor de Memoria no
+                // tendria efecto observable, asi que no se pinta: se declara
+                // el modo y nada mas.
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Memoria en este chat")
+                    Text("Chat temporal")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
-                    Text(estado.conversacion.sinMemoria ? "Apagada" : "Activa")
+                    Text("No se guarda en la lista ni usa tu memoria.")
                         .font(.caption2)
                         .foregroundStyle(Tema.textoSuave)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("aviso-chat-temporal")
+            } else {
+                Toggle(
+                    isOn: Binding(
+                        get: { !estado.conversacion.sinMemoria },
+                        set: { _ in estado.alternarSinMemoria() }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Memoria en este chat")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text(estado.conversacion.sinMemoria ? "Apagada" : "Activa")
+                            .font(.caption2)
+                            .foregroundStyle(Tema.textoSuave)
+                    }
+                }
+                .tint(Tema.acento)
+                .accessibilityIdentifier("memoria-toggle-tarjeta")
             }
-            .tint(Tema.acento)
-            .accessibilityIdentifier("memoria-toggle-tarjeta")
         }
         .padding(16)
         .background(Tema.superficie)

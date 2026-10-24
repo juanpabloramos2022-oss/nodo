@@ -617,7 +617,10 @@ final class EstadoApp: ObservableObject {
         RespaldoConfiguracion.hacerRespaldo(
             config: config,
             ventanas: ventanasPorModelo,
-            conversaciones: conversaciones,
+            // B2.2: el respaldo tampoco puede llevarse un hilo temporal. La
+            // lista no lo contiene (nunca se persiste), pero el filtro lo deja
+            // escrito aqui para que ningun camino futuro lo cuele.
+            conversaciones: conversaciones.filter(\.sePersiste),
             tareas: tareas
         )
     }
@@ -1487,6 +1490,56 @@ final class EstadoApp: ObservableObject {
         conversacion = Conversation(sinMemoria: sinMemoria)
     }
 
+    /// Crea un hilo de Chat Temporal (B2.2): el camino de creacion propio.
+    ///
+    /// POR QUE no es `nuevaConversacion(sinMemoria: true)`: un chat sin memoria
+    /// es un chat normal que se guarda; el temporal no llega nunca al almacen,
+    /// no ofrece herramientas de escritura de Memoria y su cabecera lo declara
+    /// durante todo el hilo. La conversacion se construye ya marcada
+    /// `esTemporal`, asi el resto del estado (payload, persistencia, respaldo)
+    /// la trata distinto desde el primer instante.
+    func nuevaConversacionTemporal() {
+        cancelar()
+        limpiarEventosVisuales()
+        limpiarErrorDeTurno()
+        limpiarEstadoDeCaja()
+        conversacion = Conversation(esTemporal: true)
+    }
+
+    /// True si el hilo abierto es un Chat Temporal.
+    var hiloTemporal: Bool {
+        conversacion.esTemporal
+    }
+
+    /// Alterna el hilo abierto entre normal y temporal: UN toque (R19).
+    ///
+    /// Solo se puede alternar ANTES del primer mensaje: con mensajes ya
+    /// enviados el modo queda fijado (un hilo temporal no se persiste y no
+    /// puede convertirse en normal sin guardar lo conversado). Devuelve `true`
+    /// si el toque cambio el modo, `false` si no habia nada que cambiar.
+    @discardableResult
+    func alternarChatTemporal() -> Bool {
+        guard conversacion.mensajes.isEmpty, !enviando else { return false }
+        conversacion.esTemporal.toggle()
+        return true
+    }
+
+    /// Cierra el hilo temporal abierto: camino de SALIDA propio (B2.2).
+    ///
+    /// No guarda nada, no deja borrador y no toca la lista ni Mi Contexto: el
+    /// hilo se descarta y la app vuelve a un chat normal vacio. Si el hilo
+    /// abierto no es temporal no hace nada (un chat normal se guarda como
+    /// siempre).
+    func cerrarHiloTemporal() {
+        guard conversacion.esTemporal else { return }
+        cancelar()
+        limpiarEventosVisuales()
+        limpiarErrorDeTurno()
+        // El borrador de un hilo temporal se borra al cerrar el hilo.
+        limpiarEstadoDeCaja()
+        conversacion = Conversation()
+    }
+
     func abrir(_ otra: Conversation) {
         cancelar()
         limpiarEventosVisuales()
@@ -1502,6 +1555,11 @@ final class EstadoApp: ObservableObject {
     /// los usos de los mensajes clonados, asi que su costo sigue siendo honesto
     /// desde el primer mensaje. La conversacion original no se toca.
     func ramificar(desde mensaje: ChatMessage) {
+        // B2.2: un hilo temporal no se ramifica. La rama es un chat NUEVO que
+        // si se guarda; sacarla de un hilo que promete no dejar rastro seria
+        // justo el rastro que el modo evita. La vista no ofrece la accion en
+        // ese hilo; esta guarda cubre cualquier llamada futura.
+        guard conversacion.sePersiste else { return }
         guard let nueva = conversacion.ramificar(hastaElMensaje: mensaje.id) else {
             return
         }
@@ -1635,6 +1693,10 @@ final class EstadoApp: ObservableObject {
     /// Al apagarla con mensajes ya enviados se deja el divisor del punto exacto
     /// del cambio; los turnos anteriores ya viajaron con la Memoria (§4.6).
     func alternarSinMemoria() {
+        // B2.2: en un hilo temporal el interruptor no tendria efecto
+        // observable (el temporal no usa la Memoria por definicion), asi que
+        // no se ofrece ni cambia nada. En un chat normal sigue como siempre.
+        guard !conversacion.esTemporal else { return }
         let teniaMensajes = !conversacion.mensajes.isEmpty
         conversacion.sinMemoria.toggle()
 
@@ -1691,6 +1753,8 @@ final class EstadoApp: ObservableObject {
     }
 
     func renombrar(_ otra: Conversation, titulo: String) {
+        // Un hilo temporal no tiene fila ni archivo que renombrar (B2.2).
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.titulo = titulo
         try? store?.guardar(copia)
@@ -1700,6 +1764,7 @@ final class EstadoApp: ObservableObject {
 
     /// Fija o desfija una conversacion sin tocar la que este abierta.
     func fijar(_ otra: Conversation, fijada: Bool = true) {
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.fijada = fijada
         try? store?.guardar(copia)
@@ -1716,6 +1781,8 @@ final class EstadoApp: ObservableObject {
 
     /// Archiva o desarchiva una conversacion sin tocar la que este abierta.
     func archivar(_ otra: Conversation, archivada: Bool = true) {
+        // Archivar es escribir: un hilo temporal no llega al almacen.
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.archivada = archivada
         try? store?.guardar(copia)
@@ -1730,7 +1797,14 @@ final class EstadoApp: ObservableObject {
         archivar(otra, archivada: false)
     }
 
+    /// Punto UNICO de escritura de la conversacion abierta.
+    ///
+    /// B2.2: el camino de salida del Chat Temporal se decide aqui. Un hilo
+    /// temporal no pasa por el almacen ni refresca la lista, de modo que
+    /// enviar, regenerar, reintentar, fallar o compactar no dejan rastro por
+    /// mucho que llamen a `persistirActual`.
     private func guardarActual() {
+        guard conversacion.sePersiste else { return }
         try? store?.guardar(conversacion)
         recargarConversaciones()
     }
@@ -3268,6 +3342,14 @@ final class EstadoApp: ObservableObject {
     /// hilo queda intacto y se avisa sin guardar nada.
     func compactar() {
         guard !compactando, !enviando else { return }
+        // B2.2: compactar guarda el resumen por conversacion y persiste el
+        // hilo. En un hilo temporal eso seria un rastro, asi que no se ofrece
+        // (el menu ••• lo oculta) y, si se pide por comando, se avisa en vez
+        // de quedarse en silencio.
+        guard conversacion.sePersiste else {
+            avisoComando = "El chat temporal no se guarda: no hay nada que compactar."
+            return
+        }
 
         let total = conversacion.mensajes.count
         // Con 6 mensajes o menos no queda prefijo antiguo que resumir: llamar
@@ -3641,7 +3723,11 @@ final class EstadoApp: ObservableObject {
         // usa Memoria, el payload lleva bloque y herramientas tipadas; si no, ni
         // uno ni otro. Se captura antes de lanzar la tarea para que un cambio de
         // chat a mitad de turno no mezcle dos contextos.
-        let usaMemoria = !conversacion.sinMemoria
+        //
+        // B2.2: la regla es `usaMemoriaEnPayload`, no `sinMemoria`. Asi un hilo
+        // temporal no ofrece NUNCA herramientas de escritura ni inyecta
+        // entradas, aunque su bandera de «sin memoria» no este puesta.
+        let usaMemoria = conversacion.usaMemoriaEnPayload
         let idConversacion = conversacion.id
         tareaActual = Task { [weak self] in
             guard let self else { return }
@@ -3683,6 +3769,10 @@ final class EstadoApp: ObservableObject {
             // herramientas tipadas de escritura y un ejecutor NUEVO por turno.
             // `propose_sensitive_memory` NO se ofrece todavia: su hoja de
             // aprobacion es B2.4 y ofrecerla sin hoja seria forma sin fondo.
+            //
+            // B2.2: en un hilo temporal `usaMemoria` es false por construccion
+            // (`Conversation.usaMemoriaEnPayload`), asi que el array `tools` de
+            // la peticion sale vacio y el cliente ni siquiera manda la clave.
             var herramientas: [Herramienta] = []
             if usaMemoria {
                 // El snapshot de entradas se toma al inicio del turno: los
@@ -3750,6 +3840,11 @@ final class EstadoApp: ObservableObject {
             try Task.checkCancellation()
 
             textoEnCurso = ""
+            // B2.2: si el hilo abierto ya es otro (se cerro un hilo temporal o
+            // se cambio de chat mientras corria el turno), la respuesta no se
+            // escribe en el hilo nuevo ni se guarda: seria un rastro del
+            // temporal y, en el caso normal, un mensaje en el chat equivocado.
+            guard conversacion.id == idConversacion else { return }
             // Cada mensaje generado conserva su proveedor y, si trae consumo,
             // su sello de costo con los precios de ESE proveedor en este
             // momento (COST.1). Regenerar y reintentar pasan por aqui, asi que
@@ -3773,6 +3868,10 @@ final class EstadoApp: ObservableObject {
         } catch is CancellationError {
             textoEnCurso = ""
             alFracasar()
+            // Cerrar un hilo temporal cancela el turno y deja abierto un chat
+            // normal vacio: sin esta guarda, el turno cancelado guardaria ese
+            // chat vacio en la lista (B2.2).
+            guard conversacion.id == idConversacion else { return }
             persistirActual()
         } catch let fallo {
             textoEnCurso = ""
@@ -3782,6 +3881,7 @@ final class EstadoApp: ObservableObject {
             // El error se guarda CON la conversacion: tiene que seguir en el
             // hilo tras reabrir el chat o reiniciar la app. El mensaje del
             // usuario ya esta persistido, asi que reintentar no lo duplica.
+            guard conversacion.id == idConversacion else { return }
             conversacion.errorDeTurno = detalle
             turnoFallido = tipo
             persistirActual()

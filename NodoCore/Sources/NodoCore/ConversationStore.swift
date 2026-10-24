@@ -1,5 +1,16 @@
 import Foundation
 
+/// Errores del almacen de conversaciones.
+public enum ErrorConversationStore: Error, Equatable {
+    /// Se intento guardar un Chat Temporal (B2.2).
+    ///
+    /// Un hilo temporal vive solo en memoria volatil: su camino de salida no
+    /// escribe ni en la lista ni en un archivo. El rechazo vive aqui, en la
+    /// capa que toca disco, para que ningun camino nuevo (ni un futuro metodo
+    /// de EstadoApp) pueda saltarselo sin darse cuenta.
+    case conversacionTemporal
+}
+
 /// Guarda y recupera conversaciones como un archivo JSON por conversacion.
 ///
 /// Un archivo por conversacion y no un unico archivo con todas: asi guardar un
@@ -45,7 +56,13 @@ public final class ConversationStore {
     }
     /// Escribe la conversacion. Es atomico: si el proceso muere a mitad, el
     /// archivo anterior queda intacto.
+    ///
+    /// B2.2: un hilo temporal se rechaza sin escribir nada. Es la demolicion,
+    /// en la capa de almacenamiento, de la suposicion «todo hilo persiste».
     public func guardar(_ conversacion: Conversation) throws {
+        guard conversacion.sePersiste else {
+            throw ErrorConversationStore.conversacionTemporal
+        }
         let datos = try codificador.encode(conversacion)
         try datos.write(to: archivo(conversacion.id), options: .atomic)
     }
