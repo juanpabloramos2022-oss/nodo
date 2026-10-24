@@ -25,6 +25,11 @@ jobs:
   tests:
     if: ${{ contains(github.event.head_commit.message, '[solo-tests]') }}
     runs-on: macos-15
+    # Necesario para dejar el log de las pruebas en la rama `capturas` cuando
+    # fallan: es la unica evidencia de diagnostico si el runner no publica el
+    # xcresult.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -45,6 +50,9 @@ jobs:
           fi
           xcrun simctl boot "iPhone 16" 2>/dev/null || true
           xcrun simctl bootstatus booted -b || true
+          # El log se guarda con tee para poder diagnosticar un fallo desde la
+          # rama capturas; pipefail mantiene el fallo de los tests como fallo.
+          set -o pipefail
           xcodebuild test \
             -project Nodo.xcodeproj \
             -scheme Nodo \
@@ -53,7 +61,36 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" 2>&1 | tee xcodebuild-tests.log
+
+      # Diagnostico: si las pruebas de la app fallan, el log completo queda en
+      # la rama `capturas` bajo tests-<sha7>/, revisable sin permisos de
+      # artefactos. No cambia el resultado del job.
+      - name: Publicar el log de pruebas si fallan
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf pub
+          if git clone --depth 1 --branch capturas \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+            echo "Rama capturas existente."
+          else
+            mkdir pub && (cd pub && git init -q -b capturas .)
+          fi
+          DEST="pub/tests-${GITHUB_SHA::7}"
+          mkdir -p "$DEST"
+          cp xcodebuild-tests.log "$DEST/" 2>/dev/null || true
+          cd pub
+          git config user.name "nodo-ci"
+          git config user.email "ci@localhost"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nada nuevo que publicar."
+            exit 0
+          fi
+          git commit -q -m "tests ${GITHUB_SHA::7}"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
 
   compilar:
     if: ${{ !contains(github.event.head_commit.message, '[solo-tests]') }}

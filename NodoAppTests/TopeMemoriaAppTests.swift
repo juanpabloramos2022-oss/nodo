@@ -20,8 +20,8 @@ final class TopeMemoriaAppTests: XCTestCase {
         UUID(
             uuidString: String(
                 format: "%08X-0000-4000-8000-%012X",
-                numero,
-                numero
+                UInt32(numero),
+                UInt32(numero)
             )
         )!
     }
@@ -351,8 +351,6 @@ final class TopeMemoriaAppTests: XCTestCase {
     private func respaldoSemilla(_ cantidad: Int) throws -> Data {
         var config = AppConfig.inicial()
         config.memoria = semilla(cantidad)
-        config.skills = []
-        config.proveedores = []
         let respaldo = RespaldoConfiguracion.hacerRespaldo(
             config: config,
             ventanas: [:],

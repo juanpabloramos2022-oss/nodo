@@ -1288,8 +1288,8 @@ final class TrazaVistaTest: XCTestCase {
                 id: UUID(
                     uuidString: String(
                         format: "%08X-0000-4000-8000-%012X",
-                        numero,
-                        numero
+                        UInt32(numero),
+                        UInt32(numero)
                     )
                 )!,
                 texto: String(format: "prueba-%02d", numero),

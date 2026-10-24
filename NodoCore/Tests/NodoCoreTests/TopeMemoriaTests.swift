@@ -18,8 +18,8 @@ final class TopeMemoriaTests: XCTestCase {
         UUID(
             uuidString: String(
                 format: "%08X-0000-4000-8000-%012X",
-                numero,
-                numero
+                UInt32(numero),
+                UInt32(numero)
             )
         )!
     }
@@ -67,7 +67,7 @@ final class TopeMemoriaTests: XCTestCase {
     }
 
     func testConMasDeCincuentaInyectaLasPrimerasCincuentaSinReordenar() {
-        var entradas = semilla(60)
+        let entradas = semilla(60)
         let copia = entradas
 
         let bloque = Memoria.bloqueSistema(entradas: entradas)
@@ -230,12 +230,14 @@ final class TopeMemoriaTests: XCTestCase {
             "Orden fijo de categorías y sin el grupo vacío de correction"
         )
         XCTAssertEqual(
-            estado.grupos.first { $0.categoria == .preference }?.entradas.map(\.texto),
+            estado.grupos
+                .first { $0.categoria == .preference }?
+                .entradas.map(\.texto) ?? [],
             ["uno", "tres"],
             "Agrupar no reordena las entradas del grupo"
         )
         XCTAssertEqual(
-            estado.grupos.first { $0.categoria == .preference }?.titulo,
+            estado.grupos.first { $0.categoria == .preference }?.titulo ?? "",
             "Preferencias"
         )
     }
