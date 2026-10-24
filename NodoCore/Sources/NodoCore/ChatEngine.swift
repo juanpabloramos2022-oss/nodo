@@ -39,10 +39,14 @@ enum EsquemaJSON {
     static func diccionario(_ esquema: JSONSchema) -> [String: Any] {
         var propiedades: [String: Any] = [:]
         for (nombre, propiedad) in esquema.propiedades {
-            propiedades[nombre] = [
+            var campo: [String: Any] = [
                 "type": propiedad.tipo,
                 "description": propiedad.descripcion
             ]
+            if let valores = propiedad.valoresPermitidos, !valores.isEmpty {
+                campo["enum"] = valores
+            }
+            propiedades[nombre] = campo
         }
         return [
             "type": esquema.tipo,

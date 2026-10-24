@@ -9,10 +9,27 @@ public struct JSONSchema: Codable, Equatable {
     public struct Propiedad: Codable, Equatable {
         public var tipo: String
         public var descripcion: String
+        /// Valores admitidos cuando el campo es una enumeracion cerrada.
+        ///
+        /// B2.1: las categorias de memoria son enums tipados y el esquema tiene
+        /// que declararlos. Un `String` libre dejaria la puerta abierta a que el
+        /// modelo inventara una categoria sensible por esta via.
+        public var valoresPermitidos: [String]?
 
-        public init(tipo: String, descripcion: String) {
+        public init(
+            tipo: String,
+            descripcion: String,
+            valoresPermitidos: [String]? = nil
+        ) {
             self.tipo = tipo
             self.descripcion = descripcion
+            self.valoresPermitidos = valoresPermitidos
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case tipo
+            case descripcion
+            case valoresPermitidos = "enum"
         }
     }
 

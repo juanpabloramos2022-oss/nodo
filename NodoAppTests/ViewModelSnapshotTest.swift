@@ -50,8 +50,8 @@ final class ViewModelSnapshotTest: XCTestCase {
     // MARK: - (a2) Turno sin guardado (F4): solo burbujas
 
     /// B1.3: el dueno dice un dato suelto sin ordenar guardarlo. El turno no
-    /// ejecuta `memoria_chat` y la proyeccion no puede inventar una linea de
-    /// memoria: solo las dos burbujas.
+    /// ejecuta ninguna herramienta de memoria y la proyeccion no puede inventar
+    /// una linea de memoria: solo las dos burbujas.
     func testTurnoSinOrdenDeGuardadoProyectaSoloLasBurbujas() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
@@ -104,17 +104,15 @@ final class ViewModelSnapshotTest: XCTestCase {
             arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
         )
 
-        // Respuesta real archivada en humos/mem-humo-1.json de la v0.3.1.
-        // El archivo trae dos llamadas `memoria_chat`; el contrato de esta
-        // partida exige UN artefacto de memoria por turno, asi que el fixture
-        // inyecta la primera llamada (la de LUNA-7) y deja constancia aqui.
-        // La segunda del archivo es:
-        //   call_01_YbcqWVGKwT9QMSax5B2j5076
-        //   {"accion": "guardar", "texto": "Prefiere respuestas cortas"}
+        // Respuesta real archivada en humos/mem-humo-1.json de la v0.3.1. El
+        // archivo trae dos llamadas sin tipo; el contrato de esta partida exige
+        // UN artefacto de memoria por turno, asi que el fixture inyecta la
+        // primera (la de LUNA-7) ya migrada al esquema tipado de B2.1.
+        // La segunda del archivo era «Prefiere respuestas cortas».
         let llamadaArchivada = ToolCall(
             id: "call_00_WVjAe73tY4ubrvEhwMnB9307",
-            nombre: Memoria.nombreHerramientaChat,
-            argumentos: #"{"accion": "guardar", "texto": "Palabra clave de la barbería: LUNA-7"}"#
+            nombre: Memoria.nombreGuardar,
+            argumentos: #"{"content": "Palabra clave de la barbería: LUNA-7", "category": "durable_fact"}"#
         )
         arnes.transporte.guionar(texto: "", toolCalls: [llamadaArchivada])
         arnes.transporte.guionar(
@@ -165,7 +163,7 @@ final class ViewModelSnapshotTest: XCTestCase {
             let descripcion = String(describing: elemento)
             XCTAssertFalse(descripcion.contains(resultadoHerramienta))
             XCTAssertFalse(descripcion.contains(entrada.id.uuidString))
-            XCTAssertFalse(descripcion.contains(Memoria.nombreHerramientaChat))
+            XCTAssertFalse(descripcion.contains(Memoria.nombreGuardar))
             XCTAssertFalse(descripcion.contains("{"))
         }
 
@@ -220,8 +218,8 @@ final class ViewModelSnapshotTest: XCTestCase {
             toolCalls: [
                 ToolCall(
                     id: "call-b12-actualizar",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion":"actualizar","id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","texto":"Vive en Barcelona"}"#
+                    nombre: Memoria.nombreActualizar,
+                    argumentos: #"{"entry_id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","content":"Vive en Barcelona","category":"correction"}"#
                 )
             ]
         )
@@ -273,8 +271,8 @@ final class ViewModelSnapshotTest: XCTestCase {
             toolCalls: [
                 ToolCall(
                     id: "call-b12-borrar",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion":"borrar","id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}"#
+                    nombre: Memoria.nombreBorrar,
+                    argumentos: #"{"entry_id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}"#
                 )
             ]
         )
@@ -439,8 +437,8 @@ final class ViewModelSnapshotTest: XCTestCase {
                     toolCalls: [
                         ToolCall(
                             id: idLlamada,
-                            nombre: Memoria.nombreHerramientaChat,
-                            argumentos: #"{"accion":"guardar","texto":"Vivo en Madrid"}"#
+                            nombre: Memoria.nombreGuardar,
+                            argumentos: #"{"content":"Vivo en Madrid","category":"durable_fact"}"#
                         )
                     ]
                 ),
@@ -466,7 +464,7 @@ final class ViewModelSnapshotTest: XCTestCase {
 
         for elemento in elementos {
             let descripcion = String(describing: elemento)
-            XCTAssertFalse(descripcion.contains(Memoria.nombreHerramientaChat))
+            XCTAssertFalse(descripcion.contains(Memoria.nombreGuardar))
             XCTAssertFalse(descripcion.contains(uuid))
             XCTAssertFalse(descripcion.contains("{"))
         }

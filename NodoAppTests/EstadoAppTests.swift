@@ -75,17 +75,19 @@ final class EstadoAppTests: XCTestCase {
     // MARK: - Memoria en el payload (MEM.2)
 
     /// En un chat con Memoria el payload lleva las tres piezas juntas: bloque
-    /// de capacidad, entradas sembradas con sus ids y la herramienta
-    /// `memoria_chat`. Se mira el cuerpo grabado por el transporte, no solo el
-    /// estado interno, porque lo que importa es lo que sale a la red.
-    func testPayloadDeChatConMemoriaLlevaBloqueEntradasYHerramienta() async throws {
+    /// de capacidad, entradas sembradas con sus ids y categorias, y las tres
+    /// herramientas tipadas de escritura. Se mira el cuerpo grabado por el
+    /// transporte, no solo el estado interno, porque lo que importa es lo que
+    /// sale a la red.
+    func testPayloadDeChatConMemoriaLlevaBloqueEntradasYHerramientas() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
         let entrada = EntradaMemoria(
             id: UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!,
             texto: "Vive en Madrid y prefiere respuestas breves.",
-            fecha: Date(timeIntervalSince1970: 100)
+            fecha: Date(timeIntervalSince1970: 100),
+            categoria: .preference
         )
         arnes.estado.config.memoria = [entrada]
         XCTAssertTrue(
@@ -103,7 +105,8 @@ final class EstadoAppTests: XCTestCase {
         XCTAssertTrue(cuerpo.contains(Memoria.cabeceraBloque), cuerpo)
         XCTAssertTrue(cuerpo.contains(entrada.texto), cuerpo)
         XCTAssertTrue(cuerpo.contains(entrada.id.uuidString), cuerpo)
-        XCTAssertTrue(cuerpo.contains(Memoria.nombreHerramientaChat), cuerpo)
+        XCTAssertTrue(cuerpo.contains(entrada.categoria.rawValue), cuerpo)
+        XCTAssertTrue(cuerpo.contains(Memoria.nombreGuardar), cuerpo)
 
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(cuerpo.utf8)) as? [String: Any]
@@ -121,20 +124,36 @@ final class EstadoAppTests: XCTestCase {
         let funciones = herramientas.compactMap {
             $0["function"] as? [String: Any]
         }
-        XCTAssertEqual(funciones.count, 1)
         XCTAssertEqual(
-            funciones.first?["name"] as? String,
-            Memoria.nombreHerramientaChat
+            funciones.compactMap { $0["name"] as? String },
+            [
+                Memoria.nombreGuardar,
+                Memoria.nombreActualizar,
+                Memoria.nombreBorrar
+            ]
+        )
+        let guardar = try XCTUnwrap(
+            funciones.first {
+                $0["name"] as? String == Memoria.nombreGuardar
+            }
         )
         let parametros = try XCTUnwrap(
-            funciones.first?["parameters"] as? [String: Any]
+            guardar["parameters"] as? [String: Any]
         )
         let propiedades = try XCTUnwrap(
             parametros["properties"] as? [String: Any]
         )
-        XCTAssertNotNil(propiedades["accion"])
-        XCTAssertNotNil(propiedades["texto"])
-        XCTAssertNotNil(propiedades["id"])
+        XCTAssertNotNil(propiedades["content"])
+        XCTAssertNotNil(propiedades["category"])
+        XCTAssertNotNil(propiedades["confidence_score"])
+        XCTAssertNil(
+            propiedades["sensitive_category"],
+            "save_memory no puede tener campo para una categoria sensible"
+        )
+        XCTAssertFalse(
+            cuerpo.contains(Memoria.nombreProponerSensible),
+            "propose_sensitive_memory no se ofrece en Chat hasta B2.4"
+        )
     }
 
     /// En un chat sin memoria no viaja NINGUNA de las tres piezas, aunque la
@@ -166,7 +185,10 @@ final class EstadoAppTests: XCTestCase {
         XCTAssertFalse(cuerpo.contains(Memoria.cabeceraBloque), cuerpo)
         XCTAssertFalse(cuerpo.contains(entrada.texto), cuerpo)
         XCTAssertFalse(cuerpo.contains(entrada.id.uuidString), cuerpo)
-        XCTAssertFalse(cuerpo.contains(Memoria.nombreHerramientaChat), cuerpo)
+        XCTAssertFalse(cuerpo.contains(Memoria.nombreGuardar), cuerpo)
+        XCTAssertFalse(cuerpo.contains(Memoria.nombreActualizar), cuerpo)
+        XCTAssertFalse(cuerpo.contains(Memoria.nombreBorrar), cuerpo)
+        XCTAssertFalse(cuerpo.contains(Memoria.nombreProponerSensible), cuerpo)
 
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(cuerpo.utf8)) as? [String: Any]
@@ -180,10 +202,10 @@ final class EstadoAppTests: XCTestCase {
 
     // MARK: - Demolicion del modo Tarea
 
-    /// Un chat normal solo ofrece la herramienta de Memoria, aunque una
-    /// conversacion guardada conserve la vieja bandera `modoTarea`. Ninguna otra
-    /// herramienta vuelve a los chats normales.
-    func testPayloadDeChatNormalSoloOfreceLaHerramientaDeMemoria() async throws {
+    /// Un chat normal solo ofrece las herramientas tipadas de Memoria, aunque
+    /// una conversacion guardada conserve la vieja bandera `modoTarea`. Ninguna
+    /// otra herramienta vuelve a los chats normales.
+    func testPayloadDeChatNormalSoloOfreceLasHerramientasTipadasDeMemoria() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -211,7 +233,11 @@ final class EstadoAppTests: XCTestCase {
         }
         XCTAssertEqual(
             nombres,
-            [Memoria.nombreHerramientaChat],
+            [
+                Memoria.nombreGuardar,
+                Memoria.nombreActualizar,
+                Memoria.nombreBorrar
+            ],
             "Un chat normal no debe ofrecer herramientas de Tarea"
         )
     }

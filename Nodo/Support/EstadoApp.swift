@@ -1186,18 +1186,18 @@ final class EstadoApp: ObservableObject {
         config.memoria.removeAll { $0.id == id }
     }
 
-    /// Aplica una accion de `memoria_chat` sobre la configuracion y deja la
+    /// Aplica una operacion tipada de memoria sobre la configuracion y deja la
     /// linea de evento en el hilo donde se dio la orden.
     ///
     /// Se llama desde la herramienta, ya en el MainActor. La lista se escribe
-    /// una sola vez y solo cuando la accion se aplico: un id desconocido no
+    /// una sola vez y solo cuando la operacion se aplico: un id desconocido no
     /// toca nada.
-    private func aplicarAccionDeMemoria(
-        _ accion: AccionMemoria,
+    private func aplicarOperacionDeMemoria(
+        _ operacion: OperacionMemoriaTipada,
         idConversacion: UUID
     ) -> ResultadoAccionMemoria {
         var entradas = config.memoria
-        let resultado = Memoria.aplicar(accion, en: &entradas)
+        let resultado = Memoria.aplicarTipada(operacion, en: &entradas)
         guard case .aplicada(let cambio) = resultado else {
             return resultado
         }
@@ -3638,9 +3638,9 @@ final class EstadoApp: ObservableObject {
             )
         }
         // La misma foto manda en el historial y en las herramientas: si el chat
-        // usa Memoria, el payload lleva bloque y memoria_chat; si no, ni uno ni
-        // otro. Se captura antes de lanzar la tarea para que un cambio de chat
-        // a mitad de turno no mezcle dos contextos.
+        // usa Memoria, el payload lleva bloque y herramientas tipadas; si no, ni
+        // uno ni otro. Se captura antes de lanzar la tarea para que un cambio de
+        // chat a mitad de turno no mezcle dos contextos.
         let usaMemoria = !conversacion.sinMemoria
         let idConversacion = conversacion.id
         tareaActual = Task { [weak self] in
@@ -3679,27 +3679,53 @@ final class EstadoApp: ObservableObject {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
             // Un chat normal sigue SIN las herramientas del modo Tarea. La unica
-            // excepcion es la Memoria: si el chat la usa, se ofrece memoria_chat
-            // y se ejecuta de verdad (MEM.3). En un chat sin memoria no se
-            // ofrece nada.
+            // excepcion es la Memoria: si el chat la usa, se ofrecen las tres
+            // herramientas tipadas de escritura y un ejecutor NUEVO por turno.
+            // `propose_sensitive_memory` NO se ofrece todavia: su hoja de
+            // aprobacion es B2.4 y ofrecerla sin hoja seria forma sin fondo.
             var herramientas: [Herramienta] = []
             if usaMemoria {
+                // El snapshot de entradas se toma al inicio del turno: los
+                // `entry_id` de actualizacion y borrado se validan contra esta
+                // foto, no contra una lista que pudo cambiar a mitad.
+                let entradasDelTurno = config.memoria
+                let ejecutorMemoria = EjecutorMemoriaDelTurno(
+                    entradas: entradasDelTurno
+                ) { [weak self] operacion in
+                    guard let self else {
+                        return .rechazada(
+                            "la Memoria no esta disponible en este turno."
+                        )
+                    }
+                    return self.aplicarOperacionDeMemoria(
+                        operacion,
+                        idConversacion: idConversacion
+                    )
+                }
                 herramientas = [
-                    HerramientaMemoriaChat { [weak self] accion in
-                        guard let self else {
-                            return .rechazada(
-                                "la Memoria no esta disponible en este turno."
-                            )
-                        }
-                        // La lista vive en el estado de la app: el salto al
-                        // MainActor se hace aqui, en la costura, y el nucleo
-                        // sigue sin conocer SwiftUI ni el hilo.
-                        return await MainActor.run {
-                            self.aplicarAccionDeMemoria(
-                                accion,
-                                idConversacion: idConversacion
-                            )
-                        }
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaGuardar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreGuardar,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaActualizar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreActualizar,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaBorrar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreBorrar,
+                            argumentos: argumentos
+                        )
                     }
                 ]
             }

@@ -389,20 +389,26 @@ final class TareasTests: XCTestCase {
         let herramientasTarea = try nombresDeHerramientas(arnes, indice: 1)
         XCTAssertTrue(herramientasTarea.contains("traer_url"))
         XCTAssertTrue(herramientasTarea.contains(Memoria.nombreHerramientaTarea))
-        XCTAssertFalse(herramientasTarea.contains(Memoria.nombreHerramientaChat))
+        XCTAssertFalse(herramientasTarea.contains(Memoria.nombreGuardar))
+        XCTAssertFalse(herramientasTarea.contains(Memoria.nombreActualizar))
+        XCTAssertFalse(herramientasTarea.contains(Memoria.nombreBorrar))
+        XCTAssertFalse(herramientasTarea.contains(Memoria.nombreProponerSensible))
         XCTAssertFalse(
             herramientasTarea.contains { $0.contains("__") },
             "Sin servidor MCP configurado no puede aparecer ninguna herramienta remota"
         )
 
-        // Chat normal con Memoria: ofrece la escritura directa de Chat y nunca
-        // la propuesta del Modo Tarea (la frontera es por contexto, no por texto).
+        // Chat normal con Memoria: ofrece las tres herramientas tipadas de
+        // escritura y nunca la propuesta del Modo Tarea (la frontera es por
+        // contexto, no por texto).
         arnes.transporte.guionar(texto: "Hola")
         arnes.estado.enviar("Hola")
         try await arnes.esperarTurno()
 
         let herramientasChat = try nombresDeHerramientas(arnes, indice: 2)
-        XCTAssertTrue(herramientasChat.contains(Memoria.nombreHerramientaChat))
+        XCTAssertTrue(herramientasChat.contains(Memoria.nombreGuardar))
+        XCTAssertTrue(herramientasChat.contains(Memoria.nombreActualizar))
+        XCTAssertTrue(herramientasChat.contains(Memoria.nombreBorrar))
         XCTAssertFalse(herramientasChat.contains(Memoria.nombreHerramientaTarea))
     }
 

@@ -21,14 +21,14 @@ final class TrazaVistaTest: XCTestCase {
 
     // MARK: - Fixture (b) de P0.2
 
-    /// Primera llamada de `humos/mem-humo-1.json` (v0.3.1). El archivo trae dos
-    /// llamadas; el contrato de P0.2 exige UN artefacto de memoria por turno,
-    /// asi que el fixture inyecta la primera y deja constancia. La segunda es
-    /// `call_01_YbcqWVGKwT9QMSax5B2j5076` / «Prefiere respuestas cortas».
+    /// Primera llamada de `humos/mem-humo-1.json` (v0.3.1), migrada al esquema
+    /// tipado de B2.1. El archivo trae dos llamadas; el contrato de P0.2 exige
+    /// UN artefacto de memoria por turno, asi que el fixture inyecta la primera
+    /// y deja constancia. La segunda era «Prefiere respuestas cortas».
     private static let llamadaMemoriaArchivada = ToolCall(
         id: "call_00_WVjAe73tY4ubrvEhwMnB9307",
-        nombre: Memoria.nombreHerramientaChat,
-        argumentos: #"{"accion": "guardar", "texto": "Palabra clave de la barbería: LUNA-7"}"#
+        nombre: Memoria.nombreGuardar,
+        argumentos: #"{"content": "Palabra clave de la barbería: LUNA-7", "category": "durable_fact"}"#
     )
 
     private static let promptMemoria =
@@ -254,15 +254,15 @@ final class TrazaVistaTest: XCTestCase {
             arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
         )
 
-        // Turno 1: orden explicita de guardado. El modelo pide memoria_chat y
+        // Turno 1: orden explicita de guardado. El modelo pide save_memory y
         // despues confirma sin repetir el id interno.
         arnes.transporte.guionar(
             texto: "",
             toolCalls: [
                 ToolCall(
                     id: "call-b11-memoria",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion":"guardar","texto":"Palabra clave personal de ejemplo: LUNA-7"}"#
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"Palabra clave personal de ejemplo: LUNA-7","category":"durable_fact"}"#
                 )
             ]
         )
@@ -361,8 +361,8 @@ final class TrazaVistaTest: XCTestCase {
             toolCalls: [
                 ToolCall(
                     id: "call-b12-guardar",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion":"guardar","texto":"Palabra clave personal de ejemplo: LUNA-7"}"#
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"Palabra clave personal de ejemplo: LUNA-7","category":"durable_fact"}"#
                 )
             ]
         )
@@ -412,8 +412,8 @@ final class TrazaVistaTest: XCTestCase {
             toolCalls: [
                 ToolCall(
                     id: "call-b12-actualizar",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion":"actualizar","id":"\#(idEntrada.uuidString)","texto":"Palabra clave personal de ejemplo: LUNA-9"}"#
+                    nombre: Memoria.nombreActualizar,
+                    argumentos: #"{"entry_id":"\#(idEntrada.uuidString)","content":"Palabra clave personal de ejemplo: LUNA-9","category":"correction"}"#
                 )
             ]
         )
@@ -559,8 +559,8 @@ final class TrazaVistaTest: XCTestCase {
             toolCalls: [
                 ToolCall(
                     id: "call-b13-guardar",
-                    nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion": "guardar", "texto": "Mi color favorito es el verde."}"#
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content": "Mi color favorito es el verde.", "category": "preference"}"#
                 )
             ]
         )
@@ -646,6 +646,187 @@ final class TrazaVistaTest: XCTestCase {
                     + "de entradas de memoria"
             )
         )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    // MARK: - (3) Traza de la partida B2.1 (guion literal de 3 turnos)
+
+    /// Los tres turnos del contrato X de B2.1: actualizacion sobre semilla,
+    /// turno con dos guardados (el segundo rechazado por el ejecutor) y borrado
+    /// con orden explicita.
+    private static let promptB21Turno1 =
+        "Corrige mi fruta favorita de prueba: ya no es la manzana, es el mango"
+    private static let promptB21Turno2 =
+        "Recuerda dos cosas: mi color favorito de prueba es el verde "
+        + "y mi animal favorito de prueba es el gato"
+    private static let promptB21Turno3 =
+        "Olvida mi fruta favorita de prueba"
+
+    private static let semillaB21 = EntradaMemoria(
+        id: UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC")!,
+        texto: "mi fruta favorita de prueba es la manzana",
+        fecha: Date(timeIntervalSince1970: 300),
+        categoria: .durableFact
+    )
+
+    func testElGuionB21ProduceLaTrazaB21() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = [Self.semillaB21]
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B2.1.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // Turno 1: actualizacion sobre la semilla. Exactamente una linea y el
+        // conteo de entradas no crece (N = N).
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b21-turno1",
+                    nombre: Memoria.nombreActualizar,
+                    argumentos: #"{"entry_id":"\#(Self.semillaB21.id.uuidString)","content":"mi fruta favorita de prueba es el mango","category":"correction"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Corregido.",
+            uso: UsoTokens(entrada: 60, salida: 6)
+        )
+        arnes.estado.enviar(Self.promptB21Turno1)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.estado.config.memoria.count, 1)
+        XCTAssertEqual(
+            arnes.estado.config.memoria.first?.texto,
+            "mi fruta favorita de prueba es el mango"
+        )
+        let contenidoTrasTurno1 = sesion.contenido
+        XCTAssertEqual(
+            Self.cuenta(contenidoTrasTurno1, "MemoryLineNotice"),
+            1,
+            "El turno 1 deja exactamente un aviso de memoria"
+        )
+
+        // Turno 2: DOS invocaciones de guardado en el mismo turno. La primera
+        // aplica; la segunda la rechaza el ejecutor por el tope 1/turno. Debe
+        // quedar una sola linea nueva y una sola entrada nueva.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b21-turno2-a",
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"mi color favorito de prueba es el verde","category":"preference"}"#
+                ),
+                ToolCall(
+                    id: "call-b21-turno2-b",
+                    nombre: Memoria.nombreGuardar,
+                    argumentos: #"{"content":"mi animal favorito de prueba es el gato","category":"preference"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Listo.",
+            uso: UsoTokens(entrada: 70, salida: 6)
+        )
+        arnes.estado.enviar(Self.promptB21Turno2)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            2,
+            "Solo el primer guardado del turno 2 puede crear entrada"
+        )
+        XCTAssertTrue(
+            arnes.estado.config.memoria.contains {
+                $0.texto == "mi color favorito de prueba es el verde"
+            }
+        )
+        XCTAssertFalse(
+            arnes.estado.config.memoria.contains {
+                $0.texto.contains("animal favorito")
+            },
+            "El segundo guardado se rechaza sin mutar el registro"
+        )
+        let contenidoTrasTurno2 = sesion.contenido
+        XCTAssertEqual(
+            Self.cuenta(contenidoTrasTurno2, "MemoryLineNotice"),
+            2,
+            "El turno 2 anade exactamente una linea, no dos"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenidoTrasTurno2, "MemoryLineNotice")
+                - Self.cuenta(contenidoTrasTurno1, "MemoryLineNotice"),
+            1
+        )
+
+        // Turno 3: orden explicita de borrado. La linea es la de B1.2 y la
+        // entrada deja de existir (N -> N-1).
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b21-turno3",
+                    nombre: Memoria.nombreBorrar,
+                    argumentos: #"{"entry_id":"\#(Self.semillaB21.id.uuidString)"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Olvidado.",
+            uso: UsoTokens(entrada: 80, salida: 4)
+        )
+        arnes.estado.enviar(Self.promptB21Turno3)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        // El borrado quita exactamente la semilla; la entrada del turno 2 sigue.
+        XCTAssertEqual(arnes.estado.config.memoria.count, 1)
+        XCTAssertFalse(
+            arnes.estado.config.memoria.contains {
+                $0.id == Self.semillaB21.id
+            },
+            "La entrada borrada deja de existir (N -> N-1)"
+        )
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            3,
+            "El guion completo deja exactamente 3 lineas de memoria"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice")
+                - Self.cuenta(contenidoTrasTurno2, "MemoryLineNotice"),
+            1,
+            "El turno 3 anade exactamente una linea"
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "MemoryLineNotice(text: \"Memoria: entrada borrada · "
+                    + "mi fruta favorita de prueba es el mango\", "
+                    + "hasUndo: true)"
+            )
+        )
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "MemoryLineNotice", "AssistantBubble"
+            ],
+            "Solo burbujas y una unica linea por turno con operacion"
+        )
+        XCTAssertFalse(contenido.contains("{"))
+        XCTAssertFalse(contenido.contains("tool_calls"))
         Self.comprobarConteosDeLaPuertaC(contenido)
 
         Self.publicar(ruta, contenido, en: self)

@@ -3,7 +3,7 @@ import XCTest
 
 @testable import NodoCore
 
-/// Pruebas de la Memoria viva (MEM.1/D5).
+/// Pruebas de la Memoria viva (MEM.1/D5) y del esquema tipado de B2.1.
 ///
 /// La migracion y el respaldo son las dos puertas por las que puede perderse lo
 /// que el dueno ya tenia escrito. Por eso se prueba el texto completo, no solo
@@ -36,6 +36,11 @@ final class MemoriaTests: XCTestCase {
             texto,
             "La migracion tiene que conservar el texto completo, no una version recortada"
         )
+        XCTAssertEqual(
+            config.memoria.first?.categoria,
+            .durableFact,
+            "Una entrada migrada sin categoria se lee como dato durable"
+        )
     }
 
     func testUnTextoLegadoVacioNoCreaEntrada() throws {
@@ -54,8 +59,18 @@ final class MemoriaTests: XCTestCase {
 
     func testLaMemoriaNuevaSobreviveAlJSONDeLaConfiguracion() throws {
         let entradas = [
-            EntradaMemoria(id: idUno, texto: "Vive en Madrid", fecha: Date(timeIntervalSince1970: 100)),
-            EntradaMemoria(id: idDos, texto: "Prefiere respuestas breves", fecha: Date(timeIntervalSince1970: 200))
+            EntradaMemoria(
+                id: idUno,
+                texto: "Vive en Madrid",
+                fecha: Date(timeIntervalSince1970: 100),
+                categoria: .durableFact
+            ),
+            EntradaMemoria(
+                id: idDos,
+                texto: "Prefiere respuestas breves",
+                fecha: Date(timeIntervalSince1970: 200),
+                categoria: .preference
+            )
         ]
         let config = AppConfig(memoria: entradas)
 
@@ -64,12 +79,42 @@ final class MemoriaTests: XCTestCase {
         XCTAssertEqual(vuelta.memoria, entradas)
     }
 
+    /// B2.1: una entrada guardada antes del esquema tipado no trae categoria.
+    /// Debe seguir decodificando, con valor por defecto, sin perder el texto.
+    func testUnaEntradaViejaSinCategoriaSeLeeComoDatoDurable() throws {
+        let json = """
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "texto": "Vive en Madrid desde 2019",
+          "fecha": 0
+        }
+        """
+
+        let entrada = try JSONDecoder().decode(
+            EntradaMemoria.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(entrada.texto, "Vive en Madrid desde 2019")
+        XCTAssertEqual(entrada.categoria, .durableFact)
+    }
+
     // MARK: - Respaldo
 
     func testRespaldoIdaYVueltaConservaLasEntradas() throws {
         let entradas = [
-            EntradaMemoria(id: idUno, texto: "Vive en Madrid", fecha: Date(timeIntervalSince1970: 100)),
-            EntradaMemoria(id: idDos, texto: "Prefiere respuestas breves", fecha: Date(timeIntervalSince1970: 200))
+            EntradaMemoria(
+                id: idUno,
+                texto: "Vive en Madrid",
+                fecha: Date(timeIntervalSince1970: 100),
+                categoria: .durableFact
+            ),
+            EntradaMemoria(
+                id: idDos,
+                texto: "Prefiere respuestas breves",
+                fecha: Date(timeIntervalSince1970: 200),
+                categoria: .preference
+            )
         ]
         let config = AppConfig(memoria: entradas, topeAvisoCosto: 0.25)
 
@@ -101,36 +146,51 @@ final class MemoriaTests: XCTestCase {
 
         XCTAssertEqual(respaldo.memoria.count, 1)
         XCTAssertEqual(respaldo.memoria.first?.texto, texto)
+        XCTAssertEqual(respaldo.memoria.first?.categoria, .durableFact)
         XCTAssertEqual(respaldo.versionFormato, 1)
     }
 
     // MARK: - Bloque de sistema
 
-    func testElBloqueDeclaraLaCapacidadYListaLasEntradasConSusIds() {
+    func testElBloqueInyectaIdCategoriaYTextoDeCadaEntrada() {
         let entradas = [
-            EntradaMemoria(id: idUno, texto: "Vive en Madrid"),
-            EntradaMemoria(id: idDos, texto: "Prefiere respuestas breves")
+            EntradaMemoria(
+                id: idUno,
+                texto: "Vive en Madrid",
+                categoria: .durableFact
+            ),
+            EntradaMemoria(
+                id: idDos,
+                texto: "Prefiere respuestas breves",
+                categoria: .preference
+            )
         ]
 
         let bloque = Memoria.bloqueSistema(entradas: entradas)
 
         XCTAssertTrue(bloque.contains(Memoria.cabeceraBloque))
-        XCTAssertTrue(bloque.contains(Memoria.nombreHerramientaChat))
-        XCTAssertTrue(bloque.contains("guardar"))
-        XCTAssertTrue(bloque.contains("actualizar"))
-        XCTAssertTrue(bloque.contains("borrar"))
+        XCTAssertTrue(bloque.contains(Memoria.nombreGuardar))
+        XCTAssertTrue(bloque.contains(Memoria.nombreActualizar))
+        XCTAssertTrue(bloque.contains(Memoria.nombreBorrar))
+        XCTAssertFalse(bloque.contains("memoria_chat"))
         for entrada in entradas {
-            XCTAssertTrue(bloque.contains(entrada.id.uuidString))
-            XCTAssertTrue(bloque.contains(entrada.texto))
+            XCTAssertTrue(
+                bloque.contains(
+                    "- id: \(entrada.id.uuidString) · categoria: "
+                        + "\(entrada.categoria.rawValue) · texto: \(entrada.texto)"
+                ),
+                "Cada entrada viaja con su id, su categoria y su texto"
+            )
         }
     }
 
-    /// B1.3: el bloque gana la comunicacion SIN tocar el disparo.
+    /// B1.3: el bloque conserva el disparo y el parrafo de comunicacion.
     ///
-    /// Las dos lineas de disparo se copian literales de la v0.3.1/B1.2: si una
-    /// sesion futura las cambia, esta prueba falla y delata que se salio del
-    /// alcance de B1.3 (el cuándo es del Bloque 2).
-    func testElBloqueAnadeLaComunicacionSinTocarElParrafoDeDisparo() {
+    /// B2.1 solo cambia la linea de herramienta (de `memoria_chat` al conjunto
+    /// tipado) y anade el candado de borrado de PDE-A1. Las cuatro reglas de
+    /// comunicacion se copian literales: si una sesion futura las toca, esta
+    /// prueba falla.
+    func testElBloqueConservaElParrafoDeComunicacionYAnadeElCandadoDeBorrado() {
         let entradas = [
             EntradaMemoria(id: idUno, texto: "Vive en Madrid")
         ]
@@ -138,21 +198,28 @@ final class MemoriaTests: XCTestCase {
         let bloque = Memoria.bloqueSistema(entradas: entradas)
 
         let disparo = "Puedes guardar, actualizar o borrar entradas de esta memoria SOLO cuando el dueno te lo ordene de forma explicita. No lo hagas por iniciativa propia ni en silencio."
-        let herramienta = "Usa la herramienta memoria_chat: accion guardar (texto nuevo), actualizar (id + texto) o borrar (id)."
+        let herramienta = "Usa las herramientas tipadas de memoria: save_memory (content + category), update_memory (entry_id + content + category) y delete_memory (entry_id). Ninguna de ellas admite una categoria sensible: no existe via para guardar salud, finanzas, documentos de identidad ni datos intimos."
+        let candado = "Candado de borrado: delete_memory solo ante orden explicita del dueno en ese turno; nunca por iniciativa propia del modelo, ni siquiera con la memoria inteligente activada."
 
-        XCTAssertTrue(bloque.contains(disparo), "El disparo no puede cambiar en B1.3")
-        XCTAssertTrue(bloque.contains(herramienta), "La linea de herramienta no puede cambiar en B1.3")
+        XCTAssertTrue(bloque.contains(disparo), "El disparo general no cambia en B2.1")
+        XCTAssertTrue(bloque.contains(herramienta), "La linea de herramienta es la tipada")
+        XCTAssertTrue(
+            bloque.contains(disparo + "\n" + herramienta + "\n\n"),
+            "La comunicacion va en un parrafo separado, despues del disparo"
+        )
+        XCTAssertTrue(bloque.contains(candado))
         XCTAssertEqual(
             bloque.components(separatedBy: disparo).count - 1,
             1,
             "El disparo aparece exactamente una vez y sin reescrituras"
         )
-        XCTAssertTrue(
-            bloque.contains(disparo + "\n" + herramienta + "\n\n"),
-            "La comunicacion va en un parrafo separado, despues del disparo"
+        XCTAssertEqual(
+            bloque.components(separatedBy: candado).count - 1,
+            1,
+            "El candado de borrado aparece exactamente una vez"
         )
 
-        // Las 4 reglas normativas de la spec, afirmadas sobre el texto real.
+        // Las 4 reglas normativas de B1.3, afirmadas sobre el texto real.
         XCTAssertTrue(bloque.contains("no menciones la memoria"))
         XCTAssertTrue(bloque.contains("Nunca afirmes haber guardado"))
         XCTAssertTrue(bloque.contains("«anotado mentalmente»"))
@@ -162,19 +229,266 @@ final class MemoriaTests: XCTestCase {
             bloque.contains("pregunta literalmente como funciona la memoria")
         )
 
-        // Las entradas y sus ids siguen viajando igual que hoy.
+        // Las entradas y sus ids siguen viajando.
         XCTAssertTrue(bloque.contains(entradas[0].id.uuidString))
         XCTAssertTrue(bloque.contains(entradas[0].texto))
     }
 
-    func testLaHerramientaDeChatDeclaraAccionTextoEId() {
-        let definicion = Memoria.herramientaChat
+    // MARK: - Esquemas tipados (B2.1)
 
-        XCTAssertEqual(definicion.nombre, "memoria_chat")
+    func testLasCuatroHerramientasTipadasDeclaranSusCamposYObligatorios() {
+        XCTAssertEqual(Memoria.herramientaGuardar.nombre, "save_memory")
+        XCTAssertEqual(
+            Set(Memoria.herramientaGuardar.parametros.propiedades.keys),
+            ["content", "category", "confidence_score"]
+        )
+        XCTAssertEqual(
+            Set(Memoria.herramientaGuardar.parametros.requeridos),
+            ["content", "category"]
+        )
+        XCTAssertEqual(
+            Memoria.herramientaGuardar.parametros
+                .propiedades["category"]?.valoresPermitidos,
+            ["durable_fact", "preference", "commitment"]
+        )
+        XCTAssertNil(
+            Memoria.herramientaGuardar.parametros
+                .propiedades["sensitive_category"],
+            "save_memory no puede tener campo para una categoria sensible"
+        )
+
+        XCTAssertEqual(Memoria.herramientaActualizar.nombre, "update_memory")
+        XCTAssertEqual(
+            Set(Memoria.herramientaActualizar.parametros.requeridos),
+            ["entry_id", "content", "category"]
+        )
+        XCTAssertEqual(
+            Memoria.herramientaActualizar.parametros
+                .propiedades["category"]?.valoresPermitidos,
+            ["correction", "durable_fact", "preference", "commitment"]
+        )
+
+        XCTAssertEqual(
+            Memoria.herramientaProponerSensible.nombre,
+            "propose_sensitive_memory"
+        )
+        XCTAssertEqual(
+            Set(Memoria.herramientaProponerSensible.parametros.requeridos),
+            ["content", "sensitive_category"]
+        )
+        XCTAssertEqual(
+            Memoria.herramientaProponerSensible.parametros
+                .propiedades["sensitive_category"]?.valoresPermitidos,
+            ["health", "finances", "documents_identifiers", "intimate"]
+        )
+
+        XCTAssertEqual(Memoria.herramientaBorrar.nombre, "delete_memory")
+        XCTAssertEqual(
+            Set(Memoria.herramientaBorrar.parametros.propiedades.keys),
+            ["entry_id"]
+        )
+        XCTAssertEqual(
+            Memoria.herramientaBorrar.parametros.requeridos,
+            ["entry_id"]
+        )
+        XCTAssertNil(
+            Memoria.herramientaBorrar.parametros.propiedades["category"],
+            "delete_memory no lleva categoria"
+        )
+    }
+
+    func testElEsquemaDeTareaSigueConAccionTextoEId() {
+        let definicion = Memoria.herramientaTarea
+
+        XCTAssertEqual(definicion.nombre, "proponer_memoria")
         XCTAssertNotNil(definicion.parametros.propiedades["accion"])
         XCTAssertNotNil(definicion.parametros.propiedades["texto"])
         XCTAssertNotNil(definicion.parametros.propiedades["id"])
         XCTAssertTrue(definicion.parametros.requeridos.contains("accion"))
+    }
+
+    // MARK: - Parseo tipado
+
+    func testSaveMemoryLeeContentCategoriaYConfianza() throws {
+        let operacion = try Memoria.operacion(
+            herramienta: "save_memory",
+            argumentos: #"{"content":"Vive en Madrid","category":"durable_fact","confidence_score":0.9}"#
+        )
+
+        XCTAssertEqual(
+            operacion,
+            .guardar(
+                contenido: "Vive en Madrid",
+                categoria: .durableFact,
+                confianza: 0.9
+            )
+        )
+    }
+
+    func testSaveMemoryRechazaCategoriaSensibleYFueraDeRango() {
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "save_memory",
+                argumentos: #"{"content":"Toma insulina","category":"health"}"#
+            ),
+            "save_memory no admite una categoria sensible"
+        )
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "save_memory",
+                argumentos: #"{"content":"Vive en Madrid","category":"durable_fact","confidence_score":1.5}"#
+            )
+        )
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "save_memory",
+                argumentos: #"{"content":"Vive en Madrid","category":"durable_fact","confidence_score":-0.1}"#
+            )
+        )
+    }
+
+    func testUpdateMemoryExigeEntryIdValidoYCorrigeLaCategoria() throws {
+        let operacion = try Memoria.operacion(
+            herramienta: "update_memory",
+            argumentos: #"{"entry_id":"11111111-1111-4111-8111-111111111111","content":"Vive en Barcelona","category":"correction"}"#
+        )
+
+        XCTAssertEqual(
+            operacion,
+            .actualizar(
+                id: idUno,
+                contenido: "Vive en Barcelona",
+                categoria: .correction,
+                confianza: nil
+            )
+        )
+
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "update_memory",
+                argumentos: #"{"entry_id":"no-es-uuid","content":"Vive en Barcelona","category":"correction"}"#
+            )
+        )
+    }
+
+    func testDeleteMemoryExigeEntryIdYNoAceptaCategoria() throws {
+        let operacion = try Memoria.operacion(
+            herramienta: "delete_memory",
+            argumentos: #"{"entry_id":"11111111-1111-4111-8111-111111111111"}"#
+        )
+
+        XCTAssertEqual(operacion, .borrar(id: idUno))
+
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "delete_memory",
+                argumentos: #"{"content":"sin id"}"#
+            )
+        )
+    }
+
+    func testProposeSensitiveMemoryLeeSuCategoriaSensible() throws {
+        let operacion = try Memoria.operacion(
+            herramienta: "propose_sensitive_memory",
+            argumentos: #"{"content":"Toma insulina","sensitive_category":"health"}"#
+        )
+
+        XCTAssertEqual(
+            operacion,
+            .proponerSensible(
+                contenido: "Toma insulina",
+                categoria: .health,
+                confianza: nil
+            )
+        )
+
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "propose_sensitive_memory",
+                argumentos: #"{"content":"Toma insulina","sensitive_category":"otra"}"#
+            )
+        )
+    }
+
+    func testUnaHerramientaDesconocidaSeRechaza() {
+        XCTAssertThrowsError(
+            try Memoria.operacion(
+                herramienta: "memoria_chat",
+                argumentos: #"{"accion":"guardar","texto":"Hola"}"#
+            )
+        )
+    }
+
+    // MARK: - Aplicacion tipada
+
+    func testAplicarTipadaGuardarUsaLaCategoriaYDeshacerLaQuita() {
+        var entradas: [EntradaMemoria] = []
+
+        let resultado = Memoria.aplicarTipada(
+            .guardar(
+                contenido: "Prefiere cafe sin azucar",
+                categoria: .preference,
+                confianza: nil
+            ),
+            en: &entradas
+        )
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una operacion aplicada")
+        }
+        XCTAssertEqual(entradas.count, 1)
+        XCTAssertEqual(entradas[0].categoria, .preference)
+
+        Memoria.deshacer(cambio, en: &entradas)
+        XCTAssertTrue(entradas.isEmpty)
+    }
+
+    func testAplicarTipadaActualizarCambiaLaCategoriaYDeshacerLaRestaura() {
+        let original = EntradaMemoria(
+            id: idUno,
+            texto: "Vive en Madrid",
+            categoria: .durableFact
+        )
+        var entradas = [original]
+
+        let resultado = Memoria.aplicarTipada(
+            .actualizar(
+                id: idUno,
+                contenido: "Vive en Barcelona",
+                categoria: .correction,
+                confianza: nil
+            ),
+            en: &entradas
+        )
+
+        guard case .aplicada(let cambio) = resultado else {
+            return XCTFail("Se esperaba una operacion aplicada")
+        }
+        XCTAssertEqual(entradas.count, 1)
+        XCTAssertEqual(entradas[0].texto, "Vive en Barcelona")
+        XCTAssertEqual(entradas[0].categoria, .correction)
+
+        Memoria.deshacer(cambio, en: &entradas)
+        XCTAssertEqual(entradas, [original])
+    }
+
+    func testAplicarTipadaProponerSensibleNoTocaLaLista() {
+        let original = EntradaMemoria(id: idUno, texto: "Vive en Madrid")
+        var entradas = [original]
+
+        let resultado = Memoria.aplicarTipada(
+            .proponerSensible(
+                contenido: "Toma insulina",
+                categoria: .health,
+                confianza: nil
+            ),
+            en: &entradas
+        )
+
+        guard case .rechazada = resultado else {
+            return XCTFail("Una propuesta sensible nunca se aplica sola")
+        }
+        XCTAssertEqual(entradas, [original])
     }
 }
 

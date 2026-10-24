@@ -183,7 +183,7 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     /// Encola una respuesta de chat completions con su consumo.
     ///
     /// `toolCalls` permite guionizar un turno que pide herramientas, que es lo
-    /// que necesita MEM.3 para probar `memoria_chat` sin red.
+    /// que necesitan las pruebas de Memoria para ejecutar sin red.
     func guionar(
         texto: String,
         uso: UsoTokens? = nil,
