@@ -8,7 +8,7 @@ import NodoCore
 ///
 /// El turno se guioniza con el mismo transporte de la app: una respuesta SSE
 /// que pide la herramienta y otra con la confirmacion del modelo. Asi se
-/// ejercita el bucle completo, la escritura en `config.memoria`, la tarjeta de
+/// ejercita el bucle completo, la escritura en `config.memoria`, la linea de
 /// evento y su Deshacer sin red ni claves reales.
 @MainActor
 final class MemoriaChatTests: XCTestCase {
@@ -21,7 +21,7 @@ final class MemoriaChatTests: XCTestCase {
 
     // MARK: - Guardar
 
-    func testGuardarEjecutaLaHerramientaCreaLaTarjetaYDeshacerLaElimina() async throws {
+    func testGuardarEjecutaLaHerramientaCreaLaLineaYDeshacerLaElimina() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
@@ -50,10 +50,10 @@ final class MemoriaChatTests: XCTestCase {
         let entrada = try XCTUnwrap(arnes.estado.config.memoria.first)
         XCTAssertEqual(entrada.texto, "Vive en Madrid")
 
-        let tarjeta = try XCTUnwrap(eventoDeMemoria(arnes))
-        XCTAssertEqual(tarjeta.cambioMemoria, CambioMemoria.guardada(entrada))
-        XCTAssertTrue(tarjeta.texto.hasPrefix("Guarde en Memoria: "))
-        XCTAssertFalse(tarjeta.deshecho)
+        let linea = try XCTUnwrap(eventoDeMemoria(arnes))
+        XCTAssertEqual(linea.cambioMemoria, CambioMemoria.guardada(entrada))
+        XCTAssertTrue(linea.texto.hasPrefix("Guardado en memoria: "))
+        XCTAssertFalse(linea.deshecho)
 
         // El resultado de la herramienta volvio al modelo en la segunda
         // peticion: sin eso no podria confirmar lo que hizo.
@@ -68,14 +68,14 @@ final class MemoriaChatTests: XCTestCase {
             "El resultado de memoria_chat no volvio al modelo: \(segunda)"
         )
 
-        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertTrue(arnes.estado.config.memoria.isEmpty)
 
         let deshecha = try XCTUnwrap(eventoDeMemoria(arnes))
         XCTAssertTrue(deshecha.deshecho)
 
         // Lo deshecho no se puede deshacer dos veces.
-        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertTrue(arnes.estado.config.memoria.isEmpty)
     }
 
@@ -118,13 +118,13 @@ final class MemoriaChatTests: XCTestCase {
         XCTAssertEqual(actualizada.id, idExistente)
         XCTAssertEqual(actualizada.texto, "Vive en Barcelona")
 
-        let tarjeta = try XCTUnwrap(eventoDeMemoria(arnes))
-        XCTAssertEqual(tarjeta.texto, "Actualice en Memoria: Vive en Barcelona")
+        let linea = try XCTUnwrap(eventoDeMemoria(arnes))
+        XCTAssertEqual(linea.texto, "Memoria actualizada: Vive en Barcelona")
 
-        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertEqual(arnes.estado.config.memoria, [original])
 
-        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertEqual(arnes.estado.config.memoria, [original])
     }
 
@@ -164,17 +164,17 @@ final class MemoriaChatTests: XCTestCase {
         XCTAssertNil(arnes.estado.errorDeTurno)
         XCTAssertEqual(arnes.estado.config.memoria, [segunda])
 
-        let tarjeta = try XCTUnwrap(eventoDeMemoria(arnes))
-        XCTAssertEqual(tarjeta.texto, "Borre de Memoria: Vive en Madrid")
+        let linea = try XCTUnwrap(eventoDeMemoria(arnes))
+        XCTAssertEqual(linea.texto, "Memoria: entrada borrada · Vive en Madrid")
 
-        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertEqual(
             arnes.estado.config.memoria,
             [primera, segunda],
             "Deshacer un borrado reinserta la entrada completa y en su sitio"
         )
 
-        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: tarjeta.id))
+        XCTAssertFalse(arnes.estado.deshacerCambioDeMemoria(id: linea.id))
         XCTAssertEqual(arnes.estado.config.memoria, [primera, segunda])
     }
 
@@ -295,7 +295,7 @@ final class MemoriaChatTests: XCTestCase {
 
     // MARK: - Ayudas
 
-    /// Ultima tarjeta de Memoria del hilo, deshecha o no.
+    /// Ultima linea de Memoria del hilo, deshecha o no.
     private func eventoDeMemoria(_ arnes: ArnesApp) -> EventoVisual? {
         arnes.estado.eventosVisuales.last { $0.cambioMemoria != nil }
     }

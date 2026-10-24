@@ -94,7 +94,7 @@ final class ViewModelSnapshotTest: XCTestCase {
             [
                 .burbujaUsuario(texto: orden),
                 .lineaMemoria(
-                    texto: "Guarde en Memoria: Palabra clave de la barbería: LUNA-7",
+                    texto: "Guardado en memoria: Palabra clave de la barbería: LUNA-7",
                     puedeDeshacer: true,
                     deshecho: false
                 ),
@@ -122,6 +122,204 @@ final class ViewModelSnapshotTest: XCTestCase {
             XCTAssertFalse(descripcion.contains(Memoria.nombreHerramientaChat))
             XCTAssertFalse(descripcion.contains("{"))
         }
+
+        // B1.2: la linea se deshace en el sitio. El mismo elemento pasa a
+        // `deshecho` sin accion y la lista de entradas vuelve al estado previo.
+        let memorias = arnes.estado.eventosDeMemoriaVisibles(elementos)
+        let indiceLinea = try XCTUnwrap(
+            elementos.firstIndex { elemento in
+                if case .lineaMemoria = elemento { return true }
+                return false
+            }
+        )
+        let evento = try XCTUnwrap(memorias[indiceLinea])
+        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: evento.id))
+        XCTAssertTrue(arnes.estado.config.memoria.isEmpty)
+
+        XCTAssertEqual(
+            arnes.estado.elementosVisiblesDelHilo(),
+            [
+                .burbujaUsuario(texto: orden),
+                .lineaMemoria(
+                    texto: "Guardado en memoria: Palabra clave de la barbería: LUNA-7",
+                    puedeDeshacer: false,
+                    deshecho: true
+                ),
+                .burbujaAsistente(
+                    segmentos: [.texto("Listo: lo guarde en tu Memoria.")]
+                )
+            ],
+            "Deshacer deja la misma linea en estado deshecho y sin accion"
+        )
+    }
+
+    // MARK: - (b bis) Formato de actualizacion y borrado (D-B1.2-c)
+
+    func testActualizarMemoriaProduceUnaSolaLineaConElFormatoNuevo() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let idEntrada = UUID(
+            uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+        )!
+        arnes.estado.config.memoria = [
+            EntradaMemoria(id: idEntrada, texto: "Vive en Madrid")
+        ]
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b12-actualizar",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion":"actualizar","id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","texto":"Vive en Barcelona"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Actualizado.",
+            uso: UsoTokens(entrada: 30, salida: 8)
+        )
+
+        let orden = "Actualiza mi memoria: ahora vivo en Barcelona"
+        arnes.estado.enviar(orden)
+        try await arnes.esperarTurno()
+
+        let elementos = arnes.estado.elementosVisiblesDelHilo()
+        let lineas = elementos.compactMap { elemento -> String? in
+            if case .lineaMemoria(let texto, _, _) = elemento { return texto }
+            return nil
+        }
+        XCTAssertEqual(
+            lineas,
+            ["Memoria actualizada: Vive en Barcelona"],
+            "Actualizar deja exactamente una linea con el formato nuevo"
+        )
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            1,
+            "Actualizar no cambia el conteo de entradas (N -> N)"
+        )
+        XCTAssertEqual(
+            arnes.estado.config.memoria.first?.texto,
+            "Vive en Barcelona"
+        )
+    }
+
+    func testBorrarMemoriaProduceLaLineaUnicaYDeshacerRestauraLaEntrada() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+
+        let idEntrada = UUID(
+            uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+        )!
+        let original = EntradaMemoria(id: idEntrada, texto: "Vive en Madrid")
+        arnes.estado.config.memoria = [original]
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b12-borrar",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion":"borrar","id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Borrado.",
+            uso: UsoTokens(entrada: 30, salida: 8)
+        )
+
+        arnes.estado.enviar("Borra de mi memoria que vivo en Madrid")
+        try await arnes.esperarTurno()
+
+        XCTAssertTrue(arnes.estado.config.memoria.isEmpty)
+
+        let elementos = arnes.estado.elementosVisiblesDelHilo()
+        let lineas = elementos.compactMap { elemento -> String? in
+            if case .lineaMemoria(let texto, _, _) = elemento { return texto }
+            return nil
+        }
+        XCTAssertEqual(
+            lineas,
+            ["Memoria: entrada borrada · Vive en Madrid"],
+            "Borrar deja exactamente una linea con el formato nuevo"
+        )
+
+        let memorias = arnes.estado.eventosDeMemoriaVisibles(elementos)
+        let indiceLinea = try XCTUnwrap(
+            elementos.firstIndex { elemento in
+                if case .lineaMemoria = elemento { return true }
+                return false
+            }
+        )
+        let evento = try XCTUnwrap(memorias[indiceLinea])
+        XCTAssertTrue(arnes.estado.deshacerCambioDeMemoria(id: evento.id))
+        XCTAssertEqual(
+            arnes.estado.config.memoria,
+            [original],
+            "Deshacer un borrado restaura la entrada en Mi Contexto"
+        )
+        XCTAssertEqual(
+            arnes.estado.elementosVisiblesDelHilo().filter { elemento in
+                if case .lineaMemoria(_, let puedeDeshacer, let deshecho) = elemento {
+                    return puedeDeshacer || !deshecho
+                }
+                return false
+            }.count,
+            0,
+            "Tras deshacer, la linea no ofrece accion"
+        )
+    }
+
+    // MARK: - (b ter) La linea no tiene [Ver] ni tarjeta (D-B1.2-a/b)
+
+    func testLaLineaMemoriaEsUnaSolaLineaSinVerNiTarjeta() throws {
+        let raiz = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fuente = try String(
+            contentsOf: raiz.appendingPathComponent("Nodo/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let inicio = try XCTUnwrap(
+            fuente.range(of: "struct LineaMemoria: View")
+        )
+        let resto = fuente[inicio.lowerBound...]
+        let fin = try XCTUnwrap(resto.range(of: "\n}\n"))
+        let componente = String(resto[..<fin.upperBound])
+
+        XCTAssertTrue(
+            componente.contains(".lineLimit(1)"),
+            "La linea no puede crecer a dos filas"
+        )
+        XCTAssertTrue(
+            componente.contains(".truncationMode(.tail)"),
+            "El contenido largo se trunca con elipsis"
+        )
+        XCTAssertFalse(componente.contains("alVer"), "La linea no tiene [Ver]")
+        XCTAssertFalse(componente.contains("\"Ver\""), "La linea no pinta [Ver]")
+        XCTAssertFalse(componente.contains("brain"), "La linea no tiene icono")
+        XCTAssertFalse(componente.contains("Image("), "La linea no tiene icono")
+        XCTAssertFalse(
+            componente.contains("background("),
+            "La linea no tiene fondo de tarjeta"
+        )
+        XCTAssertFalse(
+            componente.contains("overlay"),
+            "La linea no tiene borde de tarjeta"
+        )
+        XCTAssertFalse(
+            componente.contains("Capsule"),
+            "La linea no tiene botones capsula"
+        )
     }
 
     // MARK: - (c) Mensajes de herramienta de traer_url intercalados

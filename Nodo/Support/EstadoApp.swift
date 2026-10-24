@@ -1187,7 +1187,7 @@ final class EstadoApp: ObservableObject {
     }
 
     /// Aplica una accion de `memoria_chat` sobre la configuracion y deja la
-    /// tarjeta de evento en el hilo donde se dio la orden.
+    /// linea de evento en el hilo donde se dio la orden.
     ///
     /// Se llama desde la herramienta, ya en el MainActor. La lista se escribe
     /// una sola vez y solo cuando la accion se aplico: un id desconocido no
@@ -1204,16 +1204,16 @@ final class EstadoApp: ObservableObject {
 
         config.memoria = entradas
 
-        // La tarjeta se ancla al ultimo mensaje visible: la orden del dueno ya
+        // La linea se ancla al ultimo mensaje visible: la orden del dueno ya
         // esta en el hilo y la confirmacion del modelo aun no ha llegado.
         // Si el dueno cambio de chat mientras el modelo respondia, el cambio
-        // de Memoria sigue siendo real (es global), pero su tarjeta no debe
+        // de Memoria sigue siendo real (es global), pero su linea no debe
         // aparecer en otro hilo.
         if conversacion.id == idConversacion {
             eventosVisuales.append(
                 EventoVisual(
                     trasMensaje: conversacion.mensajes.last?.id,
-                    texto: cambio.textoDeTarjeta,
+                    texto: cambio.textoDeLinea,
                     cambioMemoria: cambio
                 )
             )
@@ -1222,9 +1222,9 @@ final class EstadoApp: ObservableObject {
         return .aplicada(cambio)
     }
 
-    /// Revierte exactamente el cambio de una tarjeta de Memoria (MEM.3).
+    /// Revierte exactamente el cambio de una linea de Memoria (MEM.3).
     ///
-    /// Devuelve false si la tarjeta no existe, no es de Memoria o ya se habia
+    /// Devuelve false si la linea no existe, no es de Memoria o ya se habia
     /// deshecho: el segundo toque no puede volver a aplicar el inverso.
     @discardableResult
     func deshacerCambioDeMemoria(id eventoID: UUID) -> Bool {
@@ -3870,12 +3870,11 @@ final class EstadoApp: ObservableObject {
     /// Traduce un evento visual a su elemento del catalogo.
     ///
     /// La traslacion es conservadora a proposito: un cambio de memoria sigue
-    /// produciendo `.lineaMemoria` con el texto actual de la tarjeta. El cambio
-    /// de texto y de componente visual es B1.2, no P0.2.
+    /// produciendo `.lineaMemoria` con el texto visible del cambio.
     private func elementoVisible(de evento: EventoVisual) -> ElementoHiloVisible? {
         if let cambio = evento.cambioMemoria {
             return .lineaMemoria(
-                texto: cambio.textoDeTarjeta,
+                texto: cambio.textoDeLinea,
                 puedeDeshacer: !evento.deshecho,
                 deshecho: evento.deshecho
             )

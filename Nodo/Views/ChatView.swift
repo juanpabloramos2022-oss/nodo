@@ -20,9 +20,6 @@ struct ChatView: View {
     let alGestionarModelos: () -> Void
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void
-    /// Lleva a Mi Contexto para revisar la Memoria (accion [Ver] de la tarjeta
-    /// de evento de MEM.3).
-    let alVerMemoria: () -> Void
 
     @State private var textoParaCompartir: String?
     @FocusState private var escribiendo: Bool
@@ -382,11 +379,10 @@ struct ChatView: View {
             )
 
         case .lineaMemoria(let texto, let puedeDeshacer, let deshecho):
-            LineaMemoriaProyectada(
+            LineaMemoria(
                 texto: texto,
                 puedeDeshacer: puedeDeshacer,
                 deshecho: deshecho,
-                alVer: alVerMemoria,
                 alDeshacer: {
                     guard let evento = memorias[indice] else { return }
                     _ = estado.deshacerCambioDeMemoria(id: evento.id)
@@ -1056,74 +1052,47 @@ private struct BloqueCodigoProyectado: View {
     }
 }
 
-/// Linea de memoria construida desde la proyeccion.
+/// Linea unica de memoria construida desde la proyeccion (B1.2).
 ///
-/// Mantiene la tarjeta actual de MEM.3 (texto, [Ver] y [Deshacer]) hasta que
-/// B1.2 cambie el componente visual. No recibe el nombre de la herramienta ni
-/// un id: el texto es el de `CambioMemoria.textoDeTarjeta`.
-private struct LineaMemoriaProyectada: View {
+/// Una sola linea en `.caption` con `Tema.textoSuave`: sin fondo, sin borde y
+/// sin icono. El texto es el hecho (nunca el id de la entrada) y `Deshacer`
+/// es texto accionable al final de la MISMA linea, separado por `·`. Si el
+/// contenido no cabe, se trunca con elipsis: la linea no crece a dos filas ni
+/// vuelve a ser tarjeta. El control total (ver, editar, borrar) vive en Mi
+/// Contexto y en la hoja rapida de Memoria, no aqui.
+private struct LineaMemoria: View {
     let texto: String
     let puedeDeshacer: Bool
     let deshecho: Bool
-    let alVer: () -> Void
     let alDeshacer: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "brain")
-                    .font(.caption2)
-                    .foregroundStyle(Tema.acento)
+        HStack(spacing: 4) {
+            Text(texto)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
-                Text(texto)
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 8) {
-                Button(action: alVer) {
-                    Text("Ver")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Tema.superficieAlta)
-                        .clipShape(Capsule())
+            if deshecho {
+                Text("·")
+                Text("Deshecho")
+                    .accessibilityIdentifier("memoria-evento-deshecho")
+            } else if puedeDeshacer {
+                Text("·")
+                Button(action: alDeshacer) {
+                    Text("Deshacer")
+                        .underline()
+                        .foregroundStyle(Tema.textoSuave)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("memoria-evento-ver")
-
-                if deshecho {
-                    Text("Deshecho")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.textoSuave)
-                        .accessibilityIdentifier("memoria-evento-deshecho")
-                } else if puedeDeshacer {
-                    Button(action: alDeshacer) {
-                        Text("Deshacer")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Tema.acento.opacity(0.22))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("memoria-evento-deshacer")
-                }
-
-                Spacer(minLength: 0)
+                .layoutPriority(1)
+                .accessibilityIdentifier("memoria-evento-deshacer")
             }
+
+            Spacer(minLength: 0)
         }
-        .padding(10)
+        .font(.caption)
+        .foregroundStyle(Tema.textoSuave)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta.opacity(0.8))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("memoria-evento")
     }

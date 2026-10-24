@@ -73,7 +73,7 @@ final class TrazaVistaTest: XCTestCase {
             [
                 "[t=1.2s] UserBubble(\"\(Self.promptMemoria)\")",
                 "[t=1.2s] MemoryLineNotice(text: "
-                    + "\"Guarde en Memoria: Palabra clave de la barbería: "
+                    + "\"Guardado en memoria: Palabra clave de la barbería: "
                     + "LUNA-7\", hasUndo: true)",
                 "[t=1.2s] AssistantBubble(\""
                     + "\(Self.respuestaMemoriaFixture)\")",
@@ -222,7 +222,7 @@ final class TrazaVistaTest: XCTestCase {
         XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 1)
         XCTAssertTrue(
             contenido.contains(
-                "MemoryLineNotice(text: \"Guarde en Memoria: "
+                "MemoryLineNotice(text: \"Guardado en memoria: "
                     + "Palabra clave de la barbería: LUNA-7\", hasUndo: true)"
             )
         )
@@ -321,7 +321,7 @@ final class TrazaVistaTest: XCTestCase {
         )
         XCTAssertTrue(
             contenido.contains(
-                "MemoryLineNotice(text: \"Guarde en Memoria: "
+                "MemoryLineNotice(text: \"Guardado en memoria: "
                     + "Palabra clave personal de ejemplo: LUNA-7\", hasUndo: true)"
             )
         )
@@ -330,6 +330,158 @@ final class TrazaVistaTest: XCTestCase {
                 "AssistantBubble(\"example.com es un dominio reservado "
                     + "para ejemplos de documentación.\")"
             )
+        )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    // MARK: - (3) Traza de la partida B1.2 (guion literal de 3 turnos)
+
+    /// Los tres turnos del contrato X de B1.2: guardado, consulta sin
+    /// herramienta y actualizacion sobre la entrada existente.
+    private static let promptB12Turno1 =
+        "Recuerda que mi palabra clave personal de ejemplo es LUNA-7"
+    private static let promptB12Turno2 =
+        "¿Cuál es mi palabra clave personal de ejemplo?"
+    private static let promptB12Turno3 =
+        "Actualiza mi memoria: mi palabra clave ahora es LUNA-9"
+
+    func testElGuionB12ProduceLaTrazaB12() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        // Turno 1: orden explicita de guardado.
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b12-guardar",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion":"guardar","texto":"Palabra clave personal de ejemplo: LUNA-7"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Listo, lo guardé en tu Memoria.",
+            uso: UsoTokens(entrada: 30, salida: 8)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B1.2.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        arnes.estado.enviar(Self.promptB12Turno1)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.estado.config.memoria.count, 1)
+        let contenidoTrasTurno1 = sesion.contenido
+        XCTAssertEqual(
+            Self.cuenta(contenidoTrasTurno1, "MemoryLineNotice"),
+            1,
+            "El turno 1 con guardado deja exactamente un aviso de memoria"
+        )
+
+        // Turno 2: consulta sin herramienta. El modelo responde desde la
+        // Memoria y no anade otra linea.
+        arnes.transporte.guionar(
+            texto: "Tu palabra clave personal de ejemplo es LUNA-7.",
+            uso: UsoTokens(entrada: 40, salida: 9)
+        )
+        arnes.estado.enviar(Self.promptB12Turno2)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(
+            Self.cuenta(sesion.contenido, "MemoryLineNotice"),
+            1,
+            "La consulta sin tool_call no anade una segunda linea"
+        )
+
+        // Turno 3: actualizacion sobre la entrada existente. El id viaja en
+        // los argumentos internos de la herramienta, nunca a la vista.
+        let entradasAntes = arnes.estado.config.memoria.count
+        let idEntrada = try XCTUnwrap(arnes.estado.config.memoria.first?.id)
+        arnes.transporte.guionar(
+            texto: "",
+            toolCalls: [
+                ToolCall(
+                    id: "call-b12-actualizar",
+                    nombre: Memoria.nombreHerramientaChat,
+                    argumentos: #"{"accion":"actualizar","id":"\#(idEntrada.uuidString)","texto":"Palabra clave personal de ejemplo: LUNA-9"}"#
+                )
+            ]
+        )
+        arnes.transporte.guionar(
+            texto: "Memoria actualizada.",
+            uso: UsoTokens(entrada: 50, salida: 10)
+        )
+
+        arnes.estado.enviar(Self.promptB12Turno3)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        XCTAssertEqual(
+            arnes.estado.config.memoria.count,
+            entradasAntes,
+            "Actualizar no cambia el conteo de entradas (N -> N)"
+        )
+        XCTAssertEqual(
+            arnes.estado.config.memoria.first?.texto,
+            "Palabra clave personal de ejemplo: LUNA-9"
+        )
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "UserBubble", "MemoryLineNotice", "AssistantBubble",
+                "UserBubble", "AssistantBubble",
+                "UserBubble", "MemoryLineNotice", "AssistantBubble"
+            ],
+            "Solo burbujas y una linea unica por turno con operacion de memoria"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            2,
+            "Los turnos 1 y 3 dejan exactamente una linea cada uno"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice")
+                - Self.cuenta(contenidoTrasTurno1, "MemoryLineNotice"),
+            1,
+            "El turno 3 anade exactamente una linea"
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "MemoryLineNotice(text: \"Guardado en memoria: "
+                    + "Palabra clave personal de ejemplo: LUNA-7\", "
+                    + "hasUndo: true)"
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "MemoryLineNotice(text: \"Memoria actualizada: "
+                    + "Palabra clave personal de ejemplo: LUNA-9\", "
+                    + "hasUndo: true)"
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "AssistantBubble(\"Tu palabra clave personal de ejemplo "
+                    + "es LUNA-7.\")"
+            )
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "HERRAMIENTA"),
+            0,
+            "Conteo 1: la traza no puede llevar el rotulo HERRAMIENTA"
         )
         Self.comprobarConteosDeLaPuertaC(contenido)
 

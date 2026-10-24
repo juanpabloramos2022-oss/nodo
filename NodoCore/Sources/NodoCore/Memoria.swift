@@ -40,15 +40,36 @@ public enum ResultadoAccionMemoria: Equatable {
 ///
 /// POR QUE guarda el estado anterior: deshacer no puede adivinar. Una
 /// actualizacion necesita el texto viejo y un borrado necesita la entrada
-/// completa y su posicion, o el Deshacer de la tarjeta no devolveria el estado
+/// completa y su posicion, o el Deshacer de la linea no devolveria el estado
 /// que habia antes de la orden.
 public enum CambioMemoria: Equatable {
     case guardada(EntradaMemoria)
     case actualizada(id: UUID, anterior: String, nueva: String)
     case borrada(EntradaMemoria, indice: Int)
 
-    /// Texto de la tarjeta de evento que se pinta en la conversacion.
-    public var textoDeTarjeta: String {
+    /// Texto de la linea unica de Memoria que se pinta en la conversacion.
+    ///
+    /// B1.2: centrado en el hecho y en presente de registro, sin el id de la
+    /// entrada. El texto completo vive en Mi Contexto; la linea solo lo
+    /// anuncia. La accion [Deshacer] y su separador los anade el componente
+    /// `LineaMemoria`, no esta cadena.
+    public var textoDeLinea: String {
+        switch self {
+        case .guardada(let entrada):
+            return "Guardado en memoria: \(entrada.texto)"
+        case .actualizada(_, _, let nueva):
+            return "Memoria actualizada: \(nueva)"
+        case .borrada(let entrada, _):
+            return "Memoria: entrada borrada · \(entrada.texto)"
+        }
+    }
+
+    /// Texto que devuelve `proponer_memoria` al modelo en Modo Tarea.
+    ///
+    /// Es un resultado interno (viaja en el payload), no una linea visible:
+    /// conserva el formato en pasado de la propuesta y no lleva id. La linea
+    /// visible de Chat es `textoDeLinea`.
+    public var resultadoPropuesta: String {
         switch self {
         case .guardada(let entrada):
             return "Guarde en Memoria: \(entrada.texto)"
@@ -371,8 +392,9 @@ public struct HerramientaProponerMemoria: Herramienta {
         let accion = try Memoria.accion(desdeArgumentos: argumentos)
         switch await ejecutor(accion) {
         case .aplicada(let cambio):
-            // La tarjeta/registro del libro es el texto del cambio aplicado.
-            return cambio.textoDeTarjeta
+            // Resultado interno de la propuesta: describe el cambio al modelo
+            // sin introducir un id en la conversacion.
+            return cambio.resultadoPropuesta
         case .rechazada(let motivo):
             return "Error: \(motivo)"
         }
