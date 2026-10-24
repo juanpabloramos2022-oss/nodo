@@ -502,27 +502,26 @@ final class TrazaVistaTest: XCTestCase {
     private static let promptB13Turno4 = "¿Cómo funciona tu memoria?"
 
     private static let respuestaB13Turno1 =
-        "El verde es un color muy versátil: relajante y a la vez con mucha "
-        + "energía, sobre todo en tonos más vivos como el esmeralda o el lima. "
-        + "¿Te gusta más en un verde natural (bosque, oliva) o en algo más eléctrico?"
+        "El verde es una buena elección: naturaleza, calma y frescura. "
+        + "¿Hay algún tono en particular que te guste más, como el verde "
+        + "oliva, el esmeralda o el menta?"
     private static let respuestaB13Turno2 =
-        "Anotado: tu color favorito es el verde."
-    private static let respuestaB13Turno3 = "The house is big."
+        "Listo, queda guardado. ¿Quieres que lo tenga en cuenta para algo en "
+        + "concreto, como recomendaciones de ropa o diseños?"
+    private static let respuestaB13Turno3 = "\"The house is big.\""
     private static let respuestaB13Turno4 =
         "Funciona así:\n\n"
-        + "- Tengo una lista de entradas de memoria asociadas a ti, cada una "
-        + "con un identificador y un texto (por ejemplo, ahora mismo hay una "
-        + "entrada que dice que tu color favorito es el verde).\n"
-        + "- Solo guardo, actualizo o borro algo cuando tú me lo pides de forma "
-        + "explícita. No lo hago por iniciativa propia ni en silencio.\n"
-        + "- Cuando lo haces, uso la herramienta de memoria correspondiente: "
-        + "guardar (con el texto nuevo), actualizar (con el id de la entrada y "
-        + "el texto) o borrar (con el id).\n"
-        + "- Si en un turno no ejecuto esa herramienta, no afirmo haber "
-        + "guardado ni recordado nada; simplemente respondo a lo que me preguntas.\n"
-        + "- El aviso de que se guardó o modificó algo lo muestra la aplicación; "
-        + "mi confirmación es opcional y breve.\n\n"
-        + "Si quieres cambiar o eliminar esa entrada del color, dímelo y lo hago."
+        + "- Tengo una lista de entradas de memoria asociadas a ti (ahora "
+        + "mismo hay una: tu color favorito, el verde).\n"
+        + "- Solo guardo, actualizo o borro algo cuando tú me lo pides de "
+        + "forma explícita. No lo hago por iniciativa propia ni en silencio.\n"
+        + "- Para guardar añado una entrada nueva; para actualizar o borrar "
+        + "necesito la entrada concreta (la identificación interna la manejo yo).\n"
+        + "- La aplicación te avisa cada vez que ejecuto una de esas acciones, "
+        + "y las entradas quedan visibles para ti.\n"
+        + "- Si no ejecuto nada, simplemente respondo a la conversación sin "
+        + "tocar la memoria.\n\n"
+        + "¿Quieres que cambie, corrija o elimine alguna entrada?"
 
     func testElGuionB13ProduceLaTrazaB13() async throws {
         let arnes = try ArnesApp()
@@ -540,7 +539,7 @@ final class TrazaVistaTest: XCTestCase {
         // solo del color: cero lineas de memoria.
         arnes.transporte.guionar(
             texto: Self.respuestaB13Turno1,
-            uso: UsoTokens(entrada: 657, salida: 91)
+            uso: UsoTokens(entrada: 657, salida: 84)
         )
         arnes.estado.enviar(Self.promptB13Turno1)
         try await arnes.esperarTurno()
@@ -553,20 +552,21 @@ final class TrazaVistaTest: XCTestCase {
         )
 
         // Turno 2: orden explicita. El modelo pide guardar y la app pinta la
-        // linea unica; el acuse verbal es una sola frase de 8 palabras.
+        // linea unica; el acuse verbal es una sola frase de 3 palabras y la
+        // segunda frase es la respuesta normal de seguimiento (19 en total).
         arnes.transporte.guionar(
             texto: "",
             toolCalls: [
                 ToolCall(
                     id: "call-b13-guardar",
                     nombre: Memoria.nombreHerramientaChat,
-                    argumentos: #"{"accion": "guardar", "texto": "Su color favorito es el verde."}"#
+                    argumentos: #"{"accion": "guardar", "texto": "Mi color favorito es el verde."}"#
                 )
             ]
         )
         arnes.transporte.guionar(
             texto: Self.respuestaB13Turno2,
-            uso: UsoTokens(entrada: 850, salida: 13)
+            uso: UsoTokens(entrada: 863, salida: 32)
         )
         arnes.estado.enviar(Self.promptB13Turno2)
         try await arnes.esperarTurno()
@@ -581,7 +581,7 @@ final class TrazaVistaTest: XCTestCase {
         // Turno 3: detalle efimero, sin herramienta ni menciones.
         arnes.transporte.guionar(
             texto: Self.respuestaB13Turno3,
-            uso: UsoTokens(entrada: 689, salida: 14)
+            uso: UsoTokens(entrada: 909, salida: 14)
         )
         arnes.estado.enviar(Self.promptB13Turno3)
         try await arnes.esperarTurno()
@@ -591,7 +591,7 @@ final class TrazaVistaTest: XCTestCase {
         // explica, y aun asi no aparece otra linea de memoria.
         arnes.transporte.guionar(
             texto: Self.respuestaB13Turno4,
-            uso: UsoTokens(entrada: 686, salida: 229)
+            uso: UsoTokens(entrada: 926, salida: 225)
         )
         arnes.estado.enviar(Self.promptB13Turno4)
         try await arnes.esperarTurno()
@@ -600,7 +600,7 @@ final class TrazaVistaTest: XCTestCase {
         XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
         XCTAssertEqual(
             arnes.estado.config.memoria.first?.texto,
-            "Su color favorito es el verde."
+            "Mi color favorito es el verde."
         )
 
         let contenido = try String(contentsOf: ruta, encoding: .utf8)
@@ -622,16 +622,23 @@ final class TrazaVistaTest: XCTestCase {
         XCTAssertTrue(
             contenido.contains(
                 "MemoryLineNotice(text: \"Guardado en memoria: "
-                    + "Su color favorito es el verde.\", hasUndo: true)"
+                    + "Mi color favorito es el verde.\", hasUndo: true)"
             )
         )
         XCTAssertTrue(
             contenido.contains(
-                "AssistantBubble(\"El verde es un color muy versátil"
+                "AssistantBubble(\"El verde es una buena elección"
             )
         )
         XCTAssertTrue(
-            contenido.contains("AssistantBubble(\"The house is big.\")")
+            contenido.contains(
+                "AssistantBubble(\"Listo, queda guardado."
+            )
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "AssistantBubble(\"\\\"The house is big.\\\"\")"
+            )
         )
         XCTAssertTrue(
             contenido.contains(
