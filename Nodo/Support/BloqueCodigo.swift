@@ -178,9 +178,7 @@ struct BloqueCodigo: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(
-                    copiador.copiado ? "Copiado" : "Copiar código"
-                )
+                .accessibilityLabel(copiador.copiado ? "Copiado" : "Copiar")
                 .accessibilityIdentifier("copiar-codigo")
             }
             .padding(.horizontal, 10)
