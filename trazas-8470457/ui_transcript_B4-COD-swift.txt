@@ -1,0 +1,6 @@
+[t=0.0s] UserBubble("Escribime una función en Swift que sume dos números enteros y devuélvela en un bloque de código.")
+[t=0.0s] AssistantBubble("func sumar(_ a: Int, _ b: Int) -> Int {\n    return a + b\n}\n\n// Uso:\nlet resultado = sumar(3, 5)   // 8\nSi preferís etiquetas en los parámetros, esta variante también es válida:\nfunc sumar(a: Int, b: Int) -> Int {\n    a + b\n}\n\nlet resultado = sumar(a: 3, b: 5)   // 8\nNota: en Swift `Int` ya es un entero con signo del tamaño de la arquitectura, y la suma puede desbordarse; si necesitás controlar eso, usá `a.addingReportingOverflow(b)` o `&+` según el caso.")
+  [t=0.0s] CodeBlock(lenguaje: "swift", textoCrudo: "func sumar(_ a: Int, _ b: Int) -> Int {\n    return a + b\n}\n\n// Uso:\nlet resultado = sumar(3, 5)   // 8")
+  [t=0.0s] TextSegment("Si preferís etiquetas en los parámetros, esta variante también es válida:")
+  [t=0.0s] CodeBlock(lenguaje: "swift", textoCrudo: "func sumar(a: Int, b: Int) -> Int {\n    a + b\n}\n\nlet resultado = sumar(a: 3, b: 5)   // 8")
+  [t=0.0s] TextSegment("Nota: en Swift `Int` ya es un entero con signo del tamaño de la arquitectura, y la suma puede desbordarse; si necesitás controlar eso, usá `a.addingReportingOverflow(b)` o `&+` según el caso.")

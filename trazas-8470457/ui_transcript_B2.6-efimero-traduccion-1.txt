@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Traduce al inglés: la casa es grande")
+[t=0.0s] AssistantBubble("\"The house is big.\"")
+  [t=0.0s] TextSegment("\"The house is big.\"")
