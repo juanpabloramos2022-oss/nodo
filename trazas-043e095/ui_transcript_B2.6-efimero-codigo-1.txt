@@ -1,0 +1,6 @@
+[t=0.0s] UserBubble("Escríbeme un fragmento en Swift que imprima «hola»")
+[t=0.0s] AssistantBubble("print(\"hola\")\nSi quieres algo un poco más completo, con un `main` explícito:\nimport Foundation\n\nfunc saludar() {\n    print(\"hola\")\n}\n\nsaludar()\nAmbos producen la misma salida en consola: `hola`.")
+  [t=0.0s] CodeBlock(lenguaje: "swift", textoCrudo: "print(\"hola\")")
+  [t=0.0s] TextSegment("Si quieres algo un poco más completo, con un `main` explícito:")
+  [t=0.0s] CodeBlock(lenguaje: "swift", textoCrudo: "import Foundation\n\nfunc saludar() {\n    print(\"hola\")\n}\n\nsaludar()")
+  [t=0.0s] TextSegment("Ambos producen la misma salida en consola: `hola`.")

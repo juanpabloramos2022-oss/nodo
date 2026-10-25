@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Di solo: ok")
+[t=0.0s] AssistantBubble("ok")
+  [t=0.0s] TextSegment("ok")

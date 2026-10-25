@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Mi sueldo de prueba son 3.200.000 al mes, ¿cuánto debería ahorrar?")
+[t=0.0s] MemoryApprovalSheet(texto: "Sueldo mensual de 3.200.000 (monto de prueba/prueba laboral).", categoria: "Finanzas", estado: "pendiente")
+[t=0.0s] AssistantBubble("Entendido: es un dato de prueba.")
+  [t=0.0s] TextSegment("Entendido: es un dato de prueba.")
