@@ -15,6 +15,8 @@ Bloquea la entrega si la trazabilidad no esta completa:
    Las partidas que archivan un caso por traza (B2.6 y B4-COD) se verifican
    con `ui_transcript_<ID>-<caso>.txt`: la partida esta cerrada cuando existe
    al menos una traza de caso y TODAS las publicadas pasan los conteos.
+   B4-BUS archiva una sola traza (`ui_transcript_B4-BUS.txt`), con la fila del
+   resultado y el estado vacio en el mismo archivo.
 5. (B2.6) La Puerta C de la bateria adversarial no cabe en un numero unico:
    cada turno tiene su propio desenlace esperado. Con `--bateria <dir>` se
    verifica el MANIFIESTO de la bateria: existen >= 20 JSON `b26-*.json`, la
@@ -99,6 +101,10 @@ HUMOS_EXIGIDOS = [
     # lenguaje. La peticion pide combo/deepseek-v4-1-flash.
     "b4cod-python.json",
     "b4cod-swift.json",
+    # B4-BUS: busqueda local en el historial. Un turno vivo que siembra la
+    # conversacion con la palabra clave ZAFIRO-4; el filtrado en si es local y
+    # no consume modelo, asi que no hay mas JSON que ese turno.
+    "b4bus-turno1.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -173,6 +179,10 @@ GUARDADOS_ESPERADOS = {
     # B4-COD archiva dos trazas (una por caso, Python y Swift): ningun turno
     # pide guardar en Memoria, asi que no puede aparecer ni una linea de aviso.
     "B4-COD": 0,
+    # B4-BUS archiva UNA traza de la busqueda: el turno que siembra la
+    # conversacion no pide guardar en Memoria y la traza solo lleva filas de
+    # resultado y el estado vacio. Cero lineas de aviso.
+    "B4-BUS": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).
