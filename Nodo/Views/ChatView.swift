@@ -55,6 +55,13 @@ struct ChatView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 botonTemporal
             }
+            // IDEA3: compartir el hilo completo. En un Chat Temporal el item
+            // no existe (ni el boton ni la accion).
+            if estado.puedeCompartir {
+                ToolbarItem(placement: .topBarTrailing) {
+                    botonCompartirHilo
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 menuAcciones
             }
@@ -286,6 +293,23 @@ struct ChatView: View {
     }
 
     // MARK: - Cabecera: menu •••
+
+    /// IDEA3: [Compartir] del hilo completo en la cabecera nativa.
+    ///
+    /// El texto lo compone `EstadoApp` desde la proyeccion limpia; aqui solo
+    /// se dispara la hoja del sistema reutilizando el mecanismo de /exportar
+    /// (`textoParaCompartirSolicitado`). El boton lo pinta el toolbar solo
+    /// cuando `estado.puedeCompartir` es true; un Chat Temporal no lo tiene.
+    private var botonCompartirHilo: some View {
+        Button {
+            estado.compartirHilo()
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+        }
+        .accessibilityLabel("Compartir el hilo")
+        .accessibilityIdentifier("compartir-hilo")
+    }
 
     /// Menu de acciones con solo lo que existe en esta fase.
     ///
@@ -538,6 +562,11 @@ struct ChatView: View {
     private func pieDe(_ mensaje: ChatMessage) -> PieRespuesta? {
         guard mensaje.rol == .asistente else { return nil }
 
+        // IDEA3: nil en un Chat Temporal; ahi el boton no existe.
+        let alCompartir: (() -> Void)? = estado.puedeCompartir
+            ? { estado.compartirRespuesta(de: mensaje) }
+            : nil
+
         return PieRespuesta(
             uso: mensaje.uso,
             costo: mensaje.uso == nil ? nil : costoDe(mensaje),
@@ -551,7 +580,8 @@ struct ChatView: View {
             alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) },
             estadoLectura: estado.estadoDeLectura(de: mensaje.id),
             alAlternarLectura: { estado.alternarLectura(de: mensaje) },
-            alDetenerLectura: { estado.detenerLectura() }
+            alDetenerLectura: { estado.detenerLectura() },
+            alCompartir: alCompartir
         )
     }
 

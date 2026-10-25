@@ -2475,6 +2475,163 @@ final class TrazaVistaTest: XCTestCase {
         }
     }
 
+    // MARK: - (10) Traza de la partida IDEA3 (compartir)
+
+    /// Guion literal de IDEA3: prosa, un bloque de codigo y prosa.
+    ///
+    /// No hay JSON vivo nuevo: la idea es local y su humo es $0,00. El guion es
+    /// el MISMO que usan los tests de estado de `CompartirTests`, para que la
+    /// traza y la exportacion hablen de la MISMA respuesta.
+    private static let promptIDEA3 =
+        "Escríbeme una función que sume dos enteros, con su explicación."
+    private static let prosaIDEA3Antes =
+        "La función recibe dos enteros y devuelve su suma."
+    private static let prosaIDEA3Despues =
+        "Ese es el bloque completo; el resto es prosa."
+    private static let codigoIDEA3 =
+        "func sumar(_ a: Int, _ b: Int) -> Int { a + b }"
+
+    private static let respuestaIDEA3 = #"""
+    La función recibe dos enteros y devuelve su suma.
+
+    ```swift
+    func sumar(_ a: Int, _ b: Int) -> Int { a + b }
+    ```
+
+    Ese es el bloque completo; el resto es prosa.
+    """#
+
+    private static let patronUUIDIDEA3 =
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        + "[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+
+    /// Traza de IDEA3: compartir la respuesta y el hilo no gana ningun elemento.
+    ///
+    /// La proyeccion queda en UserBubble + AssistantBubble con 2 TextSegment y
+    /// 1 CodeBlock (0 MemoryLineNotice). Despues se comparten la respuesta y el
+    /// hilo y se vuelve a capturar la proyeccion: el archivo no cambia ni un
+    /// byte. El texto exportado queda junto a la traza como evidencia, SIN
+    /// bloque `TRAZA` (el extractor solo acepta ui_transcript_<ID>.txt).
+    func testElGuionIDEA3ProduceLaTrazaDeCompartir() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: Self.respuestaIDEA3,
+            uso: UsoTokens(entrada: 1446, salida: 209)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_IDEA3.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        arnes.estado.enviar(Self.promptIDEA3)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "Compartir no anade ningun elemento al hilo"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 2)
+        XCTAssertEqual(Self.cuenta(contenido, "CodeBlock"), 1)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        XCTAssertTrue(contenido.contains("UserBubble(\"\(Self.promptIDEA3)"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // Compartir la respuesta y el hilo: el texto sale de la proyeccion y
+        // queda en la misma variable que observa la hoja del sistema.
+        let respuesta = try XCTUnwrap(
+            arnes.estado.conversacion.mensajes.last { $0.rol == .asistente }
+        )
+        let textoRespuesta = try XCTUnwrap(
+            arnes.estado.textoDeRespuestaParaCompartir(respuesta)
+        )
+        let textoHilo = arnes.estado.markdownDelHilo()
+
+        arnes.estado.compartirRespuesta(de: respuesta)
+        XCTAssertEqual(arnes.estado.textoParaCompartirSolicitado, textoRespuesta)
+        arnes.estado.textoParaCompartirSolicitado = nil
+        arnes.estado.compartirHilo()
+        XCTAssertEqual(arnes.estado.textoParaCompartirSolicitado, textoHilo)
+
+        // Compartir es solo lectura: re-capturar la proyeccion deja el archivo
+        // de traza intacto.
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        XCTAssertEqual(
+            try String(contentsOf: ruta, encoding: .utf8),
+            contenido,
+            "La exportacion no anadio ningun elemento al hilo"
+        )
+
+        XCTAssertFalse(textoRespuesta.contains("```"))
+        XCTAssertNil(
+            textoRespuesta.range(
+                of: Self.patronUUIDIDEA3,
+                options: .regularExpression
+            )
+        )
+        XCTAssertNil(
+            textoHilo.range(
+                of: Self.patronUUIDIDEA3,
+                options: .regularExpression
+            )
+        )
+
+        // Chat Temporal: la accion no existe (puerta unica que consulta la
+        // vista) y la exportacion no pide nada.
+        arnes.estado.nuevaConversacionTemporal()
+        XCTAssertFalse(
+            arnes.estado.puedeCompartir,
+            "En un Chat Temporal no existe forma de exportar"
+        )
+        arnes.estado.compartirHilo()
+        XCTAssertNil(arnes.estado.textoParaCompartirSolicitado)
+
+        // Evidencia del texto exportado junto a la traza, sin bloque TRAZA:
+        // el extractor rechaza un nombre que no sea ui_transcript_<ID>.txt.
+        let rutaTexto = ruta.deletingLastPathComponent()
+            .appendingPathComponent("compartir-IDEA3.txt")
+        try TrazaVista.escribir(
+            Self.lineasDeTextosCompartidos(
+                respuesta: textoRespuesta,
+                hilo: textoHilo
+            ),
+            a: rutaTexto
+        )
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Texto exportado en claro, para evidencia junto a la traza.
+    private static func lineasDeTextosCompartidos(
+        respuesta: String,
+        hilo: String
+    ) -> [String] {
+        var lineas = ["== RESPUESTA COMPARTIDA =="]
+        lineas.append(
+            contentsOf: respuesta.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            ).map(String.init)
+        )
+        lineas.append("")
+        lineas.append("== HILO COMPARTIDO ==")
+        lineas.append(
+            contentsOf: hilo.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            ).map(String.init)
+        )
+        return lineas
+    }
+
     /// Un turno de B4-COD: prompt literal, respuesta viva guionizada y traza.
     ///
     /// La proyeccion tiene que entregar DOS bloques independientes con su

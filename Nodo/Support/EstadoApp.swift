@@ -5292,6 +5292,113 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    // MARK: - Compartir (IDEA3)
+
+    /// IDEA3: en un hilo temporal no existe ninguna forma de exportar.
+    ///
+    /// Es la UNICA puerta del pie y de la cabecera: la vista la consulta para
+    /// decidir si el boton [Compartir] existe y los metodos de abajo la repiten
+    /// como guarda, de modo que un camino que la vista no controle tampoco
+    /// exporta. La garantia de cero rastro del Chat Temporal (B2.2) queda
+    /// intacta.
+    var puedeCompartir: Bool {
+        !conversacion.esTemporal
+    }
+
+    /// Texto limpio de UNA respuesta del asistente, tomado de la proyeccion.
+    ///
+    /// Prohibido leer `conversacion.mensajes` para construir el texto: los
+    /// segmentos salen del elemento `.burbujaAsistente` que devuelve
+    /// `elementosVisiblesDelHilo()`. El bloque de codigo aporta su
+    /// `textoCrudo`, SIN cercas: el `CodeBlock` ya separo la cerca al parsear.
+    func textoDeRespuestaParaCompartir(_ mensaje: ChatMessage) -> String? {
+        let elementos = elementosVisiblesDelHilo()
+        let fuentes = fuentesDeBurbujaVisibles(elementos)
+        for (indice, fuente) in fuentes where fuente.id == mensaje.id {
+            if case .burbujaAsistente(let segmentos) = elementos[indice] {
+                return Self.textoPlanoDeSegmentos(segmentos)
+            }
+        }
+        return nil
+    }
+
+    /// Markdown UTF-8 del hilo completo, tambien desde la proyeccion.
+    ///
+    /// Encabezado breve (titulo, fecha y costo total sellado del hilo; el
+    /// costo sale del lector unico `costoAcumuladoDelChat`, no de una formula
+    /// nueva) y luego los turnos Usuario / Asistente en orden. Los elementos
+    /// que no son turnos (lineas de memoria, divisores, burbuja en curso,
+    /// errores y la hoja de aprobacion) no se exportan: son cromo de la app,
+    /// no conversacion.
+    func markdownDelHilo() -> String {
+        var lineas: [String] = ["# \(conversacion.titulo)", ""]
+        lineas.append(
+            "Fecha: \(Self.fechaParaCompartir(conversacion.actualizada))"
+        )
+        if let costo = costoAcumuladoDelChat {
+            lineas.append("Costo total: ≈$\(String(format: "%.4f", costo))")
+        }
+        lineas.append("")
+
+        for elemento in elementosVisiblesDelHilo() {
+            switch elemento {
+            case .burbujaUsuario(let texto):
+                lineas.append("## \(nombreDeRol(.usuario))")
+                lineas.append(texto)
+                lineas.append("")
+
+            case .burbujaAsistente(let segmentos):
+                lineas.append("## \(nombreDeRol(.asistente))")
+                lineas.append(Self.textoPlanoDeSegmentos(segmentos))
+                lineas.append("")
+
+            case .lineaMemoria, .divisor, .burbujaEnCurso, .errorTurno,
+                 .hojaAprobacionMemoria:
+                break
+            }
+        }
+
+        // Se recorta el ultimo separador para no cerrar con linea vacia.
+        while lineas.last?.isEmpty == true { lineas.removeLast() }
+        return lineas.joined(separator: "\n")
+    }
+
+    /// Deja el texto en la variable que ChatView observa para abrir la hoja
+    /// del sistema: el MISMO mecanismo de /exportar, con contenido nuevo.
+    func compartirRespuesta(de mensaje: ChatMessage) {
+        guard puedeCompartir,
+              let texto = textoDeRespuestaParaCompartir(mensaje),
+              !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        textoParaCompartirSolicitado = texto
+    }
+
+    func compartirHilo() {
+        guard puedeCompartir else { return }
+        textoParaCompartirSolicitado = markdownDelHilo()
+    }
+
+    /// Texto plano de una respuesta: prosa y codigo crudo, sin cercas.
+    static func textoPlanoDeSegmentos(_ segmentos: [SegmentoRespuesta]) -> String {
+        segmentos.map { segmento in
+            switch segmento {
+            case .texto(let texto): return texto
+            case .codigo(_, let textoCrudo): return textoCrudo
+            }
+        }.joined(separator: "\n")
+    }
+
+    /// Fecha del encabezado con el MISMO formato que ya usa la app para
+    /// mostrar fechas (TareasRaizView.fechaDe: locale es_ES, dateStyle .short y
+    /// timeStyle .short). No se estrena un segundo formato de fecha.
+    static func fechaParaCompartir(_ fecha: Date) -> String {
+        let formateador = DateFormatter()
+        formateador.locale = Locale(identifier: "es_ES")
+        formateador.dateStyle = .short
+        formateador.timeStyle = .short
+        return formateador.string(from: fecha)
+    }
+
     // MARK: - Exportar e importar
 
     /// Texto legible de la conversacion abierta para /exportar (§4.2).

@@ -184,6 +184,9 @@ struct PieRespuesta: View {
     let estadoLectura: EstadoLectura
     let alAlternarLectura: () -> Void
     let alDetenerLectura: () -> Void
+    /// Compartir ESTA respuesta (IDEA3). nil = la accion no existe en este
+    /// hilo (Chat Temporal): el boton no se pinta.
+    let alCompartir: (() -> Void)?
 
     init(
         uso: UsoTokens?,
@@ -196,7 +199,8 @@ struct PieRespuesta: View {
         alRegenerarCon: @escaping (ProviderConfig) -> Void,
         estadoLectura: EstadoLectura = .inactivo,
         alAlternarLectura: @escaping () -> Void = {},
-        alDetenerLectura: @escaping () -> Void = {}
+        alDetenerLectura: @escaping () -> Void = {},
+        alCompartir: (() -> Void)? = nil
     ) {
         self.uso = uso
         self.costo = costo
@@ -209,6 +213,7 @@ struct PieRespuesta: View {
         self.estadoLectura = estadoLectura
         self.alAlternarLectura = alAlternarLectura
         self.alDetenerLectura = alDetenerLectura
+        self.alCompartir = alCompartir
     }
 
     var body: some View {
@@ -237,6 +242,23 @@ struct PieRespuesta: View {
 
                 if estadoLectura.estaActivo {
                     botonDetener
+                }
+
+                // IDEA3: compartir esta respuesta. No existe en un Chat
+                // Temporal: ChatView pasa nil y el boton no se pinta.
+                if let alCompartir {
+                    Button {
+                        alCompartir()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption)
+                            .foregroundStyle(Tema.textoSuave)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Compartir respuesta")
+                    .accessibilityIdentifier("compartir-respuesta")
                 }
 
                 Button {
