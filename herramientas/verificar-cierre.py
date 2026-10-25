@@ -12,6 +12,9 @@ Bloquea la entrega si la trazabilidad no esta completa:
    `UI_INVARIANTS.md` y con los cuatro conteos automaticos en el valor
    esperado. Las trazas de progreso vivo (B3-B) declaran su modo (`vivo` o
    `replay-temporizado`) y contienen una espera de red comprobada >= 2,0 s.
+   Las partidas que archivan un caso por traza (B2.6 y B4-COD) se verifican
+   con `ui_transcript_<ID>-<caso>.txt`: la partida esta cerrada cuando existe
+   al menos una traza de caso y TODAS las publicadas pasan los conteos.
 5. (B2.6) La Puerta C de la bateria adversarial no cabe en un numero unico:
    cada turno tiene su propio desenlace esperado. Con `--bateria <dir>` se
    verifica el MANIFIESTO de la bateria: existen >= 20 JSON `b26-*.json`, la
