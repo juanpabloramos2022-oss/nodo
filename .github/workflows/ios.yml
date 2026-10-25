@@ -223,6 +223,46 @@ jobs:
           path: Nodo.ipa
           retention-days: 30
 
+      # Publica la IPA de la version en la rama `capturas`, bajo ipa/. Solo
+      # corre en main (nunca en una rama de trabajo) y no puede enrojecer la
+      # rama: un fallo de publicacion se queda como aviso del paso.
+      - name: Publicar la IPA en la rama capturas
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Mismo patron que la publicacion de trazas: clonar `capturas` o
+          # crearla huerfana, copiar el binario, commit y push con reintentos.
+          publicar() {
+            rm -rf pub
+            if git clone --depth 1 --branch capturas \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+              echo "Rama capturas existente."
+            else
+              mkdir pub && (cd pub && git init -q -b capturas .)
+              echo "Rama capturas creada como huerfana."
+            fi
+            DEST="pub/ipa"
+            mkdir -p "$DEST"
+            cp Nodo.ipa "$DEST/Nodo-v0.3.2.ipa"
+            cd pub
+            git config user.name "nodo-ci"
+            git config user.email "ci@localhost"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Nada nuevo que publicar."
+              cd ..
+              return 0
+            fi
+            git commit -q -m "ipa v0.3.2 ${GITHUB_SHA::7}"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
+          }
+          publicar || { sleep 10; publicar; } || { sleep 20; publicar; } || {
+            echo "No se pudo publicar la IPA en la rama capturas tras 3 intentos."
+            exit 1
+          }
+
   # Job independiente: si falla una captura, `compilar` sigue publicando el
   # .ipa igual que antes. Solo corre el target NodoCapturas, no `swift test`.
   # Ademas del artefacto, publica los PNG y el log en la rama `capturas`:

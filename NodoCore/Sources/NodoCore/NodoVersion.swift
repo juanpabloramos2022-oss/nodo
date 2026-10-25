@@ -7,10 +7,10 @@ import Foundation
 /// puede comprobarla en Windows, donde no hay SwiftUI.
 public enum NodoVersion {
     /// Version visible para la persona que usa la app.
-    public static let version = "0.3.1"
+    public static let version = "0.3.2"
 
     /// Numero de compilacion. Se sube en cada entrega que se instala.
-    public static let build = "5"
+    public static let build = "6"
 
     /// Texto corto que identifica la compilacion en pantalla.
     public static var descripcion: String {

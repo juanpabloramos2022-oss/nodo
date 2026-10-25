@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Puerta de cierre de la correccion v0.3.1 (CLOSE.1), extendida en P0.3.
+"""Puerta de cierre de la v0.3.2 (adaptacion del cierre de v0.3.1/P0.3).
+
+Adaptacion v0.3.2: el set de humos y de partidas con puerta B es el que
+realmente archiva esta version (B1.1-B1.3, B2.1-B2.6, B3-A, B3-B, B4-COD,
+B4-BUS y las Ideas), sin los humos historicos pre-v0.3.2 (mcp, dem, cost,
+comp, mem, task, boost, spend, packs), que siguen en disco pero ya no se
+exigen. El conteo 3 de G-04 se comprueba ademas POR TURNO: la traza se
+segmenta en turnos (cada UserBubble de nivel superior abre uno; las lineas
+previas al primero forman un segmento inicial) y ningun turno puede llevar
+mas de un MemoryLineNotice.
 
 Bloquea la entrega si la trazabilidad no esta completa:
 
@@ -28,7 +37,10 @@ Bloquea la entrega si la trazabilidad no esta completa:
 Las comprobaciones 1-3 son las vigentes desde la v0.3.1 y no cambian. La
 comprobacion 4 es una ANIADIDURA: `--solo-repo` sigue sin mirar log, humos ni
 trazas, exactamente igual que antes. La comprobacion 5 tambien es una
-ANIADIDURA y solo corre si se pasa `--bateria`.
+ANIADIDURA y solo corre si se pasa `--bateria`. El conteo 3 por turno
+(adaptacion v0.3.2) se suma al conteo total: el total sigue siendo la
+expectativa por partida y el tope por turno caza el turno que acumula avisos
+aunque el total cuadre.
 
 Uso completo (mesa de la coordinacion, antes del merge y de entregar la IPA):
     python3 herramientas/verificar-cierre.py \
@@ -61,15 +73,21 @@ import zipfile
 from pathlib import Path
 
 HUMOS_EXIGIDOS = [
-    "mcp-context7-tools-list.json",
-    "dem-humo.json",
-    "cost-lote-a.json",
-    "cost-lote-b.json",
-    "comp-plan-resumen.json",
-    "comp-plan-turno.json",
-    "mem-humo-1.json",
-    "mem-humo-2.json",
-    "mem-humo-3.json",
+    # P0.3: humo base del hilo conversacional (vivo) que abre la trazabilidad.
+    "p03-humo-ok.json",
+    # B1.1: demolicion del render crudo y de las etiquetas tecnicas. Dos turnos.
+    "b11-turno1.json",
+    "b11-turno2.json",
+    # B1.2: linea unica de memoria con [Deshacer]. Tres turnos: guardado,
+    # consulta y actualizacion.
+    "b12-turno1.json",
+    "b12-turno2.json",
+    "b12-turno3.json",
+    # B1.3: brevedad anti-sermon. Cuatro turnos; el turno 4 explica de mas.
+    "b13-turno1.json",
+    "b13-turno2.json",
+    "b13-turno3.json",
+    "b13-turno4.json",
     # B2.1: esquema tipado de memoria, tres turnos del humo vivo.
     "b21-turno1.json",
     "b21-turno2.json",
@@ -80,13 +98,40 @@ HUMOS_EXIGIDOS = [
     "b23-turno1.json",
     "b23-turno2.json",
     "b23-turno3.json",
-    # B2.4: freno sensible. Un turno con el prompt de salud del contrato: si
-    # hay llamada de memoria, es una propuesta sensible y no un guardado.
+    # B2.4: freno sensible. Un turno con el prompt de salud del contrato y su
+    # variante extra de canalizacion: si hay llamada de memoria, es una
+    # propuesta sensible y no un guardado.
     "b24-turno1.json",
+    "b24-turno1-extra-canalizacion.json",
     # B2.5: tope de crecimiento. Un turno con la semilla de 50 cargada: el
     # bloque inyecta 50 entradas y la creación se rechaza por tope, sin aviso
     # de guardado en el hilo.
     "b25-turno1.json",
+    # B2.6: bateria adversarial, 24 turnos (dos por clase).
+    "b26-correccion-1.json",
+    "b26-correccion-2.json",
+    "b26-durable-1.json",
+    "b26-durable-2.json",
+    "b26-efimero-calculo-1.json",
+    "b26-efimero-calculo-2.json",
+    "b26-efimero-codigo-1.json",
+    "b26-efimero-codigo-2.json",
+    "b26-efimero-traduccion-1.json",
+    "b26-efimero-traduccion-2.json",
+    "b26-preferencia-1.json",
+    "b26-preferencia-2.json",
+    "b26-sensible-documentos-1.json",
+    "b26-sensible-documentos-2.json",
+    "b26-sensible-finanzas-1.json",
+    "b26-sensible-finanzas-2.json",
+    "b26-sensible-intimo-1.json",
+    "b26-sensible-intimo-2.json",
+    "b26-sensible-salud-1.json",
+    "b26-sensible-salud-2.json",
+    "b26-temporal-1.json",
+    "b26-temporal-2.json",
+    "b26-tope-1.json",
+    "b26-tope-2.json",
     # B3-A: hilo conversacional de Tarea. Dos turnos: el encargo genera el plan
     # sin herramientas y el ajuste produce la tarjeta v2, tambien sin tools.
     "b3a-turno1.json",
@@ -105,19 +150,8 @@ HUMOS_EXIGIDOS = [
     # conversacion con la palabra clave ZAFIRO-4; el filtrado en si es local y
     # no consume modelo, asi que no hay mas JSON que ese turno.
     "b4bus-turno1.json",
-    "task-humo-1.json",
-    "task-humo-2.json",
-    "task-humo-3.json",
-    "boost-humo.json",
-    "spend-humo.json",
-] + [
-    f"pack-{slug}.json"
-    for slug in [
-        "grill-me", "en-cristiano", "guion-video", "prompt-en-ingles",
-        "copy-fresco", "responder-cliente", "tutor-ia", "resume-enlace",
-        "investiga", "traspaso", "memoria-orden", "crea-skills",
-    ]
 ]
+
 
 # Catalogo CERRADO de `UI_INVARIANTS.md` (P0.1). Cada nombre de traza tiene un
 # caso del catalogo y cada caso tiene un nombre: anadir uno aqui sin anadirlo
@@ -129,13 +163,14 @@ ETIQUETAS_TRAZA_VALIDAS = {
     "SearchResultRow", "SearchEmptyState",
 }
 
-# Partidas del hilo con puerta B (bloque 1, bloques 2 y 3 y bloque 4).
+# Partidas del hilo con puerta B (bloque 1, bloques 2 y 3, bloque 4 e Ideas).
 PARTIDAS_CON_PUERTA_B = [
     "P0.2", "P0.3",
     "B1.1", "B1.2", "B1.3",
     "B2.1", "B2.2", "B2.3", "B2.4", "B2.5", "B2.6",
     "B3-A", "B3-B",
     "B4-COD", "B4-BUS",
+    "IDEA1", "IDEA3", "IDEA4", "IDEA5", "IDEA6",
 ]
 
 # Partidas que archivan varias trazas (una por caso, con sufijo tras un guion).
@@ -183,6 +218,13 @@ GUARDADOS_ESPERADOS = {
     # conversacion no pide guardar en Memoria y la traza solo lleva filas de
     # resultado y el estado vacio. Cero lineas de aviso.
     "B4-BUS": 0,
+    # Las Ideas no guardan en Memoria: sus trazas son de lectura, exportacion,
+    # banda de gasto, estadisticas y borrador, y tienen 0 MemoryLineNotice.
+    "IDEA1": 0,
+    "IDEA3": 0,
+    "IDEA4": 0,
+    "IDEA5": 0,
+    "IDEA6": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).
@@ -200,7 +242,7 @@ NOMBRES_TECNICOS_HERRAMIENTA = [
 # de partida vigentes. Ninguna otra forma de nombre es valida.
 PATRON_NOMBRE_TRAZA = re.compile(
     r"^ui_transcript_"
-    r"(?P<id>P0\.[23]|B1\.[123]|B2\.[1-6]|B3-A|B3-B|B4-COD|B4-BUS)"
+    r"(?P<id>P0\.[23]|B1\.[123]|B2\.[1-6]|B3-A|B3-B|B4-COD|B4-BUS|IDEA[0-9]+)"
     r"(?:-(?P<caso>[A-Za-z0-9][A-Za-z0-9-]*))?"
     r"\.txt$"
 )
@@ -359,6 +401,43 @@ def _verificar_transiciones_de_paso(lineas: list[str], partida: str) -> list[str
         vistos.setdefault(paso, set()).add(estado)
     return fallos
 
+
+def _conteo_memorias_por_turno(lineas: list[str]) -> list[tuple[int, int]]:
+    """Segmenta la traza por turnos y cuenta MemoryLineNotice en cada uno.
+
+    Un turno empieza en cada UserBubble de nivel superior; las lineas previas
+    al primer UserBubble (si las hay) forman un unico segmento inicial. Las
+    lineas anidadas pertenecen al turno en curso. Devuelve pares
+    `(linea_de_inicio, avisos)` solo para segmentos con algun elemento.
+    """
+    turnos: list[tuple[int, int]] = []
+    inicio = 1
+    memorias = 0
+    hay_elementos = False
+    for numero, linea in enumerate(lineas, start=1):
+        texto = linea.strip()
+        if not texto:
+            continue
+        if numero == 1 and texto.lower().startswith("modo:"):
+            continue
+        m = PATRON_LINEA_TRAZA.match(linea)
+        if m is None:
+            continue
+        etiqueta = m.group("etiqueta")
+        anidada = m.group("sangria") != ""
+        if etiqueta == "UserBubble" and not anidada:
+            if hay_elementos:
+                turnos.append((inicio, memorias))
+            inicio = numero
+            memorias = 0
+        hay_elementos = True
+        if etiqueta == "MemoryLineNotice":
+            memorias += 1
+    if hay_elementos:
+        turnos.append((inicio, memorias))
+    return turnos
+
+
 def verificar_traza(
     ruta: Path,
     partida: str,
@@ -457,6 +536,15 @@ def verificar_traza(
             f"Conteo 3: {memorias} MemoryLineNotice y la partida declara "
             f"{guardados_esperados}"
         )
+
+    # Conteo 3 por turno: el total puede cuadrar y aun asi un turno acumular
+    # dos avisos. El tope es 1 MemoryLineNotice por turno.
+    for inicio_turno, memorias_turno in _conteo_memorias_por_turno(lineas):
+        if memorias_turno > 1:
+            fallos.append(
+                f"Conteo 3: {memorias_turno} MemoryLineNotice en el turno "
+                f"que empieza en la linea {inicio_turno} (maximo 1 por turno)"
+            )
 
     # Conteo 4: ningun nombre tecnico de herramienta, ni como etiqueta ni
     # dentro de una burbuja o un segmento.
