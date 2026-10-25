@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Trabajo de noche en la planta de empaque de una fábrica de prueba")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Trabaja de noche en la planta de empaque de una fábrica.", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo.")
+  [t=0.0s] TextSegment("Listo.")

@@ -1,0 +1,5 @@
+[t=0.0s] UserBubble("Hola, ¿me ayudas con una idea?")
+[t=0.0s] AssistantBubble("Claro: dime la idea y la aterrizamos.")
+  [t=0.0s] TextSegment("Claro: dime la idea y la aterrizamos.")
+[t=0.0s] UserBubble("Esto se queda en el composer sin enviar")
+[t=0.0s] ErrorBubble("Sin conexión a internet.")

@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Estudio ingeniería de prueba los sábados en la universidad del barrio")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Estudia ingeniería los sábados en la universidad de su barrio.", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo.")
+  [t=0.0s] TextSegment("Listo.")
