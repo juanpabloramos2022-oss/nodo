@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate 'label CONTAINS "Chat de ejemplo"'
+      ↪︎Find: First Match
