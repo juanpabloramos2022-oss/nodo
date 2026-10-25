@@ -321,23 +321,75 @@ final class ProgresoVivoTests: XCTestCase {
         XCTAssertEqual(try fila(hilo, paso: 2).estado, .esperandoAprobacion)
 
         // Un evento del paso siguiente no puede avanzar mientras la decision
-        // este pendiente: la tarea no corre por detras de la hoja.
-        let intruso = EventoTareaEjecucion(
-            secuencia: hilo.secuenciaVivaEsperada,
-            tareaID: tarea.id,
-            tipo: .pasoIniciado,
-            paso: 3,
-            pasosTotales: 2,
-            etiqueta: "Paso intruso",
-            estadoDinamico: "Ejecutando…",
-            estado: .enCurso
+        // este pendiente: la tarea no corre por detras de la hoja. Se ejerce
+        // en un hilo aislado con los MISMOS eventos, para no consumir un
+        // numero de secuencia de la corrida real que se esta midiendo.
+        let congelado = HiloTareaViewModel()
+        congelado.aplicar(
+            EventoTareaEjecucion(
+                secuencia: 1,
+                tareaID: tarea.id,
+                tipo: .turnoIniciado,
+                paso: 1,
+                pasosTotales: 2,
+                etiqueta: "Consultar el dominio",
+                estadoDinamico: "Consultando modelo…",
+                estado: .enCurso
+            )
         )
-        hilo.aplicar(intruso)
+        congelado.aplicar(
+            EventoTareaEjecucion(
+                secuencia: 2,
+                tareaID: tarea.id,
+                tipo: .pasoIniciado,
+                paso: 1,
+                pasosTotales: 2,
+                etiqueta: "Leer enlace",
+                estadoDinamico: "Consultando ejemplo.test…",
+                estado: .enCurso
+            )
+        )
+        congelado.aplicar(
+            EventoTareaEjecucion(
+                secuencia: 3,
+                tareaID: tarea.id,
+                tipo: .pasoCerrado,
+                paso: 1,
+                pasosTotales: 2,
+                estado: .completado,
+                duracion: 1.1,
+                costo: Decimal(string: "0.000004")
+            )
+        )
+        congelado.aplicar(
+            EventoTareaEjecucion(
+                secuencia: 4,
+                tareaID: tarea.id,
+                tipo: .aprobacionPendiente,
+                paso: 2,
+                pasosTotales: 2,
+                etiqueta: "Guardar en Memoria",
+                estadoDinamico: "Esperando tu aprobación",
+                estado: .esperandoAprobacion
+            )
+        )
+        congelado.aplicar(
+            EventoTareaEjecucion(
+                secuencia: 5,
+                tareaID: tarea.id,
+                tipo: .pasoIniciado,
+                paso: 3,
+                pasosTotales: 2,
+                etiqueta: "Paso intruso",
+                estadoDinamico: "Ejecutando…",
+                estado: .enCurso
+            )
+        )
         XCTAssertNil(
-            hilo.filas.first { $0.paso == 3 },
+            congelado.filas.first { $0.paso == 3 },
             "El paso siguiente avanzó con la aprobación pendiente"
         )
-        XCTAssertEqual(hilo.cabecera.estado, .esperandoAprobacion)
+        XCTAssertEqual(congelado.cabecera.estado, .esperandoAprobacion)
 
         arnes.estado.denegarSolicitud()
         try await arnes.esperarTarea(id: tarea.id, estado: .completada)

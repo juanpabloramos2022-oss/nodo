@@ -816,12 +816,6 @@ final class HiloTareaViewModel: ObservableObject {
         }
     }
 
-    /// Numero de secuencia que la cola viva espera a continuacion.
-    ///
-    /// Lo usan las pruebas de contrato que inyectan un evento con el numero
-    /// que el emisor habria usado, sin saltarse la cola.
-    var secuenciaVivaEsperada: Int { siguienteSecuenciaViva }
-
     /// Estado final del ViewModel, para la comparacion secuencial/intercalada.
     var estadoFinal: EstadoFinal {
         EstadoFinal(
