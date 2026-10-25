@@ -3225,4 +3225,115 @@ final class TrazaVistaTest: XCTestCase {
         lineas.append("temporal: hilo temporal excluido del desglose")
         return lineas
     }
+
+    // MARK: - (13) Traza de la partida IDEA6 (borrador por hilo)
+
+    /// Guion literal de IDEA6: un turno normal, un borrador que se sale y se
+    /// reabre, y un envio sin red.
+    ///
+    /// No hay llamada nueva a InferHub: el turno se reproduce con el
+    /// transporte guionizado y el fallo de red tambien es guionizado. El humo
+    /// es $0,00.
+    private static let promptIDEA6 = "Hola, ¿me ayudas con una idea?"
+    private static let respuestaIDEA6 =
+        "Claro: dime la idea y la aterrizamos."
+    private static let borradorIDEA6 =
+        "Esto se queda en el composer sin enviar"
+    private static let errorIDEA6 = "Sin conexión a internet."
+
+    /// Traza de IDEA6: el borrador vive FUERA del hilo.
+    ///
+    /// Escribir, salir y reabrir el hilo no anade ni un elemento: el archivo
+    /// no cambia ni un byte (esa es la evidencia de los 0 elementos nuevos).
+    /// El envio sin red si deja lo que el catalogo ya tiene: el `UserBubble`
+    /// del mensaje y el `ErrorBubble` del turno fallido. Ninguna burbuja
+    /// «pendiente»: 0 casos nuevos en `ElementoHiloVisible`.
+    ///
+    /// La evidencia del borrador (texto restaurado y texto intacto tras el
+    /// fallo) queda en `borrador-IDEA6.txt`, SIN bloque `TRAZA` (el extractor
+    /// solo acepta ui_transcript_<ID>.txt).
+    func testElGuionIDEA6ProduceLaTrazaDelBorrador() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        arnes.transporte.guionar(
+            texto: Self.respuestaIDEA6,
+            uso: UsoTokens(entrada: 24, salida: 9)
+        )
+        let inicio = Date(timeIntervalSince1970: 1_000)
+        let ruta = try Self.rutaDeTraza("ui_transcript_IDEA6.txt")
+        let sesion = try SesionTraza(ruta: ruta, inicio: inicio)
+
+        // Turno normal: UserBubble + AssistantBubble.
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        arnes.estado.enviar(Self.promptIDEA6)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+
+        let contenidoTrasTurno = try String(contentsOf: ruta, encoding: .utf8)
+
+        // Borrador: se escribe, se sale del hilo y se reabre.
+        let hilo = arnes.estado.conversacion
+        arnes.estado.borrador = Self.borradorIDEA6
+        arnes.estado.nuevaConversacion()
+        arnes.estado.abrir(hilo)
+        XCTAssertEqual(
+            arnes.estado.borrador,
+            Self.borradorIDEA6,
+            "El borrador vuelve integro al reabrir el hilo"
+        )
+
+        // La operacion de borrador no toca el hilo: ni un elemento nuevo.
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        XCTAssertEqual(
+            try String(contentsOf: ruta, encoding: .utf8),
+            contenidoTrasTurno,
+            "El borrador no es un elemento del hilo (0 nuevos)"
+        )
+
+        // Envio sin red: ErrorBubble existente y texto intacto.
+        arnes.transporte.fallarProximoStream()
+        arnes.estado.enviarTextoActual()
+        try await arnes.esperarTurno()
+        XCTAssertEqual(arnes.estado.errorDeTurno, Self.errorIDEA6)
+        XCTAssertEqual(arnes.estado.borrador, Self.borradorIDEA6)
+        XCTAssertEqual(
+            arnes.estado.borradorGuardado(para: hilo.id),
+            Self.borradorIDEA6
+        )
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble", "UserBubble", "ErrorBubble"],
+            "El fallo de red deja el ErrorBubble existente, no una pendiente"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 1)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // Evidencia del borrador junto a la traza, sin bloque TRAZA.
+        let rutaBorrador = ruta.deletingLastPathComponent()
+            .appendingPathComponent("borrador-IDEA6.txt")
+        try TrazaVista.escribir(Self.lineasDelBorrador(), a: rutaBorrador)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Lineas de evidencia del borrador, identicas a la replica en Python.
+    private static func lineasDelBorrador() -> [String] {
+        [
+            "== BORRADOR POR HILO (IDEA6) ==",
+            "hilo: \(borradorIDEA6)",
+            "al reabrir: texto restaurado integro",
+            "envio sin red: ErrorBubble visible y texto intacto",
+            "elementos nuevos en el hilo por el borrador: 0"
+        ]
+    }
 }

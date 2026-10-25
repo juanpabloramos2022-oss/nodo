@@ -192,15 +192,30 @@ final class ChatTemporalTests: XCTestCase {
         )
     }
 
-    func testElBorradorDeUnChatNormalConservaSuComportamiento() async throws {
+    /// IDEA6 cambia la regla vieja: el borrador de un chat normal ya no se
+    /// pierde al cambiar de hilo. El hilo nuevo arranca vacío y el texto
+    /// vuelve al reabrir el hilo donde se escribió (B2.2 sigue igual para el
+    /// temporal, que no guarda nada).
+    func testElBorradorDeUnChatNormalSobreviveAlCambiarDeHilo() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
 
-        // Un chat normal: el borrador se limpia al abrir otro chat, como hoy.
         arnes.estado.nuevaConversacion()
+        let hiloA = arnes.estado.conversacion
         arnes.estado.borrador = "texto a medias"
         arnes.estado.nuevaConversacion()
-        XCTAssertEqual(arnes.estado.borrador, "")
+        XCTAssertEqual(
+            arnes.estado.borrador,
+            "",
+            "El hilo nuevo arranca con el composer vacío"
+        )
+
+        arnes.estado.abrir(hiloA)
+        XCTAssertEqual(
+            arnes.estado.borrador,
+            "texto a medias",
+            "El borrador del hilo vuelve al reabrirlo"
+        )
 
         // Y el chat normal no se vuelve temporal al abrirlo.
         XCTAssertFalse(arnes.estado.hiloTemporal)

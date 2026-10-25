@@ -172,6 +172,16 @@ struct GuionRespuesta {
     var toolCalls: [ToolCall]
 }
 
+/// Fallo de red deterministico para el guion de IDEA6.
+///
+/// Un `URLError` real trae un texto localizado que cambia con el idioma del
+/// simulador; la traza exige un texto fijo y reproducible byte a byte. El
+/// camino que se prueba es el mismo: la llamada lanza y el turno publica el
+/// `ErrorBubble` con este mensaje.
+struct ErrorRedDePrueba: LocalizedError {
+    var errorDescription: String? { "Sin conexión a internet." }
+}
+
 /// Transporte falso que graba peticiones y sirve respuestas SSE guionizadas.
 ///
 /// Implementa los dos protocolos de red porque `EstadoApp` usa el mismo objeto
@@ -198,6 +208,28 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     private var continuacionUnaria: CheckedContinuation<Void, Never>?
     private var streamYaLiberado = false
     private var unariaYaLiberada = false
+    /// Fallo de red que se lanza en el proximo intento de streaming (IDEA6).
+    private var errorDeStreamPendiente: Error?
+
+    /// Hace que el proximo intento de streaming falle como una red caida.
+    ///
+    /// POR QUE: el contrato de IDEA6 exige que un envio sin conexion muestre
+    /// el `ErrorBubble` y conserve el texto. El guion NO se consume al fallar:
+    /// el mismo turno puede reintentarse despues y cerrar con exito, que es la
+    /// secuencia completa del contrato.
+    func fallarProximoStream(_ error: Error = ErrorRedDePrueba()) {
+        candado.lock()
+        defer { candado.unlock() }
+        errorDeStreamPendiente = error
+    }
+
+    private func tomarErrorDeStream() -> Error? {
+        candado.lock()
+        defer { candado.unlock() }
+        let error = errorDeStreamPendiente
+        errorDeStreamPendiente = nil
+        return error
+    }
 
     /// Encola una respuesta de chat completions con su consumo.
     ///
@@ -341,6 +373,11 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func abrirStream(_ peticion: HTTPRequest) async throws -> AsyncThrowingStream<Data, Error> {
+        // IDEA6: fallo de red guionizado. Se comprueba ANTES de consumir el
+        // guion para que el reintento posterior reciba la respuesta intacta.
+        if let error = tomarErrorDeStream() {
+            throw error
+        }
         let numero = siguienteNumeroDeStream()
         guard let guion = registrarStream(peticion) else {
             throw ErrorAPI.respuestaInvalida(

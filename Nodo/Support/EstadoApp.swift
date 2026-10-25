@@ -212,7 +212,29 @@ final class EstadoApp: ObservableObject {
     /// Vive aqui y no en ChatView para que los comandos, el selector flotante
     /// y el dictado trabajen sobre un unico borrador: enviar, completar una
     /// skill o limpiar tras un comando son operaciones de la misma ruta.
-    @Published var borrador = ""
+    ///
+    /// IDEA6: cada cambio se guarda en local ASOCIADO AL HILO ABIERTO, para
+    /// que salir y volver no pierda lo escrito. Los cambios programaticos
+    /// (abrir otro hilo, restaurar su borrador, limpiar tras un comando) van
+    /// por `fijarBorrador`, que silencia este guardado: el borrador de OTRO
+    /// hilo no se puede pisar con una limpieza de pantalla.
+    @Published var borrador = "" {
+        didSet {
+            guard puedeGuardarBorradores, !suprimirGuardadoDeBorrador else {
+                return
+            }
+            // El composer de Tarea es el MISMO componente pero no es un hilo
+            // de chat: su texto no se guarda bajo la conversacion abierta.
+            guard tareaEnPantalla == nil else { return }
+            // B2.2: un Chat Temporal no deja rastro; ni siquiera un borrador.
+            guard !conversacion.esTemporal else { return }
+            guard borradores.texto(para: conversacion.id) != borrador else {
+                return
+            }
+            borradores.guardar(borrador, para: conversacion.id)
+            persistirBorradores()
+        }
+    }
     /// Aviso pequeno sobre la caja (comando desconocido, skill sin mensaje,
     /// permisos de dictado o compactacion corta). No es la franja de tope.
     @Published var avisoComando: String?
@@ -370,7 +392,7 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var clavesVersion = 0
     /// Que clase de turno fallo, para que `reintentar()` sepa si debe volver a
     /// enviar el historial actual o regenerar la ultima respuesta restaurada.
-    private enum TipoTurnoFallido {
+    private enum TipoTurnoFallido: Equatable {
         case envio
         case regeneracion
     }
@@ -386,11 +408,19 @@ final class EstadoApp: ObservableObject {
     private var puedeGuardarVentanas = false
     private var puedeGuardarUsosResumidos = false
     private var puedeGuardarResumenesCompactados = false
+    /// Borradores del composer por hilo (IDEA6), ya cargados de `defaults`.
+    private var borradores = BorradoresDeHilo()
+    private var puedeGuardarBorradores = false
+    /// Silencia el guardado automatico mientras el estado mueve el borrador
+    /// por su cuenta (cambio de hilo, restauracion, comando ejecutado).
+    private var suprimirGuardadoDeBorrador = false
 
     private static let claveConfig = "nodo.config.v1"
     private static let claveVentanas = "nodo.ventanas.v1"
     private static let claveUsosResumidos = "nodo.usos-resumidos.v1"
     private static let claveResumenesCompactados = "nodo.resumenes-compactados.v1"
+    /// Borradores del composer por hilo (IDEA6).
+    private static let claveBorradores = "nodo.borradores.v1"
 
     /// Instrucciones del resumen de /compact (§4.2). Es una llamada aparte,
     /// sin herramientas y sin streaming.
@@ -473,6 +503,7 @@ final class EstadoApp: ObservableObject {
         self.usoResumidoPorConversacion = Self.usosResumidosGuardados(de: defaults)
         self.resumenesCompactadosPorConversacion =
             Self.resumenesCompactadosGuardados(de: defaults)
+        self.borradores = Self.borradoresGuardados(de: defaults)
 
         var almacen: ConversationStore?
         do {
@@ -524,6 +555,7 @@ final class EstadoApp: ObservableObject {
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
         self.puedeGuardarResumenesCompactados = true
+        self.puedeGuardarBorradores = true
         sincronizarSkills()
 
         // PACK.1: siembra del pack de fabrica en el arranque. Es trabajo en
@@ -889,6 +921,22 @@ final class EstadoApp: ObservableObject {
         return resumenes.filter {
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    /// Lee los borradores por hilo guardados en los ajustes locales (IDEA6).
+    ///
+    /// Un JSON corrupto deja el almacen vacio: perder un borrador es preferible
+    /// a no poder abrir la app. El propio almacen descarta los textos vacios al
+    /// guardar, asi que aqui no hay residuos que limpiar.
+    private static func borradoresGuardados(
+        de defaults: UserDefaults
+    ) -> BorradoresDeHilo {
+        guard let datos = defaults.data(forKey: claveBorradores),
+              let guardados = try? BorradoresDeHilo.desde(json: datos)
+        else {
+            return BorradoresDeHilo()
+        }
+        return guardados
     }
 
     // MARK: - Sellos de costo y libro de gasto (COST.1-3)
@@ -1743,6 +1791,16 @@ final class EstadoApp: ObservableObject {
     func alternarChatTemporal() -> Bool {
         guard conversacion.mensajes.isEmpty, !enviando else { return false }
         conversacion.esTemporal.toggle()
+        if conversacion.esTemporal {
+            // IDEA6: al pasar a temporal se borra el borrador guardado de ese
+            // id. Lo que se escriba a partir de aqui tampoco se guarda (B2.2).
+            borradores.borrar(para: conversacion.id)
+            persistirBorradores()
+        } else {
+            // De vuelta a normal, lo que ya esta en la caja vuelve a contar:
+            // si el dueno sale ahora, el texto no se pierde.
+            guardarBorradorActual()
+        }
         return true
     }
 
@@ -1754,11 +1812,16 @@ final class EstadoApp: ObservableObject {
     /// siempre).
     func cerrarHiloTemporal() {
         guard conversacion.esTemporal else { return }
+        let idCerrado = conversacion.id
         cancelar()
         limpiarEventosVisuales()
         limpiarErrorDeTurno()
         // El borrador de un hilo temporal se borra al cerrar el hilo.
         limpiarEstadoDeCaja()
+        // IDEA6: borrado explicito por id, por si el hilo se volvio temporal
+        // despues de haber guardado un borrador como chat normal.
+        borradores.borrar(para: idCerrado)
+        persistirBorradores()
         conversacion = Conversation()
     }
 
@@ -1768,6 +1831,15 @@ final class EstadoApp: ObservableObject {
         limpiarErrorDeTurno()
         limpiarEstadoDeCaja()
         conversacion = otra
+        // IDEA6: el hilo recupera SU borrador, no el del hilo que se deja.
+        // Un hilo temporal no tiene borrador que recuperar (B2.2).
+        if otra.esTemporal {
+            borradores.borrar(para: otra.id)
+            persistirBorradores()
+            fijarBorrador("")
+        } else {
+            fijarBorrador(borradores.texto(para: otra.id) ?? "")
+        }
     }
 
     /// Conversacion que abre un toque sobre una fila de la lista (B4-BUS).
@@ -1836,6 +1908,10 @@ final class EstadoApp: ObservableObject {
             cancelar()
         }
         try? store?.borrar(id: otra.id)
+        // IDEA6: un borrador no puede quedar huerfano de una conversacion que
+        // ya no existe.
+        borradores.borrar(para: otra.id)
+        persistirBorradores()
         usoResumidoPorConversacion.removeValue(forKey: otra.id.uuidString)
         // COMP.2: el resumen pertenece a esa conversacion; si se borra, no
         // puede quedar un respaldo huerfano que un id reutilizado pudiera leer.
@@ -1866,13 +1942,58 @@ final class EstadoApp: ObservableObject {
     }
 
     /// Deja limpio todo lo que pertenece a la caja de la conversacion abierta.
+    ///
+    /// IDEA6: vaciar la caja al cambiar de hilo NO borra el borrador guardado
+    /// de ese hilo; por eso el vaciado va por `fijarBorrador`.
     private func limpiarEstadoDeCaja() {
-        borrador = ""
+        fijarBorrador("")
         avisoComando = nil
         mostrarHojaModelos = false
         textoParaCompartirSolicitado = nil
         idParaAbrir = nil
         idParaAbrirReiniciandoRuta = nil
+    }
+
+    /// Mueve el borrador SIN disparar el guardado automatico por hilo.
+    ///
+    /// Lo usan los cambios de hilo, la restauracion del borrador del hilo que
+    /// entra y las limpiezas de pantalla: ninguno de esos movimientos es texto
+    /// nuevo del dueno y ninguno puede escribir en el borrador de otro hilo.
+    private func fijarBorrador(_ texto: String) {
+        suprimirGuardadoDeBorrador = true
+        borrador = texto
+        suprimirGuardadoDeBorrador = false
+    }
+
+    /// Guarda el texto que ya esta en la caja bajo el hilo abierto.
+    ///
+    /// Solo para transiciones que no pasan por un cambio de texto del dueno
+    /// (volver de temporal a normal). Un Chat Temporal nunca guarda.
+    private func guardarBorradorActual() {
+        guard tareaEnPantalla == nil, !conversacion.esTemporal else { return }
+        borradores.guardar(borrador, para: conversacion.id)
+        persistirBorradores()
+    }
+
+    /// Persiste el almacen de borradores en los ajustes locales de la app.
+    ///
+    /// Mismo camino que la configuracion y los usos resumidos: `UserDefaults`
+    /// con una clave propia. Nunca toca la conversacion ni el historial.
+    private func persistirBorradores() {
+        guard puedeGuardarBorradores,
+              let datos = try? borradores.json()
+        else {
+            return
+        }
+        defaults.set(datos, forKey: Self.claveBorradores)
+    }
+
+    /// Borrador guardado de un hilo (IDEA6).
+    ///
+    /// Costura de pruebas y de estado: el almacen se consulta por
+    /// `conversacion.id` sin presentar ninguna vista.
+    func borradorGuardado(para id: UUID) -> String? {
+        borradores.texto(para: id)
     }
 
     /// Cambia el proveedor activo y deja el divisor visual del cambio de modelo.
@@ -3866,9 +3987,11 @@ final class EstadoApp: ObservableObject {
 
         switch AnalizadorComandos.analizar(texto, resolvedor: resolvedorSkills) {
         case .mensajeNormal(let limpio):
+            // IDEA6: la caja NO se vacia aqui. Se vacia SOLO cuando el turno
+            // termina con exito; si la llamada falla, el texto sigue donde
+            // estaba para reintentar con un toque.
             borrador = limpio
             enviar(limpio)
-            borrador = ""
 
         case .comando(let comando):
             borrador = ""
@@ -3884,9 +4007,10 @@ final class EstadoApp: ObservableObject {
             avisarTextoDescartado(descartado, para: comando)
 
         case .conSkills(let skills, let mensaje):
+            // Mismo criterio que el mensaje normal: el texto se queda hasta
+            // que el turno confirma el exito.
             borrador = mensaje
             enviar(mensaje, skills: skills)
-            borrador = ""
 
         case .tokensDesconocidos(let slugs):
             let lista = slugs.map { "/\($0)" }.joined(separator: ", ")
@@ -4307,6 +4431,17 @@ final class EstadoApp: ObservableObject {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty, !enviando else { return }
 
+        // IDEA6: si el turno anterior fallo y el dueno vuelve a tocar Enviar
+        // con EL MISMO texto, se relanza sobre el mensaje que ya esta en el
+        // hilo. Sin esta guarda el mismo texto quedaria dos veces y el
+        // contrato pide que se envie UNA sola vez. No se mira `turnoFallido`:
+        // no se persiste, y tras reiniciar la app el ultimo mensaje del
+        // usuario sigue siendo la prueba de que ese envio ya se registro.
+        let reenvioDelFallo = skills.isEmpty
+            && errorDeTurno != nil
+            && conversacion.mensajes.last?.rol == .usuario
+            && conversacion.mensajes.last?.texto == limpio
+
         // Un mensaje nuevo retira la burbuja de error del turno anterior.
         limpiarErrorDeTurno()
 
@@ -4324,20 +4459,23 @@ final class EstadoApp: ObservableObject {
                 .isEmpty
         }
 
-        var mensaje = ChatMessage(rol: .usuario, texto: limpio)
-        mensaje.skillsAplicadas = aplicables.map(\.nombre)
-        conversacion.mensajes.append(mensaje)
-        if conversacion.titulo == "Conversacion" {
-            conversacion.titulo = conversacion.tituloSugerido
+        if !reenvioDelFallo {
+            var mensaje = ChatMessage(rol: .usuario, texto: limpio)
+            mensaje.skillsAplicadas = aplicables.map(\.nombre)
+            conversacion.mensajes.append(mensaje)
+            if conversacion.titulo == "Conversacion" {
+                conversacion.titulo = conversacion.tituloSugerido
+            }
+            persistirActual()
         }
-        persistirActual()
 
         lanzarTurno(
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
             instrucciones: aplicables.map(\.instrucciones),
-            alFracasar: {}
+            alFracasar: {},
+            textoEnviado: limpio
         )
     }
 
@@ -4434,11 +4572,15 @@ final class EstadoApp: ObservableObject {
 
     private func reintentarEnvio() {
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+        // IDEA6: el reintento tambien cierra el borrador si sale bien; el
+        // texto que se reintenta es el del ultimo mensaje del usuario, que ya
+        // esta en el hilo.
         lanzarTurno(
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
-            alFracasar: {}
+            alFracasar: {},
+            textoEnviado: conversacion.mensajes.last(where: { $0.rol == .usuario })?.texto
         )
     }
 
@@ -4451,7 +4593,8 @@ final class EstadoApp: ObservableObject {
         proveedor: ProviderConfig,
         clave: String,
         instrucciones: [String] = [],
-        alFracasar: @escaping () -> Void
+        alFracasar: @escaping () -> Void,
+        textoEnviado: String? = nil
     ) {
         // Cubre tambien los reintentos: el proveedor del chat es el que se
         // esta usando ahora, no el activo global de otro momento.
@@ -4488,7 +4631,8 @@ final class EstadoApp: ObservableObject {
                 usaMemoria: usaMemoria,
                 idConversacion: idConversacion,
                 tipo: tipo,
-                alFracasar: alFracasar
+                alFracasar: alFracasar,
+                textoEnviado: textoEnviado
             )
 
             self.enviando = false
@@ -4509,7 +4653,8 @@ final class EstadoApp: ObservableObject {
         usaMemoria: Bool,
         idConversacion: UUID,
         tipo: TipoTurnoFallido,
-        alFracasar: () -> Void
+        alFracasar: () -> Void,
+        textoEnviado: String? = nil
     ) async {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
@@ -4624,6 +4769,14 @@ final class EstadoApp: ObservableObject {
             conversacion.usoTrasCompactar = nil
             limpiarErrorDeTurno()
 
+            // IDEA6: el turno cerro con exito. El texto que se envio ya vive
+            // como mensaje del hilo, asi que su borrador se borra y la caja
+            // se vacia (solo si sigue mostrando ESE texto: lo que el dueno
+            // haya empezado a escribir despues no se toca).
+            if let textoEnviado {
+                finalizarEnvioExitoso(textoEnviado, idConversacion: idConversacion)
+            }
+
             if resultado.seAgotoElLimite {
                 error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
             }
@@ -4646,10 +4799,32 @@ final class EstadoApp: ObservableObject {
             // hilo tras reabrir el chat o reiniciar la app. El mensaje del
             // usuario ya esta persistido, asi que reintentar no lo duplica.
             guard conversacion.id == idConversacion else { return }
+            // IDEA6: ante el fallo, el texto integro vuelve a la caja. En el
+            // camino normal nunca se vacio; esta restauracion cubre cualquier
+            // limpieza intermedia y deja el borrador guardado para reabrir.
+            if let textoEnviado, borrador.isEmpty {
+                fijarBorrador(textoEnviado)
+                borradores.guardar(textoEnviado, para: idConversacion)
+                persistirBorradores()
+            }
             conversacion.errorDeTurno = detalle
             turnoFallido = tipo
             persistirActual()
         }
+    }
+
+    /// Cierra el borrador de un envio que si llego (IDEA6).
+    ///
+    /// Borra el borrador guardado de ESE hilo y vacia la caja solo si sigue
+    /// mostrando el texto enviado. Un texto nuevo que el dueno haya empezado a
+    /// escribir mientras el turno estaba en vuelo no se pierde.
+    private func finalizarEnvioExitoso(_ texto: String, idConversacion: UUID) {
+        if borradores.texto(para: idConversacion) == texto {
+            borradores.borrar(para: idConversacion)
+            persistirBorradores()
+        }
+        guard conversacion.id == idConversacion, borrador == texto else { return }
+        fijarBorrador("")
     }
 
     func cancelar() {
