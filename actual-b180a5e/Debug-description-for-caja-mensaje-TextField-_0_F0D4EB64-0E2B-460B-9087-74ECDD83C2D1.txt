@@ -1,0 +1,89 @@
+Attributes: TextField, 0x101737580, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Element subtree:
+ →TextField, 0x101737580, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Path to element:
+ →Application, 0x101711300, pid: 12244, label: 'Nodo'
+  ↳Window, 0x101735a20, {{0.0, 0.0}, {393.0, 852.0}}
+   ↳Other, 0x101736470, {{0.0, 0.0}, {393.0, 852.0}}
+    ↳Other, 0x101738d80, {{0.0, 0.0}, {393.0, 852.0}}
+     ↳Other, 0x101735da0, {{0.0, 0.0}, {393.0, 852.0}}
+      ↳Other, 0x1017356b0, {{0.0, 0.0}, {393.0, 852.0}}
+       ↳Other, 0x101736110, {{0.0, 0.0}, {393.0, 852.0}}
+        ↳Other, 0x101736b40, {{0.0, 0.0}, {393.0, 852.0}}
+         ↳Other, 0x1017367c0, {{0.0, 0.0}, {393.0, 852.0}}
+          ↳Other, 0x101736ec0, {{0.0, 0.0}, {393.0, 852.0}}
+           ↳Other, 0x1017389e0, {{0.0, 0.0}, {393.0, 852.0}}
+            ↳Other, 0x101738320, {{0.0, 0.0}, {393.0, 852.0}}
+             ↳Other, 0x101737210, {{0.0, 0.0}, {393.0, 852.0}}
+              ↳Other, 0x101733ae0, {{0.0, 0.0}, {393.0, 852.0}}
+               ↳Other, 0x101738670, {{0.0, 0.0}, {393.0, 852.0}}
+                ↳Other, 0x101737fb0, {{0.0, 0.0}, {393.0, 852.0}}
+                 ↳Other, 0x1017378f0, {{0.0, 0.0}, {393.0, 852.0}}
+                  ↳TextField, 0x101737580, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  Output: {
+    Application, 0x10174dd10, pid: 12244, label: 'Nodo'
+  }
+  ↪︎Find: Descendants matching type Any
+    Output: {
+      Window (Main), 0x101741bc0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101742630, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x1017429b0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x1017422b0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101741f40, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101742d20, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x1017430a0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101743440, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101743790, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101747c50, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101747fb0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x101748ac0, {{0.0, 0.0}, {393.0, 852.0}}
+      NavigationBar, 0x101748e40, {{0.0, 53.7}, {393.0, 44.0}}, identifier: 'Chat de ejemplo'
+      Other, 0x10174a6b0, {{0.0, 0.0}, {393.0, 852.0}}
+      Button, 0x10174d2d0, {{0.0, 53.7}, {74.7, 44.0}}, identifier: 'BackButton', label: 'Chats'
+      StaticText, 0x10174cf80, {{113.3, 53.7}, {166.7, 44.0}}, label: 'Chat de ejemplo'
+      Other, 0x10174b7d0, {{344.7, 67.7}, {32.3, 16.3}}, identifier: 'menu-chat', label: 'Mas acciones del chat'
+      Other, 0x10174a360, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x10174c570, {{113.3, 53.7}, {166.7, 44.0}}
+      Other, 0x101749520, {{344.7, 67.7}, {32.3, 16.3}}
+      Other, 0x101749fe0, {{0.0, 0.0}, {393.0, 852.0}}
+      Button, 0x10174c8e0, {{113.3, 53.7}, {166.7, 44.0}}, identifier: 'pildora-modelo', label: 'Modelo deepseek-v4-1-flash. InferHub'
+      Button, 0x1017498a0, {{344.7, 67.7}, {32.3, 16.3}}, identifier: 'menu-chat', label: 'Mas acciones del chat'
+      Other, 0x101749c40, {{0.0, 0.0}, {393.0, 852.0}}
+      Button, 0x10174cc30, {{113.3, 53.7}, {166.7, 44.0}}
+      Button, 0x10174b120, {{344.7, 67.7}, {32.3, 16.3}}
+      ScrollView, 0x101743af0, {{0.0, 0.0}, {393.0, 721.7}}
+      Button, 0x101672fa0, {{325.0, 727.7}, {52.0, 30.3}}, identifier: 'memoria-rapida', label: 'Memoria activa en este chat'
+      TextField, 0x1016730c0, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje', value: Escribe un mensaje
+      Button, 0x101673420, {{293.0, 770.0}, {38.0, 38.0}}, identifier: 'boton-dictado', label: 'Dictar'
+      Button, 0x101673540, {{339.0, 770.0}, {38.0, 38.0}}, identifier: 'enviar-mensaje', label: 'Enviar', Disabled
+      Other, 0x10174c230, {{113.3, 53.7}, {166.7, 44.0}}
+      Other, 0x10174ada0, {{344.7, 67.7}, {32.3, 16.3}}
+      Other, 0x1017467e0, {{0.0, 97.7}, {393.0, 305.0}}
+      Other, 0x10166fdb0, {{360.0, 97.7}, {30.0, 624.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+      Other, 0x1016731e0, {{30.0, 784.0}, {241.0, 11.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      StaticText, 0x1017491b0, {{121.3, 60.7}, {135.7, 15.7}}, label: 'deepseek-v4-1-flash'
+      Image, 0x10174bb60, {{261.3, 66.0}, {9.3, 5.3}}, identifier: 'chevron.down', label: 'Go Down'
+      StaticText, 0x10174bed0, {{130.2, 77.3}, {105.0, 13.3}}, label: 'InferHub · ≈$0.0001'
+      StaticText, 0x10174b470, {{239.3, 77.3}, {23.7, 13.3}}, label: '🧠'
+      Image, 0x10174aa20, {{344.7, 67.7}, {32.3, 16.3}}, identifier: 'ellipsis', label: 'More'
+      Other, 0x101746b60, {{30.0, 119.7}, {333.0, 260.3}}
+      Other, 0x101660a50, {{387.0, 459.0}, {3.0, 293.7}}
+      Other, 0x101673300, {{33.0, 792.0}, {235.0, 3.0}}
+      StaticText, 0x101671170, {{109.3, 119.7}, {253.7, 20.3}}, label: 'Hola, primer mensaje de ejemplo.'
+      StaticText, 0x101671fc0, {{30.0, 170.0}, {259.3, 42.3}}, label: 'Respuesta de ejemplo: aquí estoy para ayudarte.'
+      StaticText, 0x101671ba0, {{134.0, 242.3}, {229.0, 20.3}}, label: 'Segundo mensaje de ejemplo.'
+      StaticText, 0x101671780, {{30.0, 292.7}, {272.3, 42.3}}, label: 'Segunda respuesta de ejemplo con el consumo del chat.'
+      StaticText, 0x101670b30, {{30.0, 360.3}, {200.3, 9.3}}, identifier: 'pie-respuesta', label: '1200 de entrada · 300 de salida · ≈$0.0001 estimado'
+      Button, 0x101670710, {{247.0, 350.0}, {30.0, 30.0}}, identifier: 'pie-respuesta', label: 'Regenerar la última respuesta'
+      Button, 0x1016701d0, {{285.0, 350.0}, {30.0, 30.0}}, identifier: 'pie-respuesta', label: 'Copiar respuesta'
+    }
+    ↪︎Find: Elements matching predicate '"caja-mensaje" IN identifiers'
+      Output: {
+        TextField, 0x101586380, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje', value: Escribe un mensaje
+      }
+      ↪︎Find: First Match
+        Output: {
+          TextField, 0x101563950, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje', value: Escribe un mensaje
+        }

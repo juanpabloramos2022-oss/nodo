@@ -1,0 +1,33 @@
+Attributes: TextField, 0x101753d90, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Element subtree:
+ →TextField, 0x101753d90, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Path to element:
+ →Application, 0x101740710, pid: 12244, label: 'Nodo'
+  ↳Window, 0x101738670, {{0.0, 0.0}, {393.0, 852.0}}
+   ↳Other, 0x101737fb0, {{0.0, 0.0}, {393.0, 852.0}}
+    ↳Other, 0x10173f900, {{0.0, 0.0}, {393.0, 852.0}}
+     ↳Other, 0x101754100, {{0.0, 0.0}, {393.0, 852.0}}
+      ↳Other, 0x10173d020, {{0.0, 0.0}, {393.0, 852.0}}
+       ↳Other, 0x10175dbb0, {{0.0, 0.0}, {393.0, 852.0}}
+        ↳Other, 0x101754440, {{0.0, 0.0}, {393.0, 852.0}}
+         ↳Other, 0x1017127b0, {{0.0, 0.0}, {393.0, 852.0}}
+          ↳Other, 0x10173d360, {{0.0, 0.0}, {393.0, 852.0}}
+           ↳Other, 0x10174f8f0, {{0.0, 0.0}, {393.0, 852.0}}
+            ↳Other, 0x1017528b0, {{0.0, 0.0}, {393.0, 852.0}}
+             ↳Other, 0x10173ee60, {{0.0, 0.0}, {393.0, 852.0}}
+              ↳Other, 0x1017120b0, {{0.0, 0.0}, {393.0, 852.0}}
+               ↳Other, 0x101752550, {{0.0, 0.0}, {393.0, 852.0}}
+                ↳Other, 0x1017b0c90, {{0.0, 0.0}, {393.0, 852.0}}
+                 ↳Other, 0x101752c30, {{0.0, 0.0}, {393.0, 852.0}}
+                  ↳TextField, 0x101753d90, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  ↪︎Find: Descendants matching type Any
+    ↪︎Find: Elements matching predicate '"caja-mensaje" IN identifiers'
+      Output: {
+        TextField, 0x1015870d0, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+      }
+      ↪︎Find: First Match
+        Output: {
+          TextField, 0x10167b340, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'caja-mensaje', placeholderValue: 'Escribe un mensaje'
+        }
