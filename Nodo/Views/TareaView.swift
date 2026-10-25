@@ -3,18 +3,24 @@ import SwiftUI
 
 import NodoCore
 
-/// Pantalla de una tarea: instruccion, plan, libro en vivo y autorizacion.
+/// Hilo conversacional de una Tarea (B3-A).
 ///
-/// TASK.2 deja el flujo plan-primero. TASK.3 conecta Empezar con el ToolLoop y
-/// pinta el libro real; TASK.4 anade la hoja de aprobacion de `proponer_memoria`.
+/// Demuele el formulario de la v0.3.1: el encargo ya no vive en una caja de
+/// texto con su propio boton de guardado, ni en secciones estaticas de plan y
+/// trabajo. El encargo es un mensaje en el composer (el MISMO de Chat), el
+/// plan es una tarjeta del hilo con [Empezar] y [Ajustar / Regenerar], y el
+/// estado y el costo sellado viven en una cabecera fija que no se va con el
+/// scroll.
+///
+/// Invariantes: `UI_INVARIANTS.md` (raiz del repo). La vista pinta solo lo que
+/// el ViewModel del hilo entrega; no hay UUIDs, JSON crudo ni rótulos técnicos.
 struct TareaView: View {
     let tareaID: UUID
 
     @EnvironmentObject private var estado: EstadoApp
     @Environment(\.dismiss) private var dismiss
-
-    @State private var instruccion = ""
-    @State private var cargada = false
+    @StateObject private var hilo = HiloTareaViewModel()
+    @FocusState private var escribiendo: Bool
 
     private var tarea: Tarea? {
         estado.tareas.first { $0.id == tareaID }
@@ -44,12 +50,9 @@ struct TareaView: View {
         // pestanas y se sale con el boton nativo de volver a Tareas.
         .toolbar(.hidden, for: .tabBar)
         .conBarraTecladoListo()
-        .onAppear(perform: cargarSiHaceFalta)
-        // Al abrir un borrador con instruccion, la app pide el plan sola. Es
-        // el mismo punto que usa el boton Regenerar; no hay dos caminos.
-        .task(id: tareaID) {
-            await generarPlanSiHaceFalta()
-        }
+        .task(id: tareaID) { sincronizar() }
+        .onChange(of: estado.tareas) { _, _ in sincronizar() }
+        .onChange(of: estado.idTareaPlanificando) { _, _ in sincronizar() }
     }
 
     @ViewBuilder
@@ -71,552 +74,462 @@ struct TareaView: View {
     }
 
     private func contenido(_ tarea: Tarea) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                cabecera(tarea)
-                seccionInstruccion(tarea)
-                seccionPlan(tarea)
-                seccionTrabajo(tarea)
-                seccionRespuestaFinal(tarea)
-                acciones(tarea)
-                fronteraIOs
+        VStack(spacing: 0) {
+            cabeceraFija(tarea)
 
-                if let mensaje = estado.errorTarea {
-                    AvisoError(texto: mensaje) {
-                        estado.errorTarea = nil
-                    }
-                    // AvisoError ya trae su margen horizontal; se compensa el
-                    // margen del VStack para que no quede doble.
-                    .padding(.horizontal, -Tema.margen)
-                }
-            }
-            .padding(Tema.margen)
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    /// Estado y progreso, siempre visibles antes del plan.
-    private func cabecera(_ tarea: Tarea) -> some View {
-        HStack(spacing: 10) {
-            Text(tarea.estado.titulo)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(colorDe(tarea.estado))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(colorDe(tarea.estado).opacity(0.15))
-                .clipShape(Capsule())
-                .accessibilityIdentifier("estado-tarea")
-
-            Spacer(minLength: 8)
-
-            Text(progresoDe(tarea))
-                .font(.caption)
-                .foregroundStyle(Tema.textoSuave)
-                .accessibilityIdentifier("progreso-tarea")
-        }
-    }
-
-    /// Instruccion editable solo antes de autorizar la ejecucion.
-    private func seccionInstruccion(_ tarea: Tarea) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Instrucción")
-                .font(.headline)
-
-            TextEditor(text: $instruccion)
-                .frame(minHeight: 120)
-                .padding(8)
-                .scrollContentBackground(.hidden)
-                .background(Tema.superficie)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .foregroundStyle(.white)
-                .disabled(!tarea.admiteEdicion)
-                .opacity(tarea.admiteEdicion ? 1 : 0.6)
-                .accessibilityIdentifier("instruccion-tarea")
-
-            if tarea.admiteEdicion {
-                HStack(spacing: 12) {
-                    Button("Guardar instrucción") {
-                        estado.actualizarInstruccionTarea(
-                            id: tarea.id,
-                            instruccion: instruccion
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(instruccionLimpia.isEmpty || instruccionLimpia == tarea.instruccion)
-
-                    Spacer(minLength: 0)
-
-                    Button {
-                        Task {
-                            await estado.generarPlan(
-                                id: tarea.id,
-                                instruccion: instruccion
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(hilo.elementos.indices, id: \.self) { indice in
+                            vistaDeElemento(
+                                hilo.elementos[indice],
+                                tarea: tarea
                             )
+                            .id(indice)
                         }
-                    } label: {
-                        Label("Regenerar plan", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(instruccionLimpia.isEmpty || estado.generandoPlan)
-                    .accessibilityIdentifier("regenerar-plan")
-                }
-            }
-        }
-    }
 
-    /// Lista visible del plan, con su estado de generacion.
-    private func seccionPlan(_ tarea: Tarea) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("Plan")
-                    .font(.headline)
-
-                Spacer(minLength: 0)
-
-                if estado.generandoPlan {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityIdentifier("generando-plan")
-                }
-            }
-
-            if estado.generandoPlan {
-                Text("Generando el plan en modo solo-texto, sin herramientas…")
-                    .font(.footnote)
-                    .foregroundStyle(Tema.textoSuave)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let plan = tarea.plan {
-                if plan.pasos.isEmpty {
-                    Text(plan.texto)
-                        .font(.subheadline)
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    ForEach(plan.pasos) { paso in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text("\(paso.orden).")
-                                .font(.footnote.monospacedDigit())
-                                .foregroundStyle(Tema.acento)
-                                .frame(width: 22, alignment: .trailing)
-
-                            Text(paso.texto)
-                                .font(.subheadline)
-                                .foregroundStyle(.white)
-                                .fixedSize(horizontal: false, vertical: true)
+                        if estado.idTareaPlanificando == tarea.id {
+                            filaPlanificando
                         }
                     }
+                    .padding(.horizontal, Tema.margen)
+                    .padding(.vertical, 12)
                 }
-            } else {
-                Text("Todavía no hay plan. Escribe la instrucción y pulsa Regenerar plan.")
-                    .font(.footnote)
-                    .foregroundStyle(Tema.textoSuave)
-                    .fixedSize(horizontal: false, vertical: true)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: hilo.elementos.count) { _, cuantos in
+                    guard cuantos > 0 else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(cuantos - 1, anchor: .bottom)
+                    }
+                }
             }
+
+            ComposerMensaje(
+                texto: $estado.borrador,
+                placeholder: "Escribe el encargo o un ajuste",
+                bloqueoEnvio: estado.idTareaPlanificando != nil
+                    || tarea.estado == .enCurso,
+                dictando: estado.dictando,
+                alEnviar: { enviar(tarea) },
+                alDictar: { Task { await estado.alternarDictado() } },
+                enfocado: $escribiendo
+            )
         }
+        .accessibilityIdentifier("hilo-tarea")
     }
 
-    /// Panel de trabajo: libro en vivo, enlaces traidos, aprobaciones y costo.
+    // MARK: - Cabecera fija (R20)
+
+    /// Estado, costo sellado y [Detener] siempre visibles, sin scroll.
     ///
-    /// No es una copia decorativa del plan: cada fila sale del libro que el
-    /// ToolLoop acaba de persistir, asi que un paso "En curso" es una llamada
-    /// real y no una promesa.
-    private func seccionTrabajo(_ tarea: Tarea) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    /// Colapsable por el dueno: al colapsar se oculta el detalle de progreso,
+    /// nunca la cabecera entera ni el costo ni el boton de detener.
+    private func cabeceraFija(_ tarea: Tarea) -> some View {
+        let cab = hilo.cabecera
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text("Trabajo")
+                Text("Tarea")
                     .font(.headline)
 
-                Spacer(minLength: 0)
+                Text(cab.estado.titulo)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(colorDeCabecera(cab.estado))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(colorDeCabecera(cab.estado).opacity(0.15))
+                    .clipShape(Capsule())
+                    .accessibilityIdentifier("estado-tarea")
 
-                if let costo = tarea.costoAcumuladoUSD {
-                    Text("≈$\(String(format: "%.6f", costo))")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(Tema.textoSuave)
-                        .accessibilityIdentifier("costo-tarea")
-                } else if !tarea.pasos.isEmpty {
-                    Text("Costo no medido")
-                        .font(.caption)
-                        .foregroundStyle(Tema.textoSuave)
-                        .accessibilityIdentifier("costo-tarea")
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hilo.colapsada.toggle()
+                    }
+                } label: {
+                    Image(
+                        systemName: hilo.colapsada
+                            ? "chevron.down"
+                            : "chevron.up"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(Tema.textoSuave)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    hilo.colapsada
+                        ? "Mostrar el detalle de la tarea"
+                        : "Ocultar el detalle de la tarea"
+                )
+                .accessibilityIdentifier("colapsar-cabecera-tarea")
             }
 
-            if let costoBoost = tarea.costoBoostUSD {
-                Text("Boost (fases): ≈$\(String(format: "%.6f", costoBoost))")
+            HStack(spacing: 10) {
+                Text(costoSellado(cab.costoSellado))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Tema.textoSuave)
-                    .accessibilityIdentifier("costo-boost-tarea")
-            }
+                    .accessibilityIdentifier("costo-tarea")
 
-            if tarea.pasos.isEmpty {
-                Text(
-                    tarea.estado == .enCurso
-                        ? "Ejecutando. Los pasos aparecerán aquí en cuanto ocurran."
-                        : "Todavía no hay pasos ejecutados."
-                )
-                .font(.footnote)
-                .foregroundStyle(Tema.textoSuave)
-                .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(tarea.pasos) { paso in
-                    filaPaso(paso)
+                if !hilo.colapsada, cab.pasosTotales > 0 {
+                    Text("Paso \(cab.pasoActual)/\(cab.pasosTotales)")
+                        .font(.caption)
+                        .foregroundStyle(Tema.textoSuave)
+                        .accessibilityIdentifier("progreso-tarea")
+                }
+
+                Spacer(minLength: 8)
+
+                if cab.estado == .enCurso || cab.estado == .esperandoAprobacion {
+                    Button(role: .destructive) {
+                        estado.detenerTarea(id: tarea.id)
+                    } label: {
+                        Label("Detener", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("detener-tarea")
                 }
             }
+        }
+        .padding(.horizontal, Tema.margen)
+        .padding(.vertical, 8)
+        .background(Tema.superficie)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Tema.borde)
+                .frame(height: 1)
+        }
+    }
 
-            if !enlacesDe(tarea).isEmpty {
-                Divider()
-                    .overlay(Tema.borde)
+    // MARK: - Elementos del hilo
 
-                Text("Enlaces traídos")
+    @ViewBuilder
+    private func vistaDeElemento(
+        _ elemento: HiloTareaViewModel.Elemento,
+        tarea: Tarea
+    ) -> some View {
+        switch elemento {
+        case .burbujaUsuario(let texto):
+            burbujaUsuario(texto)
+
+        case .tarjetaPlan(let pasos, let version, let acciones):
+            tarjetaPlan(
+                pasos: pasos,
+                version: version,
+                acciones: acciones,
+                tarea: tarea
+            )
+
+        case .filaPaso(
+            let paso,
+            let estado,
+            let etiqueta,
+            let duracion,
+            let costo
+        ):
+            filaDePaso(
+                paso: paso,
+                estado: estado,
+                etiqueta: etiqueta,
+                duracion: duracion,
+                costo: costo
+            )
+
+        case .errorEnLinea(let texto):
+            errorEnLinea(texto)
+
+        case .resultadoFinal(let texto):
+            resultadoFinal(texto, tarea: tarea)
+        }
+    }
+
+    private func burbujaUsuario(_ texto: String) -> some View {
+        HStack {
+            Spacer(minLength: 48)
+
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Tema.acento.opacity(0.22))
+                .clipShape(
+                    RoundedRectangle(cornerRadius: Tema.radio, style: .continuous)
+                )
+        }
+        .accessibilityIdentifier("burbuja-encargo-tarea")
+    }
+
+    private func tarjetaPlan(
+        pasos: [PasoPlan],
+        version: Int,
+        acciones: [HiloTareaViewModel.AccionPlan],
+        tarea: Tarea
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(acciones.isEmpty ? "Plan" : "Plan propuesto")
                     .font(.subheadline.weight(.semibold))
 
-                ForEach(enlacesDe(tarea)) { paso in
-                    if let crudo = paso.url, let url = URL(string: crudo) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Link(destination: url) {
-                                Text(crudo)
-                                    .font(.footnote)
-                                    .foregroundStyle(Tema.acento)
-                                    .lineLimit(2)
-                            }
+                Text("v\(version)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Tema.acento)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Tema.acento.opacity(0.18))
+                    .clipShape(Capsule())
 
-                            if let resumen = paso.resultadoResumido(limite: 160) {
-                                Text(resumen)
-                                    .font(.caption)
-                                    .foregroundStyle(Tema.textoSuave)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
+                Spacer(minLength: 0)
+            }
+
+            if pasos.isEmpty {
+                Text("El plan llegó vacío. Pide un ajuste para regenerarlo.")
+                    .font(.footnote)
+                    .foregroundStyle(Tema.textoSuave)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(pasos) { paso in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(paso.orden).")
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(Tema.acento)
+                            .frame(width: 22, alignment: .trailing)
+
+                        Text(paso.texto)
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
 
-            if let solicitud = estado.solicitudAprobacion,
-               solicitud.tareaID == tarea.id {
-                Divider()
-                    .overlay(Tema.borde)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Esperando aprobación", systemImage: "hand.raised.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
-
-                    Text(solicitud.descripcion)
-                        .font(.footnote)
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 12) {
-                        Button("Denegar", role: .destructive) {
-                            estado.denegarSolicitud()
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("Aprobar") {
-                            estado.aprobarSolicitud()
+            if !acciones.isEmpty {
+                HStack(spacing: 12) {
+                    if acciones.contains(.empezar) {
+                        Button {
+                            estado.empezarTarea(id: tarea.id)
+                        } label: {
+                            Label("Empezar", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("empezar-tarea")
                     }
+
+                    if acciones.contains(.ajustar) {
+                        Button {
+                            Task {
+                                await estado.regenerarPlanTarea(id: tarea.id)
+                            }
+                        } label: {
+                            Label(
+                                "Ajustar / Regenerar",
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("ajustar-plan")
+                    }
+
+                    Spacer(minLength: 0)
                 }
-                .accessibilityIdentifier("aprobacion-pendiente-tarea")
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Tema.superficie)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityIdentifier("panel-trabajo-tarea")
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+        .accessibilityIdentifier("tarjeta-plan-tarea")
     }
 
-    /// Respuesta final de la tarea, con su marca de verificacion cruzada.
-    ///
-    /// La marca es una frontera honesta: dice que la sintesis de /boost cruzo
-    /// los angulos, no que se hayan ejecutado pruebas. Se pinta junto al texto
-    /// para que no se lea como una garantia mayor de la que es.
-    @ViewBuilder
-    private func seccionRespuestaFinal(_ tarea: Tarea) -> some View {
-        if let resultado = tarea.resultado,
-           !resultado.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Respuesta final")
-                        .font(.headline)
-
-                    Spacer(minLength: 0)
-
-                    if tarea.verificadoPorCruce {
-                        Label("Verificado por cruce", systemImage: "checkmark.seal.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
-                            .accessibilityIdentifier("verificado-por-cruce")
-                    }
-                }
-
-                Text(resultado)
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if tarea.verificadoPorCruce {
-                    Text("Verificación cruzada entre modelos: contraste crítico, no pruebas ejecutadas.")
-                        .font(.caption)
-                        .foregroundStyle(Tema.textoSuave)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Tema.superficie)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .accessibilityIdentifier("respuesta-final-tarea")
-        }
-    }
-
-    private func filaPaso(_ paso: Paso) -> some View {
+    private func filaDePaso(
+        paso: Int,
+        estado visible: ElementoTareaVisible.EstadoPaso,
+        etiqueta: String,
+        duracion: TimeInterval?,
+        costo: Decimal?
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: iconoDe(paso.estado))
+            Image(systemName: iconoDePaso(visible))
                 .font(.caption)
-                .foregroundStyle(colorDe(paso.estado))
+                .foregroundStyle(colorDePaso(visible))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(paso.descripcion)
+                    Text("\(paso). \(etiqueta)")
                         .font(.subheadline)
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Spacer(minLength: 4)
 
-                    Text(paso.estado.titulo)
+                    Text(visible.titulo)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(colorDe(paso.estado))
+                        .foregroundStyle(colorDePaso(visible))
                         .lineLimit(1)
                 }
 
-                if let etiqueta = paso.etiquetaDeFase {
-                    HStack(spacing: 6) {
-                        Text(etiqueta)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Tema.acento)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Tema.acento.opacity(0.18))
-                            .clipShape(Capsule())
-
-                        if let proveedor = paso.proveedorNombre {
-                            Text(proveedor)
-                                .font(.caption2)
-                                .foregroundStyle(Tema.textoSuave)
-                                .lineLimit(1)
-                        }
-
-                        if let costo = paso.costoUSD {
-                            Text("≈$\(String(format: "%.6f", costo))")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(Tema.textoSuave)
-                        }
+                HStack(spacing: 8) {
+                    if let duracion {
+                        Text(String(format: "%.1f s", duracion))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(Tema.textoSuave)
                     }
-                    .accessibilityIdentifier("fase-paso-tarea")
-                }
 
-                if let resumen = paso.resultadoResumido() {
-                    Text(
-                        paso.estado == .denegado
-                            ? "Denegado por el dueño: no se escribió nada."
-                            : resumen
-                    )
-                    .font(.caption)
-                    .foregroundStyle(Tema.textoSuave)
-                    .fixedSize(horizontal: false, vertical: true)
+                    if let costo {
+                        Text(costoSellado(costo))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(Tema.textoSuave)
+                    }
                 }
             }
         }
+        .padding(.vertical, 2)
+        .accessibilityIdentifier("fila-paso-tarea")
     }
 
-    private func enlacesDe(_ tarea: Tarea) -> [Paso] {
-        tarea.pasos.filter { paso in
-            guard let url = paso.url else { return false }
-            return !url.isEmpty
+    private func errorEnLinea(_ texto: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            Text(texto)
+                .font(.footnote)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityIdentifier("error-en-linea-tarea")
+    }
+
+    private func resultadoFinal(_ texto: String, tarea: Tarea) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Resultado")
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer(minLength: 0)
+
+                if tarea.verificadoPorCruce {
+                    Label("Verificado por cruce", systemImage: "checkmark.seal.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("verificado-por-cruce")
+                }
+            }
+
+            Text(texto)
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if tarea.verificadoPorCruce {
+                Text(
+                    "Verificación cruzada entre modelos: contraste crítico, "
+                        + "no pruebas ejecutadas."
+                )
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+        .accessibilityIdentifier("resultado-final-tarea")
+    }
+
+    /// Indicador de E1: el plan se esta generando. Es estado transitorio y no
+    /// un elemento del catalogo; no entra en la traza.
+    private var filaPlanificando: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+
+            Text("Generando el plan…")
+                .font(.footnote)
+                .foregroundStyle(Tema.textoSuave)
+        }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("generando-plan")
+    }
+
+    // MARK: - Acciones
+
+    private func enviar(_ tarea: Tarea) {
+        let texto = estado.borrador
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !texto.isEmpty else { return }
+        estado.borrador = ""
+        Task {
+            await estado.enviarMensajeTarea(id: tarea.id, texto: texto)
         }
     }
 
-    private func iconoDe(_ estado: EstadoPaso) -> String {
+    private func sincronizar() {
+        guard let tarea else { return }
+        hilo.reconstruir(
+            con: tarea,
+            proyeccion: estado.elementosVisiblesDeTarea(tarea)
+        )
+    }
+
+    // MARK: - Presentacion
+
+    private func costoSellado(_ valor: Decimal) -> String {
+        let numero = NSDecimalNumber(decimal: valor).doubleValue
+        return String(format: "≈$%.6f", numero)
+    }
+
+    private func colorDeCabecera(
+        _ estado: ElementoTareaVisible.EstadoTarea
+    ) -> Color {
+        switch estado {
+        case .nuevaTarea: return Tema.textoSuave
+        case .planificando: return Tema.acento
+        case .planPropuesto: return .orange
+        case .esperandoAprobacion: return .orange
+        case .enCurso: return Tema.acento
+        case .detenida: return .yellow
+        case .error: return .red
+        case .completada: return .green
+        }
+    }
+
+    private func iconoDePaso(
+        _ estado: ElementoTareaVisible.EstadoPaso
+    ) -> String {
         switch estado {
         case .pendiente: return "circle"
         case .enCurso: return "arrow.triangle.2.circlepath"
-        case .terminado: return "checkmark.circle.fill"
-        case .fallido: return "xmark.octagon.fill"
+        case .esperandoAprobacion: return "hand.raised.fill"
+        case .completado: return "checkmark.circle.fill"
         case .denegado: return "hand.raised.fill"
+        case .detenido: return "stop.circle"
+        case .error: return "xmark.octagon.fill"
         }
     }
 
-    private func colorDe(_ estado: EstadoPaso) -> Color {
+    private func colorDePaso(
+        _ estado: ElementoTareaVisible.EstadoPaso
+    ) -> Color {
         switch estado {
         case .pendiente: return Tema.textoSuave
         case .enCurso: return Tema.acento
-        case .terminado: return .green
-        case .fallido: return .red
+        case .esperandoAprobacion: return .orange
+        case .completado: return .green
         case .denegado: return .orange
+        case .detenido: return .yellow
+        case .error: return .red
         }
-    }
-
-    /// Accion principal segun el estado. Empezar ya ejecuta (TASK.3).
-    @ViewBuilder
-    private func acciones(_ tarea: Tarea) -> some View {
-        switch tarea.estado {
-        case .borrador, .esperandoInicio:
-            Button {
-                estado.empezarTarea(id: tarea.id)
-            } label: {
-                Label("Empezar", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(tarea.plan == nil || estado.generandoPlan)
-            .accessibilityIdentifier("empezar-tarea")
-
-            if tarea.plan == nil {
-                Text("Genera el plan antes de empezar.")
-                    .font(.caption)
-                    .foregroundStyle(Tema.textoSuave)
-            }
-
-        case .enCurso:
-            VStack(alignment: .leading, spacing: 10) {
-                Label("En curso", systemImage: "play.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Tema.acento)
-
-                Text(
-                    tarea.pasos.isEmpty
-                        ? "La ejecución acaba de empezar. Los pasos se verán aquí."
-                        : "\(progresoDe(tarea))."
-                )
-                .font(.footnote)
-                .foregroundStyle(Tema.textoSuave)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Button(role: .destructive) {
-                    estado.detenerTarea(id: tarea.id)
-                } label: {
-                    Label("Detener", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("detener-tarea")
-            }
-            .accessibilityIdentifier("tarea-en-curso")
-
-        case .interrumpida:
-            VStack(alignment: .leading, spacing: 10) {
-                Text("La app se cerró con la tarea en curso. Por eso quedó Interrumpida.")
-                    .font(.footnote)
-                    .foregroundStyle(Tema.textoSuave)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                botonReanudar(tarea)
-            }
-
-        case .detenida:
-            VStack(alignment: .leading, spacing: 10) {
-                Text("La tarea está detenida. Los pasos anteriores siguen intactos.")
-                    .font(.footnote)
-                    .foregroundStyle(Tema.textoSuave)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                botonReanudar(tarea)
-            }
-
-        case .completada:
-            Text("La tarea terminó.")
-                .font(.footnote)
-                .foregroundStyle(Tema.textoSuave)
-
-        case .fallida:
-            Text("La tarea falló.")
-                .font(.footnote)
-                .foregroundStyle(Tema.textoSuave)
-        }
-    }
-
-    private func botonReanudar(_ tarea: Tarea) -> some View {
-        Button {
-            estado.reanudarTarea(id: tarea.id)
-        } label: {
-            Label("Reanudar", systemImage: "play.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(tarea.plan == nil)
-        .accessibilityIdentifier("reanudar-tarea")
-    }
-
-    /// Frontera honesta de iOS, visible siempre en la pantalla de la tarea.
-    private var fronteraIOs: some View {
-        Text("Si cierras la app, la tarea se marca Interrumpida: iOS no ejecuta en segundo plano.")
-            .font(.footnote)
-            .foregroundStyle(Tema.textoSuave)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Tema.superficie)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .accessibilityIdentifier("frontera-ios-tarea")
-    }
-
-    private var instruccionLimpia: String {
-        instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func progresoDe(_ tarea: Tarea) -> String {
-        if let progreso = tarea.progreso {
-            return "\(progreso.terminados)/\(progreso.total) pasos"
-        }
-        if let plan = tarea.plan {
-            return "\(plan.pasos.count) pasos planificados"
-        }
-        return "Sin plan todavía"
-    }
-
-    private func colorDe(_ estado: EstadoTarea) -> Color {
-        switch estado {
-        case .borrador:
-            return Tema.textoSuave
-        case .esperandoInicio:
-            return .orange
-        case .enCurso:
-            return Tema.acento
-        case .detenida:
-            return .yellow
-        case .interrumpida:
-            return .orange
-        case .completada:
-            return .green
-        case .fallida:
-            return .red
-        }
-    }
-
-    private func cargarSiHaceFalta() {
-        guard !cargada, let tarea else { return }
-        instruccion = tarea.instruccion
-        cargada = true
-    }
-
-    /// Dispara el plan automatico solo en el caso plan-primero.
-    ///
-    /// No reintenta en cada redibujado: `.task(id:)` corre una vez por tarea.
-    /// Si falla, el dueno tiene el boton Regenerar plan.
-    private func generarPlanSiHaceFalta() async {
-        guard let tarea,
-              tarea.estado == .borrador,
-              tarea.plan == nil,
-              !tarea.instruccion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !estado.generandoPlan
-        else {
-            return
-        }
-        await estado.generarPlan(id: tarea.id)
     }
 }

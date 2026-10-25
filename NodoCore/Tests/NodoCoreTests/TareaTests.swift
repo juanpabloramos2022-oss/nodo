@@ -94,6 +94,37 @@ final class TareaTests: XCTestCase {
         XCTAssertEqual(tarea.titulo, "Sin ejecutar")
     }
 
+    /// B3-A: un archivo escrito antes del hilo no trae turnos, ni error, ni
+    /// version de plan. Se lee con los defaults y no pierde la tarea.
+    func testUnArchivoViejoSeLeeConTurnosVaciosYVersionUno() throws {
+        let json = """
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "instruccion": "Tarea vieja",
+          "estado": "esperandoInicio",
+          "plan": {
+            "pasos": [{"orden": 1, "texto": "Uno"}],
+            "texto": "1. Uno"
+          },
+          "fechaCreacion": "2026-01-01T00:00:00Z",
+          "fechaActualizacion": "2026-01-01T00:00:00Z"
+        }
+        """
+        let decodificador = JSONDecoder()
+        decodificador.dateDecodingStrategy = .iso8601
+        let tarea = try decodificador.decode(
+            Tarea.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(tarea.instruccion, "Tarea vieja")
+        XCTAssertEqual(tarea.turnos, [])
+        XCTAssertNil(tarea.ultimoError)
+        XCTAssertEqual(tarea.versionPlan, 0)
+        XCTAssertEqual(tarea.plan?.version, 1)
+        XCTAssertEqual(tarea.instruccionParaPlan, "Tarea vieja")
+    }
+
     func testElLibroConservaHerramientaResultadoAprobacionYCosto() throws {
         let tarea = Tarea(
             instruccion: "Guardar un dato",

@@ -1533,6 +1533,146 @@ final class TrazaVistaTest: XCTestCase {
         )
     }
 
+    // MARK: - (6) Traza de la partida B3-A (hilo de Tarea, 2 turnos)
+
+    /// Guion literal de B3-A: crear tarea, enviar el encargo y, antes de
+    /// [Empezar], enviar un ajuste.
+    ///
+    /// La traza tiene que dejar SOLO etiquetas del catalogo cerrado, en el
+    /// orden del contrato: encargo (UserBubble) -> tarjeta de plan v1
+    /// (PlanCard) -> turno de ajuste (UserBubble) -> tarjeta v2 (PlanCard).
+    /// Cero `MemoryLineNotice`, cero UUIDs, cero resultados de herramienta y
+    /// cero elementos de formulario. No se toca [Empezar]: la ejecucion es el
+    /// humo de B3-B.
+    private static let encargoB3A = "Consulta https://example.com y proponé "
+        + "guardar en Memoria una frase sobre ese dominio"
+    private static let ajusteB3A = "Que la frase sea corta"
+
+    func testElGuionB3AProduceLaTrazaDelHiloDeTarea() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        let tarea = arnes.estado.crearTarea()
+        let hilo = HiloTareaViewModel()
+
+        func capturar() {
+            guard let actual = arnes.estado.tareas.first(
+                where: { $0.id == tarea.id }
+            ) else { return }
+            hilo.reconstruir(
+                con: actual,
+                proyeccion: arnes.estado.elementosVisiblesDeTarea(actual)
+            )
+        }
+
+        // E0: tarea nueva, hilo vacio.
+        capturar()
+
+        // Turno 1: el encargo entra como burbuja; la cabecera pasa a
+        // Planificando. El plan se pide sin herramientas.
+        arnes.transporte.guionar(
+            texto: "1. Consultar https://example.com\n"
+                + "2. Proponer guardar en Memoria una frase sobre el dominio"
+        )
+        XCTAssertTrue(
+            arnes.estado.registrarMensajeTarea(
+                id: tarea.id,
+                texto: Self.encargoB3A
+            )
+        )
+        capturar()
+
+        await arnes.estado.solicitarPlanTarea(id: tarea.id)
+        capturar()
+
+        // Turno 2: el ajuste. Se retiene la red para capturar el estado E1
+        // (plan viejo invalidado, turno ya en el hilo) antes de la respuesta.
+        arnes.transporte.retenerStream(en: 2)
+        arnes.transporte.guionar(
+            texto: "1. Consultar https://example.com\n"
+                + "2. Proponer una frase corta sobre el dominio"
+        )
+        XCTAssertTrue(
+            arnes.estado.registrarMensajeTarea(
+                id: tarea.id,
+                texto: Self.ajusteB3A
+            )
+        )
+        let peticion = Task {
+            await arnes.estado.solicitarPlanTarea(id: tarea.id)
+        }
+        try await arnes.esperar(
+            {
+                guard let actual = arnes.estado.tareas.first(
+                    where: { $0.id == tarea.id }
+                ) else { return false }
+                return actual.plan == nil
+                    && arnes.estado.idTareaPlanificando == tarea.id
+            },
+            mensaje: "El plan anterior no se invalidó antes de pedir el nuevo"
+        )
+        capturar()
+        arnes.transporte.liberarStreamRetenido()
+        await peticion.value
+        capturar()
+
+        let contenido = hilo.trazaTexto
+        let ruta = try Self.rutaDeTraza("ui_transcript_B3-A.txt")
+        try TrazaVista.escribir(hilo.traza, a: ruta)
+
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            [
+                "TaskHeader", "TaskHeader", "UserBubble",
+                "TaskHeader", "PlanCard",
+                "TaskHeader", "UserBubble",
+                "TaskHeader", "PlanCard"
+            ],
+            "La traza del hilo sigue el guion: encargo, plan v1, ajuste, plan v2"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "PlanCard"),
+            2,
+            "El ajuste produce una tarjeta nueva (v1 y v2 visibles en el guion)"
+        )
+        XCTAssertTrue(contenido.contains("version: 1"), contenido)
+        XCTAssertTrue(contenido.contains("version: 2"), contenido)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+
+        // El plan no ejecuto nada: cero libro y payload sin herramientas.
+        let actual = try XCTUnwrap(
+            arnes.estado.tareas.first { $0.id == tarea.id }
+        )
+        XCTAssertTrue(actual.pasos.isEmpty)
+        XCTAssertEqual(arnes.transporte.peticionesRegistradas.count, 2)
+        for peticion in arnes.transporte.peticionesRegistradas {
+            let cuerpo = try XCTUnwrap(peticion.cuerpo)
+            let json = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: cuerpo) as? [String: Any]
+            )
+            XCTAssertNil(json["tools"])
+        }
+
+        XCTAssertFalse(contenido.contains("ToolRawOutput"))
+        XCTAssertFalse(contenido.contains("HERRAMIENTA"))
+        XCTAssertFalse(contenido.contains("TextEditor"))
+        XCTAssertFalse(contenido.contains("instruccion-tarea"))
+        XCTAssertNil(
+            contenido.range(
+                of: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                    + "[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+                options: .regularExpression
+            ),
+            "La traza del hilo no puede llevar UUIDs"
+        )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     // MARK: - Utilidades
 
     /// Ruta de archivo de humo si la coordinacion definio `NODO_HUMOS_DIR`.

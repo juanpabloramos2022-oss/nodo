@@ -168,6 +168,12 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var tareas: [Tarea] = []
     /// True mientras se pide el plan de una tarea al modelo.
     @Published private(set) var generandoPlan = false
+    /// Tarea cuyo plan se esta generando ahora mismo (B3-A).
+    ///
+    /// `generandoPlan` dice si hay una peticion en vuelo; este id dice DE QUE
+    /// tarea es, para que la cabecera fija del hilo muestre «Planificando» solo
+    /// en la tarea correcta y el composer sepa que el envio esta en pausa.
+    @Published private(set) var idTareaPlanificando: UUID?
     /// True mientras /plan pide el plan dentro de un chat.
     @Published private(set) var generandoPlanChat = false
     /// Error propio de la pantalla de Tareas, separado del error del chat.
@@ -1946,11 +1952,18 @@ final class EstadoApp: ObservableObject {
     @discardableResult
     func crearTarea(instruccion: String = "", conversacionID: UUID? = nil) -> Tarea {
         let limpia = instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tarea = Tarea(
+        var tarea = Tarea(
             instruccion: limpia,
             conversacionID: conversacionID,
             proveedorID: config.proveedorSeleccionado?.id
         )
+        // El encargo es el primer turno del hilo (B3-A): una tarea creada con
+        // instruccion ya muestra su burbuja al abrir, sin un campo aparte.
+        if !limpia.isEmpty {
+            tarea.turnos = [
+                TurnoTarea(rol: .usuario, texto: limpia)
+            ]
+        }
         guardarTarea(tarea)
         return tarea
     }
@@ -2013,7 +2026,14 @@ final class EstadoApp: ObservableObject {
     /// - Parameters:
     ///   - id: tarea a planificar.
     ///   - instruccion: si viene, sustituye a la guardada antes de pedir el plan.
-    func generarPlan(id: UUID, instruccion: String? = nil) async {
+    ///   - instruccionVisible: texto que queda como `instruccion` de la tarea
+    ///     cuando el prompt del plan es una composicion de turnos (B3-A). nil
+    ///     conserva el comportamiento historico: se guarda `instruccion`.
+    func generarPlan(
+        id: UUID,
+        instruccion: String? = nil,
+        instruccionVisible: String? = nil
+    ) async {
         guard !generandoPlan else { return }
         guard let indice = tareas.firstIndex(where: { $0.id == id }) else { return }
 
@@ -2036,9 +2056,17 @@ final class EstadoApp: ObservableObject {
             return
         }
 
+        // La version del plan se captura ANTES de invalidarlo: cada plan nuevo
+        // es la version anterior + 1 (B3-A). El contador vive en la tarea para
+        // que una regeneracion fallida no lo reinicie a 1.
+        let versionAnterior = max(
+            tareas[indice].versionPlan,
+            tareas[indice].plan?.version ?? 0
+        )
+
         // La instruccion editada se guarda antes de salir a la red. Si la
         // llamada falla, el dueno no pierde lo que escribio.
-        tareas[indice].instruccion = cruda
+        tareas[indice].instruccion = instruccionVisible ?? cruda
         tareas[indice].plan = nil
         tareas[indice].estado = .borrador
         tareas[indice].fechaActualizacion = Date()
@@ -2049,12 +2077,21 @@ final class EstadoApp: ObservableObject {
         guard let tareaParaPlan = tareas.first(where: { $0.id == id }),
               let (proveedor, clave) = proveedorYClaveParaTarea(tareaParaPlan)
         else {
+            // Un proveedor ausente o sin clave tambien es un error visible del
+            // hilo (E7), no solo un aviso global que se pierde al reabrir.
+            if let mensaje = errorTarea {
+                anotarErrorDeTarea(id: id, mensaje: mensaje)
+            }
             return
         }
 
         generandoPlan = true
+        idTareaPlanificando = id
         errorTarea = nil
-        defer { generandoPlan = false }
+        defer {
+            generandoPlan = false
+            idTareaPlanificando = nil
+        }
 
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
@@ -2085,14 +2122,18 @@ final class EstadoApp: ObservableObject {
                 costoDeLaLlamada = mensaje.costoSelladoUSD
             }
 
-            let plan = PlanTarea.desde(
+            var plan = PlanTarea.desde(
                 texto: respuesta.texto,
                 proveedorID: proveedor.id
             )
             guard !plan.pasos.isEmpty else {
-                errorTarea = "El modelo devolvió un plan vacío. Inténtalo de nuevo."
+                anotarErrorDeTarea(
+                    id: id,
+                    mensaje: "El modelo devolvió un plan vacío. Inténtalo de nuevo."
+                )
                 return
             }
+            plan.version = versionAnterior + 1
 
             // La tarea pudo borrarse o empezar mientras llegaba la respuesta:
             // en ese caso el plan ya no se publica.
@@ -2101,10 +2142,12 @@ final class EstadoApp: ObservableObject {
             else {
                 return
             }
-            tareas[actual].instruccion = cruda
+            tareas[actual].instruccion = instruccionVisible ?? cruda
             tareas[actual].plan = plan
+            tareas[actual].versionPlan = plan.version
             tareas[actual].estado = .esperandoInicio
             tareas[actual].proveedorID = proveedor.id
+            tareas[actual].ultimoError = nil
             if let costoDeLaLlamada {
                 tareas[actual].costoAcumuladoUSD =
                     (tareas[actual].costoAcumuladoUSD ?? 0) + costoDeLaLlamada
@@ -2116,7 +2159,111 @@ final class EstadoApp: ObservableObject {
         } catch {
             let detalle = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription
-            errorTarea = "No se pudo generar el plan: \(detalle)"
+            anotarErrorDeTarea(
+                id: id,
+                mensaje: "No se pudo generar el plan: \(detalle)"
+            )
+        }
+    }
+
+    // MARK: - Hilo conversacional de Tarea (B3-A)
+
+    /// Registra un mensaje del dueno como turno del hilo de la tarea.
+    ///
+    /// Es la mitad sincrona del envio: persiste el turno y deja la tarea lista
+    /// para pedir el plan. El primer mensaje de una tarea vacia ES el encargo y
+    /// alimenta `instruccion` (fuente del motor y del titulo); los siguientes
+    /// son ajustes. Un mensaje posterior a la ejecucion solo queda como turno:
+    /// no reabre pasos cerrados ni reescribe el plan aprobado.
+    @discardableResult
+    func registrarMensajeTarea(id: UUID, texto: String) -> Bool {
+        guard !generandoPlan else { return false }
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty else { return false }
+        guard tareas[indice].estado != .enCurso else {
+            errorTarea = "La tarea está en curso: detenla antes de escribir."
+            return false
+        }
+
+        var tarea = tareas[indice]
+        let posterior = !tarea.pasos.isEmpty
+            || tarea.estado.esFinal
+            || tarea.estado == .detenida
+        tarea.turnos.append(
+            TurnoTarea(
+                rol: .usuario,
+                texto: limpio,
+                despuesDeEjecutar: posterior
+            )
+        )
+        if tarea.turnos.count == 1 {
+            tarea.instruccion = limpio
+        }
+        tarea.ultimoError = nil
+        tarea.fechaActualizacion = Date()
+        guardarTarea(tarea)
+
+        // La cabecera muestra «Planificando» desde el instante en que el
+        // encargo entra al hilo, no solo mientras la red esta abierta.
+        if tarea.admiteEdicion {
+            idTareaPlanificando = id
+        }
+        return true
+    }
+
+    /// Pide el plan de la tarea a partir de sus turnos de planificacion.
+    ///
+    /// El prompt es el encargo mas una linea «Ajuste: …» por cada mensaje
+    /// posterior. `instruccion` visible se queda en el encargo para que el
+    /// titulo de la tarea no cambie con cada ajuste.
+    func solicitarPlanTarea(id: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }) else { return }
+        guard tarea.admiteEdicion else {
+            idTareaPlanificando = nil
+            return
+        }
+        await generarPlan(
+            id: id,
+            instruccion: tarea.instruccionParaPlan,
+            instruccionVisible: tarea.instruccion
+        )
+        // Si generarPlan sale antes de su propio defer (falta de proveedor,
+        // plan vacio), la cabecera no puede quedarse en «Planificando».
+        if idTareaPlanificando == id {
+            idTareaPlanificando = nil
+        }
+    }
+
+    /// Envio completo del composer de Tarea: registra el turno y pide el plan.
+    func enviarMensajeTarea(id: UUID, texto: String) async {
+        guard registrarMensajeTarea(id: id, texto: texto) else { return }
+        await solicitarPlanTarea(id: id)
+    }
+
+    /// Accion [Ajustar / Regenerar] de la tarjeta: mismo efecto sin mensaje.
+    func regenerarPlanTarea(id: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }) else { return }
+        guard tarea.admiteEdicion else { return }
+        idTareaPlanificando = id
+        await generarPlan(
+            id: id,
+            instruccion: tarea.instruccionParaPlan,
+            instruccionVisible: tarea.instruccion
+        )
+        if idTareaPlanificando == id {
+            idTareaPlanificando = nil
+        }
+    }
+
+    /// Deja el error en la tarea para que el hilo lo muestre en su punto (E7)
+    /// y no como una alerta que tape la conversacion.
+    private func anotarErrorDeTarea(id: UUID, mensaje: String) {
+        errorTarea = mensaje
+        modificarTarea(id: id) { tarea in
+            tarea.ultimoError = mensaje
         }
     }
 
@@ -2149,6 +2296,7 @@ final class EstadoApp: ObservableObject {
         // vieja marcada como verificada.
         tarea.resultado = nil
         tarea.verificadoPorCruce = false
+        tarea.ultimoError = nil
         guardarTarea(tarea)
         errorTarea = nil
         lanzarEjecucionTarea(id: id)
@@ -2422,6 +2570,11 @@ final class EstadoApp: ObservableObject {
             } else {
                 modificarTarea(id: id) { tarea in
                     tarea.estado = .completada
+                    // E8: el resultado final es el ultimo elemento del hilo.
+                    // Hasta B3-A la tarea normal lo descartaba y solo /boost lo
+                    // guardaba; la presentacion no puede inventarlo.
+                    tarea.resultado = resultado.texto
+                    tarea.ultimoError = nil
                 }
             }
         } catch is CancellationError {
@@ -3188,6 +3341,7 @@ final class EstadoApp: ObservableObject {
     private func finalizarTareaConError(id: UUID, mensaje: String) {
         modificarTarea(id: id) { tarea in
             tarea.estado = .fallida
+            tarea.ultimoError = mensaje
             tarea.pasos.append(
                 Paso(
                     descripcion: "Error: \(mensaje)",
@@ -4285,9 +4439,10 @@ final class EstadoApp: ObservableObject {
         )
 
         if let plan = tarea.plan {
-            // `PlanTarea` aun no guarda un contador de versiones. La version
-            // inicial es 1; el bloque de Tarea la incrementara cuando regenere.
-            resultado.append(.tarjetaPlan(pasos: plan.pasos, version: 1))
+            // La version vive en el plan (B3-A): el plan inicial es 1 y cada
+            // ajuste o regeneracion la sube. Un plan viejo sin campo se lee
+            // como 1 por la decodificacion tolerante de NodoCore.
+            resultado.append(.tarjetaPlan(pasos: plan.pasos, version: plan.version))
         }
 
         for (indice, paso) in tarea.pasos.enumerated() {
@@ -4336,20 +4491,28 @@ final class EstadoApp: ObservableObject {
     }
 
     /// Estado visible de la cabecera de una tarea.
-    private func estadoVisibleDeTarea(
-        _ tarea: Tarea
+    ///
+    /// `planificando` y `aprobacionPendiente` existen para que el test de los
+    /// 8 estados (B3-A) pueda fijar las dos condiciones que en produccion son
+    /// transitorias, sin tocar el estado real de la app.
+    func estadoVisibleDeTarea(
+        _ tarea: Tarea,
+        planificando: Bool? = nil,
+        aprobacionPendiente: Bool? = nil
     ) -> ElementoTareaVisible.EstadoTarea {
+        let estaPlanificando = planificando ?? (idTareaPlanificando == tarea.id)
         switch tarea.estado {
         case .borrador:
-            return generandoPlan ? .planificando : .nuevaTarea
+            return estaPlanificando ? .planificando : .nuevaTarea
 
         case .esperandoInicio:
             let tienePlan = !(tarea.plan?.pasos.isEmpty ?? true)
             return tienePlan ? .planPropuesto : .nuevaTarea
 
         case .enCurso:
-            let esperaAprobacion = solicitudAprobacion?.tareaID == tarea.id
-                || tarea.pasos.contains { $0.aprobacion == .pendiente }
+            let esperaAprobacion = aprobacionPendiente
+                ?? (solicitudAprobacion?.tareaID == tarea.id
+                    || tarea.pasos.contains { $0.aprobacion == .pendiente })
             return esperaAprobacion ? .esperandoAprobacion : .enCurso
 
         case .detenida, .interrumpida:

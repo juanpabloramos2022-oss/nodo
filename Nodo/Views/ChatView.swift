@@ -867,73 +867,24 @@ struct ChatView: View {
     }
 
     private var barraDeEntrada: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField(
-                placeholderCaja,
-                text: enlaceBorrador,
-                axis: .vertical
-            )
-            .lineLimit(1...5)
-            .focused($escribiendo)
-            .disabled(estado.compactando || estado.generandoPlanChat)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Tema.superficie)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .foregroundStyle(.white)
-            .accessibilityIdentifier("caja-mensaje")
-
-            // Micrófono a la izquierda del botón Enviar. Rojo mientras dicta.
-            Button {
-                Task { await estado.alternarDictado() }
-            } label: {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(estado.dictando ? Color.red : Tema.superficieAlta)
-                    .clipShape(Circle())
-            }
-            .disabled(estado.compactando || estado.enviando || estado.generandoPlanChat)
-            .accessibilityLabel(estado.dictando ? "Detener dictado" : "Dictar")
-            .accessibilityIdentifier("boton-dictado")
-
-            Button(action: accion) {
-                Image(systemName: estado.enviando ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(botonActivo ? Tema.acento : Tema.superficieAlta)
-                    .clipShape(Circle())
-            }
-            .disabled(!botonActivo)
-            .accessibilityLabel(estado.enviando ? "Detener" : "Enviar")
-            .accessibilityIdentifier("enviar-mensaje")
-        }
-        .padding(.horizontal, Tema.margen)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-        .background(Tema.fondo)
-    }
-
-    private var botonActivo: Bool {
-        guard !estado.compactando, !estado.generandoPlanChat else { return false }
-        return estado.enviando
-            || !estado.borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func accion() {
-        if estado.enviando {
-            estado.cancelar()
-            return
-        }
-
-        // Tocar Enviar tambien termina el dictado: el texto parcial ya esta en
-        // la caja y se envia tal cual.
-        if estado.dictando {
-            estado.detenerDictado()
-        }
-        estado.enviarTextoActual()
+        ComposerMensaje(
+            texto: enlaceBorrador,
+            placeholder: placeholderCaja,
+            deshabilitado: estado.compactando || estado.generandoPlanChat,
+            enviando: estado.enviando,
+            dictando: estado.dictando,
+            alEnviar: {
+                // Tocar Enviar tambien termina el dictado: el texto parcial ya
+                // esta en la caja y se envia tal cual.
+                if estado.dictando {
+                    estado.detenerDictado()
+                }
+                estado.enviarTextoActual()
+            },
+            alDetener: { estado.cancelar() },
+            alDictar: { Task { await estado.alternarDictado() } },
+            enfocado: $escribiendo
+        )
     }
 
     // MARK: - Dictado
