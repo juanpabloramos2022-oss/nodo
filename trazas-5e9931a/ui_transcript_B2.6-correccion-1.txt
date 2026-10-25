@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Me mudé el mes pasado: ahora mi ciudad de prueba es Medellín")
+[t=0.0s] MemoryLineNotice(text: "Memoria actualizada: mi ciudad de prueba es Medellín (me mudé allí el mes pasado)", hasUndo: true)
+[t=0.0s] AssistantBubble("Corregido.")
+  [t=0.0s] TextSegment("Corregido.")

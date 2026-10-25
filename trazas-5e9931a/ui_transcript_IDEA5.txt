@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("¿Cuánto llevo gastado en este dispositivo?")
+[t=0.0s] AssistantBubble("Tu gasto sellado local está en Mi Contexto, sección Gasto.")
+  [t=0.0s] TextSegment("Tu gasto sellado local está en Mi Contexto, sección Gasto.")

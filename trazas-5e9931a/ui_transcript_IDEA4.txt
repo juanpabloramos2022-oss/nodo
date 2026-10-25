@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Explícame en una frase qué es un sello de costo.")
+[t=0.0s] AssistantBubble("Un sello de costo es el importe que quedó cerrado en el mensaje cuando se recibió la respuesta.")
+  [t=0.0s] TextSegment("Un sello de costo es el importe que quedó cerrado en el mensaje cuando se recibió la respuesta.")
