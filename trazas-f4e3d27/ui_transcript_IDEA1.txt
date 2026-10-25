@@ -1,0 +1,5 @@
+[t=0.0s] UserBubble("Explícame qué hace esta función y muéstrame su código.")
+[t=0.0s] AssistantBubble("La función recibe dos números enteros, los suma y devuelve el resultado.\nfunc sumar(_ a: Int, _ b: Int) -> Int { a + b }\nEl bloque anterior es la implementación completa; el texto que sigue es prosa normal.")
+  [t=0.0s] TextSegment("La función recibe dos números enteros, los suma y devuelve el resultado.")
+  [t=0.0s] CodeBlock(lenguaje: "swift", textoCrudo: "func sumar(_ a: Int, _ b: Int) -> Int { a + b }")
+  [t=0.0s] TextSegment("El bloque anterior es la implementación completa; el texto que sigue es prosa normal.")
