@@ -360,22 +360,20 @@ final class TopeMemoriaAppTests: XCTestCase {
         return try respaldo.json()
     }
 
-    /// Ruta de la semilla real: `NODO_SEMILLAS_DIR` o `~/workspace/nodo/semillas`.
+    /// Ruta de la semilla real, si la mesa la expone con `NODO_SEMILLAS_DIR`.
     ///
-    /// En CI no existe y la prueba usa el respaldo construido por el
-    /// exportador; en la mesa del lead, si las semillas están, se importan los
-    /// archivos reales.
+    /// En iOS no hay acceso al home del sistema (`homeDirectoryForCurrentUser`
+    /// no existe en el SDK), así que la ruta se recibe por entorno y nunca se
+    /// adivina. Sin la variable, la prueba construye el respaldo con el mismo
+    /// exportador de la app: el formato es idéntico aunque el archivo no esté.
     private func rutaDeSemilla(_ nombre: String) -> URL? {
-        let base: URL
-        if let directorio = ProcessInfo.processInfo.environment[
+        guard let directorio = ProcessInfo.processInfo.environment[
             "NODO_SEMILLAS_DIR"
-        ], !directorio.isEmpty {
-            base = URL(fileURLWithPath: directorio, isDirectory: true)
-        } else {
-            base = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("workspace/nodo/semillas", isDirectory: true)
+        ], !directorio.isEmpty else {
+            return nil
         }
-        let ruta = base.appendingPathComponent(nombre)
+        let ruta = URL(fileURLWithPath: directorio, isDirectory: true)
+            .appendingPathComponent(nombre)
         return FileManager.default.fileExists(atPath: ruta.path) ? ruta : nil
     }
 
