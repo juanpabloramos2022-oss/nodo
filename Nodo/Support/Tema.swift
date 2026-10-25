@@ -164,11 +164,14 @@ private struct ContenidoAsistente: View {
     }
 }
 
-/// Pie de una respuesta: consumo, costo, regenerar y copiar, en una sola fila
-/// pegada a su burbuja (SPEC §3.3). Se pinta en cada respuesta con consumo;
-/// `puedeRegenerar` solo es true en la ultima.
+/// Pie de una respuesta: consumo, costo, lectura en voz alta, regenerar y
+/// copiar, en una sola fila pegada a su burbuja (SPEC §3.3).
+///
+/// Se pinta en TODA respuesta terminada del asistente. Sin consumo medido solo
+/// se oculta el texto de consumo; copiar y [Escuchar] siguen disponibles, y
+/// regenerar sigue exigiendo `puedeRegenerar` (que ya requiere uso).
 struct PieRespuesta: View {
-    let uso: UsoTokens
+    let uso: UsoTokens?
     let costo: Double?
     let textoParaCopiar: String
     let puedeRegenerar: Bool
@@ -176,16 +179,23 @@ struct PieRespuesta: View {
     let nombreDeProveedor: (ProviderConfig) -> String
     let alRegenerar: () -> Void
     let alRegenerarCon: (ProviderConfig) -> Void
+    /// Estado del control de lectura de ESTA burbuja (IDEA1).
+    let estadoLectura: EstadoLectura
+    let alAlternarLectura: () -> Void
+    let alDetenerLectura: () -> Void
 
     init(
-        uso: UsoTokens,
+        uso: UsoTokens?,
         costo: Double?,
         textoParaCopiar: String,
         puedeRegenerar: Bool,
         otrosProveedores: [ProviderConfig],
         nombreDeProveedor: @escaping (ProviderConfig) -> String,
         alRegenerar: @escaping () -> Void,
-        alRegenerarCon: @escaping (ProviderConfig) -> Void
+        alRegenerarCon: @escaping (ProviderConfig) -> Void,
+        estadoLectura: EstadoLectura = .inactivo,
+        alAlternarLectura: @escaping () -> Void = {},
+        alDetenerLectura: @escaping () -> Void = {}
     ) {
         self.uso = uso
         self.costo = costo
@@ -195,6 +205,9 @@ struct PieRespuesta: View {
         self.nombreDeProveedor = nombreDeProveedor
         self.alRegenerar = alRegenerar
         self.alRegenerarCon = alRegenerarCon
+        self.estadoLectura = estadoLectura
+        self.alAlternarLectura = alAlternarLectura
+        self.alDetenerLectura = alDetenerLectura
     }
 
     var body: some View {
@@ -204,17 +217,25 @@ struct PieRespuesta: View {
                 .frame(height: 1)
 
             HStack(spacing: 8) {
-                Text(textoConsumo)
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .layoutPriority(1)
+                if let uso {
+                    Text(textoConsumo(uso))
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
+                }
 
                 Spacer(minLength: 0)
 
                 if puedeRegenerar {
                     botonRegenerar
+                }
+
+                botonLectura
+
+                if estadoLectura.estaActivo {
+                    botonDetener
                 }
 
                 Button {
@@ -235,12 +256,72 @@ struct PieRespuesta: View {
         .accessibilityIdentifier("pie-respuesta")
     }
 
-    private var textoConsumo: String {
+    private func textoConsumo(_ uso: UsoTokens) -> String {
         var texto = "\(uso.entrada) de entrada · \(uso.salida) de salida"
         if let costo {
             texto += " · ≈$\(String(format: "%.4f", costo)) estimado"
         }
         return texto
+    }
+
+    // MARK: - Lectura en voz alta (IDEA1)
+
+    /// Icono del boton principal segun el estado de la lectura.
+    private var iconoLectura: String {
+        switch estadoLectura {
+        case .inactivo: return "speaker.wave.2"
+        case .leyendo: return "pause.fill"
+        case .pausado: return "play.fill"
+        }
+    }
+
+    /// Boton principal: capsula con icono y rotulo (Escuchar/Pausar/Reanudar).
+    ///
+    /// El rotulo es el mismo `EstadoLectura.rotulo` que prueban los tests de
+    /// estado: no hay una segunda lista de textos que se pueda desincronizar.
+    private var botonLectura: some View {
+        Button {
+            alAlternarLectura()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: iconoLectura)
+                    .font(.caption)
+
+                Text(estadoLectura.rotulo)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(
+                estadoLectura.estaActivo ? Tema.acento : Tema.textoSuave
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Tema.acento.opacity(estadoLectura.estaActivo ? 0.22 : 0.12)
+            )
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(estadoLectura.rotulo)
+        .accessibilityIdentifier("escuchar-respuesta")
+    }
+
+    /// Solo existe mientras hay lectura viva: corta de inmediato y vuelve a
+    /// [Escuchar].
+    private var botonDetener: some View {
+        Button {
+            alDetenerLectura()
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Detener lectura")
+        .accessibilityIdentifier("detener-lectura")
     }
 
     /// Toque corto = regenerar; pulsacion larga = elegir otro modelo.

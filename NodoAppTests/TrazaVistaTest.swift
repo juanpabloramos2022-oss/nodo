@@ -2333,6 +2333,148 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+    // MARK: - (9) Traza de la partida IDEA1 (lectura en voz alta)
+
+    /// Guion literal de IDEA1: prosa, un bloque de codigo y prosa.
+    ///
+    /// No hay JSON vivo nuevo: la idea es local y su humo es $0,00. El guion es
+    /// el mismo que usan los tests de estado de `LecturaEnVozAltaTests`, para
+    /// que la traza y la lectura hablen de la MISMA respuesta.
+    private static let promptIDEA1 =
+        "Explícame qué hace esta función y muéstrame su código."
+    private static let prosaIDEA1Antes =
+        "La función recibe dos números enteros, los suma y devuelve el resultado."
+    private static let prosaIDEA1Despues =
+        "El bloque anterior es la implementación completa; el texto que sigue "
+        + "es prosa normal."
+    private static let codigoIDEA1 =
+        "func sumar(_ a: Int, _ b: Int) -> Int { a + b }"
+
+    private static let respuestaIDEA1 = #"""
+    La función recibe dos números enteros, los suma y devuelve el resultado.
+
+    ```swift
+    func sumar(_ a: Int, _ b: Int) -> Int { a + b }
+    ```
+
+    El bloque anterior es la implementación completa; el texto que sigue es prosa normal.
+    """#
+
+    /// Traza de IDEA1: la lectura no gana ningun elemento de hilo.
+    ///
+    /// La proyeccion tiene que quedar en UserBubble + AssistantBubble con 2
+    /// TextSegment y 1 CodeBlock (0 MemoryLineNotice). Despues se toca
+    /// [Escuchar] sobre la respuesta y se archiva `lectura-IDEA1.txt` junto a
+    /// la traza con las locuciones en orden: prosa, anuncio y prosa.
+    func testElGuionIDEA1ProduceLaTrazaDeLectura() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.transporte.guionar(
+            texto: Self.respuestaIDEA1,
+            uso: UsoTokens(entrada: 1446, salida: 209)
+        )
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_IDEA1.txt")
+        let sesion = try SesionTraza(ruta: ruta)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        arnes.estado.enviar(Self.promptIDEA1)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "La lectura no anade ningun elemento al hilo"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 2)
+        XCTAssertEqual(Self.cuenta(contenido, "CodeBlock"), 1)
+        XCTAssertTrue(
+            contenido.contains(
+                "CodeBlock(lenguaje: \"swift\", textoCrudo: "
+                    + "\"\(Self.codigoIDEA1)\")"
+            ),
+            contenido
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            0,
+            "El turno no pide guardar en Memoria"
+        )
+        XCTAssertTrue(contenido.contains("UserBubble(\"\(Self.promptIDEA1)"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // [Escuchar] sobre la respuesta: el lector falso recibe las locuciones
+        // en orden y el texto hablado no lleva codigo ni cercas.
+        let mensaje = try XCTUnwrap(
+            arnes.estado.conversacion.mensajes.last { $0.rol == .asistente }
+        )
+        arnes.estado.alternarLectura(de: mensaje)
+        XCTAssertEqual(arnes.estado.estadoDeLectura(de: mensaje.id), .leyendo)
+        XCTAssertEqual(
+            arnes.lector.locuciones,
+            [
+                .texto(Self.prosaIDEA1Antes),
+                .anuncioCodigoOmitido,
+                .texto(Self.prosaIDEA1Despues)
+            ]
+        )
+
+        let hablado = LecturaEnVozAlta.textoHablado(
+            segmentos: SegmentoRespuesta.segmentos(de: mensaje.texto)
+        )
+        XCTAssertEqual(
+            hablado,
+            Self.prosaIDEA1Antes + Self.prosaIDEA1Despues
+        )
+        XCTAssertFalse(hablado.contains("func sumar"))
+        XCTAssertFalse(hablado.contains("```"))
+
+        // Registro de lectura junto a la traza: una linea por locucion.
+        let rutaLectura = ruta.deletingLastPathComponent()
+            .appendingPathComponent("lectura-IDEA1.txt")
+        try TrazaVista.escribir(
+            Self.lineasDeLectura(arnes.lector.locuciones),
+            a: rutaLectura
+        )
+        let lectura = try String(contentsOf: rutaLectura, encoding: .utf8)
+        XCTAssertTrue(
+            lectura.contains(LecturaEnVozAlta.anuncioCodigoOmitido),
+            lectura
+        )
+        XCTAssertFalse(lectura.contains("func sumar"), lectura)
+        XCTAssertFalse(lectura.contains("```"), lectura)
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Lineas del registro de lectura: una por locucion, en orden.
+    ///
+    /// El anuncio del codigo va como locucion PROPIA, no dentro del texto
+    /// hablado: esa es la invariante que tambien comprueban los tests de
+    /// estado.
+    private static func lineasDeLectura(
+        _ locuciones: [LocucionLectura]
+    ) -> [String] {
+        locuciones.enumerated().map { indice, locucion in
+            let numero = indice + 1
+            switch locucion {
+            case .texto(let texto):
+                return "\(numero). texto: \"\(TrazaVista.escapar(texto))\""
+            case .anuncioCodigoOmitido:
+                return "\(numero). anuncio: \""
+                    + TrazaVista.escapar(LecturaEnVozAlta.anuncioCodigoOmitido)
+                    + "\""
+            }
+        }
+    }
+
     /// Un turno de B4-COD: prompt literal, respuesta viva guionizada y traza.
     ///
     /// La proyeccion tiene que entregar DOS bloques independientes con su

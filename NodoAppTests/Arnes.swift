@@ -21,6 +21,12 @@ final class ArnesApp {
     let directorioStore: URL
     /// Almacen propio de tareas, junto al de conversaciones pero sin mezclarse.
     let directorioTareas: URL
+    /// Lector en voz alta guionizado (IDEA1).
+    ///
+    /// Se expone para que los tests comprueben llamadas, estados y locuciones
+    /// exactas. Por defecto NUNCA se construye `LectorAVSpeech`: en CI no se
+    /// toca el audio del simulador.
+    let lector: LectorGuionizado
     private let nombreSuite: String
 
     /// Proveedor activo de la configuracion sembrada.
@@ -36,7 +42,8 @@ final class ArnesApp {
 
     init(
         config: AppConfig = .inicial(),
-        dictado: SpeechRecognizing? = nil
+        dictado: SpeechRecognizing? = nil,
+        lector: LectorGuionizado? = nil
     ) throws {
         let sufijo = UUID().uuidString
         let nombreSuite = "com.nodo.ios.apptests.\(sufijo)"
@@ -63,6 +70,11 @@ final class ArnesApp {
         let llavero = LlaveroFalso()
         self.llavero = llavero
 
+        // Sin lector inyectado se usa el doble: un test jamas debe hacer sonar
+        // el sintetizador del simulador.
+        let lectorGuionizado = lector ?? LectorGuionizado()
+        self.lector = lectorGuionizado
+
         self.estado = EstadoApp(
             llavero: llavero,
             transporte: transporte,
@@ -72,7 +84,9 @@ final class ArnesApp {
             // El dictado inyectado entra de verdad al estado: sin este paso el
             // parametro se ignoraba y los tests de dictado no podian sustituir
             // el reconocedor real (hardware) por el doble.
-            dictado: dictado
+            dictado: dictado,
+            // Misma costura para la lectura en voz alta (IDEA1).
+            lector: lectorGuionizado
         )
         // El init normal arranca con `.inicial()` cuando la suite esta vacia;
         // se aplica la configuracion pedida por el test por la ruta publica,
@@ -612,5 +626,59 @@ final class DictadoGuionizado: SpeechRecognizing {
     /// Simula un fallo del reconocimiento; `nil` representa una cancelacion.
     func fallar(_ error: Error?) {
         onFallo?(error)
+    }
+}
+
+/// Lector en voz alta guionizado (IDEA1).
+///
+/// POR QUE: `EstadoApp` habla con el protocolo `LectorEnVozAlta`, nunca con
+/// `AVSpeechSynthesizer`. Este doble registra cada llamada y las locuciones que
+/// recibio, y deja que el test cierre la lectura con `terminar()` cuando
+/// quiera. En CI no se reproduce ni un milisegundo de audio.
+@MainActor
+final class LectorGuionizado: LectorEnVozAlta {
+    private(set) var estado: EstadoLectura = .inactivo
+    private(set) var vecesLeido = 0
+    private(set) var vecesPausado = 0
+    private(set) var vecesReanudado = 0
+    private(set) var vecesDetenido = 0
+    /// Ultimas locuciones entregadas a `leer`, en orden.
+    private(set) var locuciones: [LocucionLectura] = []
+
+    private var alTerminar: (() -> Void)?
+
+    func leer(
+        _ locuciones: [LocucionLectura],
+        alTerminar: @escaping () -> Void
+    ) {
+        vecesLeido += 1
+        self.locuciones = locuciones
+        self.alTerminar = alTerminar
+        estado = .leyendo
+    }
+
+    func pausar() {
+        vecesPausado += 1
+        if estado == .leyendo { estado = .pausado }
+    }
+
+    func reanudar() {
+        vecesReanudado += 1
+        if estado == .pausado { estado = .leyendo }
+    }
+
+    func detener() {
+        vecesDetenido += 1
+        alTerminar = nil
+        estado = .inactivo
+    }
+
+    /// Simula que la ultima locucion acabo de forma natural: invoca la
+    /// completion igual que el delegado real.
+    func terminar() {
+        let aviso = alTerminar
+        alTerminar = nil
+        estado = .inactivo
+        aviso?()
     }
 }

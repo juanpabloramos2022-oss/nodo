@@ -225,6 +225,17 @@ final class EstadoApp: ObservableObject {
     /// SwiftUI: el boton no puede quedarse pegado en "grabando" si el
     /// reconocimiento falla o se cancela.
     @Published private(set) var dictando = false
+    /// Burbuja cuya lectura en voz alta esta en curso o en pausa (IDEA1).
+    ///
+    /// Se guarda el ID y no el mensaje: la proyeccion se puede reconstruir en
+    /// cualquier momento y el pie de cada burbuja pregunta por SU id. nil
+    /// significa que no hay ninguna lectura viva.
+    @Published private(set) var mensajeLeyendo: UUID?
+    /// Estado visible del control de lectura de la burbuja en curso (IDEA1).
+    ///
+    /// Las demas burbujas se pintan siempre como `.inactivo` ([Escuchar]); este
+    /// valor solo describe la lectura activa.
+    @Published private(set) var estadoLectura: EstadoLectura = .inactivo
     /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
     /// presenta observando esta bandera.
     @Published var mostrarHojaModelos = false
@@ -295,6 +306,10 @@ final class EstadoApp: ObservableObject {
     private let estadoDePrueba: EstadoPrueba?
     /// Servicio de dictado: el real en produccion y el doble de CI en capturas.
     let dictado: SpeechRecognizing
+    /// Lector en voz alta: el real en produccion y el doble de CI en tests
+    /// (IDEA1). Es la costura que permite probar estados y cortes sin audio ni
+    /// hardware, y la razon por la que la vista no conoce AVSpeechSynthesizer.
+    let lector: LectorEnVozAlta
     /// Punto UNICO de construccion del puerto de skills. Se rellena con
     /// `config.skills` en cada cambio de configuracion, asi el parser y el
     /// selector flotante leen el almacen real sin conocer la interfaz.
@@ -400,13 +415,18 @@ final class EstadoApp: ObservableObject {
         defaults: UserDefaults = .standard,
         directorioStore: URL? = nil,
         directorioTareas: URL? = nil,
-        dictado: SpeechRecognizing? = nil
+        dictado: SpeechRecognizing? = nil,
+        lector: LectorEnVozAlta? = nil
     ) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
         self.persistir = estadoDePrueba == nil
         self.transporte = transporte
         self.defaults = defaults
+        // Se asigna ANTES de cualquier return temprano: en capturas el init
+        // sale antes de construir el almacen y el lector tiene que existir
+        // igual, aunque nadie vaya a escuchar nada.
+        self.lector = lector ?? LectorAVSpeech()
         // En capturas el dictado es un doble que inyecta una transcripcion fija
         // sin pedir permisos ni tocar el microfono. El resto del flujo es el
         // mismo que en el iPhone real. Un reconocedor inyectado (tests de la
@@ -4583,6 +4603,11 @@ final class EstadoApp: ObservableObject {
     }
 
     func cancelar() {
+        // Cambiar de hilo corta la lectura en voz alta (IDEA1): ninguna lectura
+        // sobrevive a nueva, temporal, cerrar, abrir, borrar ni importar. Todos
+        // esos caminos pasan por aqui, asi que este es el unico corte de hilo
+        // que hace falta.
+        detenerLectura()
         // Cambiar de chat o cortar el turno tambien corta el dictado: el
         // microfono no puede quedar escuchando en una conversacion que ya no
         // esta en pantalla.
@@ -5052,6 +5077,11 @@ final class EstadoApp: ObservableObject {
         }
         guard !compactando, !enviando, !generandoPlanChat else { return }
 
+        // La sintesis y el reconocimiento no pueden compartir la sesion de
+        // audio: toda lectura viva se corta ANTES de pedir permisos y abrir el
+        // microfono (IDEA1).
+        detenerLectura()
+
         avisoComando = nil
         // Se conserva lo que ya habia en la caja y solo se reemplaza la parte
         // dictada en esta sesion.
@@ -5127,6 +5157,75 @@ final class EstadoApp: ObservableObject {
         if let aviso {
             avisoComando = aviso
         }
+    }
+
+    // MARK: - Lectura en voz alta (IDEA1)
+
+    /// Estado del control de lectura de UNA burbuja.
+    ///
+    /// Solo la burbuja en curso puede salir de `.inactivo`: las demas siguen
+    /// mostrando [Escuchar] aunque la lectura viva sea de otra burbuja.
+    func estadoDeLectura(de id: UUID) -> EstadoLectura {
+        mensajeLeyendo == id ? estadoLectura : .inactivo
+    }
+
+    /// Toque unico del pie: Escuchar → Pausar → Reanudar, y Detener aparte.
+    ///
+    /// Si el toque cae sobre OTRA burbuja, empieza esa y corta la anterior:
+    /// nunca suenan dos lecturas a la vez.
+    func alternarLectura(de mensaje: ChatMessage) {
+        guard mensaje.rol == .asistente else { return }
+
+        guard mensajeLeyendo == mensaje.id else {
+            empezarLectura(de: mensaje)
+            return
+        }
+
+        switch lector.estado {
+        case .leyendo:
+            lector.pausar()
+        case .pausado:
+            lector.reanudar()
+        case .inactivo:
+            empezarLectura(de: mensaje)
+            return
+        }
+        estadoLectura = lector.estado
+    }
+
+    /// Empieza a leer una burbuja del asistente desde el principio.
+    ///
+    /// Primero corta el dictado (el microfono y la sintesis no comparten la
+    /// sesion de audio) y despues la lectura anterior. Lee SOLO los segmentos
+    /// `.texto`: cada bloque de codigo se anuncia como «bloque de código
+    /// omitido» y su contenido y las cercas no llegan nunca al sintetizador.
+    func empezarLectura(de mensaje: ChatMessage) {
+        detenerDictado()
+
+        let locuciones = LecturaEnVozAlta.textoParaLeer(
+            segmentos: SegmentoRespuesta.segmentos(de: mensaje.texto)
+        )
+        // Una respuesta sin prosa (solo codigo vacio o vacia) no tiene nada
+        // que decir: no se enciende el pie ni se pisa la lectura anterior.
+        guard !locuciones.isEmpty else { return }
+
+        detenerLectura()
+        mensajeLeyendo = mensaje.id
+        lector.leer(locuciones) { [weak self] in
+            // Un aviso tardio de una lectura ya reemplazada no puede apagar el
+            // pie de la burbuja nueva.
+            guard let self, self.mensajeLeyendo == mensaje.id else { return }
+            self.mensajeLeyendo = nil
+            self.estadoLectura = self.lector.estado
+        }
+        estadoLectura = lector.estado
+    }
+
+    /// Corta la lectura y deja todos los pies en [Escuchar]. Idempotente.
+    func detenerLectura() {
+        lector.detener()
+        mensajeLeyendo = nil
+        estadoLectura = .inactivo
     }
 
     /// Historial que se manda al modelo: el bloque de Memoria primero.

@@ -15,6 +15,8 @@ import NodoCore
 /// sigue funcionando (ley n. 1). Solo hay tres elementos: volver, pildora y •••.
 struct ChatView: View {
     @EnvironmentObject private var estado: EstadoApp
+    /// Fase de la escena: al salir de primer plano se corta la lectura (IDEA1).
+    @Environment(\.scenePhase) private var faseEscena
 
     /// Lleva a la pestana Conexiones para gestionar modelos.
     let alGestionarModelos: () -> Void
@@ -63,10 +65,19 @@ struct ChatView: View {
         // La barra Listo no se hereda de la raiz de la pila: cada pantalla
         // activa declara la suya. Aqui cubre la caja de texto del chat.
         .conBarraTecladoListo()
-        // Volver (boton o gesto) cierra el teclado y corta el dictado.
+        // Volver (boton o gesto) cierra el teclado, corta el dictado y corta la
+        // lectura en voz alta: nada sigue sonando fuera de la vista (IDEA1).
         .onDisappear {
             estado.detenerDictado()
+            estado.detenerLectura()
             bajarTeclado()
+        }
+        // Solo primer plano (IDEA1): al pasar a segundo plano la lectura se
+        // corta de inmediato, sin dejar audio ni procesos vivos.
+        .onChange(of: faseEscena) { _, nueva in
+            if nueva != .active {
+                estado.detenerLectura()
+            }
         }
         .onChange(of: estado.textoParaCompartirSolicitado) { _, nuevo in
             guard let nuevo else { return }
@@ -520,23 +531,27 @@ struct ChatView: View {
 
     // MARK: - Consumo y pie de respuesta
 
-    /// Pie de la respuesta: se pinta bajo TODAS las respuestas del asistente
-    /// con consumo. La parte informativa y Copiar van en todas; el boton de
-    /// regenerar solo en la ultima, porque regenerar actua sobre ella.
+    /// Pie de la respuesta: se pinta bajo TODA respuesta terminada del
+    /// asistente. Sin consumo medido solo desaparece el texto de consumo;
+    /// Copiar y [Escuchar] siguen disponibles (IDEA1). El boton de regenerar
+    /// solo aparece en la ultima, porque regenerar actua sobre ella.
     private func pieDe(_ mensaje: ChatMessage) -> PieRespuesta? {
-        guard mensaje.rol == .asistente, let uso = mensaje.uso else { return nil }
+        guard mensaje.rol == .asistente else { return nil }
 
         return PieRespuesta(
-            uso: uso,
-            costo: costoDe(mensaje),
+            uso: mensaje.uso,
+            costo: mensaje.uso == nil ? nil : costoDe(mensaje),
             textoParaCopiar: mensaje.texto,
             // D2=B: la regla de "solo la ultima respuesta" vive en EstadoApp,
-            // para poder probarla sin SwiftUI.
+            // para poder probarla sin SwiftUI. Esa regla ya exige uso.
             puedeRegenerar: estado.puedeRegenerar(mensaje),
             otrosProveedores: otrosProveedores,
             nombreDeProveedor: { nombreDeModelo($0) },
             alRegenerar: { estado.regenerar() },
-            alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) }
+            alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) },
+            estadoLectura: estado.estadoDeLectura(de: mensaje.id),
+            alAlternarLectura: { estado.alternarLectura(de: mensaje) },
+            alDetenerLectura: { estado.detenerLectura() }
         )
     }
 
