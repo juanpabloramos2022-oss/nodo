@@ -5380,7 +5380,7 @@ final class EstadoApp: ObservableObject {
 
     /// Texto plano de una respuesta: prosa y codigo crudo, sin cercas.
     static func textoPlanoDeSegmentos(_ segmentos: [SegmentoRespuesta]) -> String {
-        segmentos.map { segmento in
+        segmentos.map { segmento -> String in
             switch segmento {
             case .texto(let texto): return texto
             case .codigo(_, let textoCrudo): return textoCrudo

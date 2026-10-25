@@ -563,9 +563,12 @@ struct ChatView: View {
         guard mensaje.rol == .asistente else { return nil }
 
         // IDEA3: nil en un Chat Temporal; ahi el boton no existe.
-        let alCompartir: (() -> Void)? = estado.puedeCompartir
-            ? { estado.compartirRespuesta(de: mensaje) }
-            : nil
+        let alCompartir: (() -> Void)?
+        if estado.puedeCompartir {
+            alCompartir = { estado.compartirRespuesta(de: mensaje) }
+        } else {
+            alCompartir = nil
+        }
 
         return PieRespuesta(
             uso: mensaje.uso,
