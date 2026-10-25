@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Prefiero que me hables de tú y sin listas largas")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Prefiere que se le hable de tú y sin listas largas.", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo.")
+  [t=0.0s] TextSegment("Listo.")
