@@ -599,8 +599,12 @@ def verificar_bateria(directorio: Path) -> tuple[list[str], dict]:
             continue
         clases.add(caso)
 
+        # Alternativas separadas por " o " (o por "|", por si una tabla
+        # antigua las declaro asi). Nunca dentro de una celda markdown.
         alternativas = {
-            token.strip() for token in esperado.split("|") if token.strip()
+            token.strip()
+            for token in re.split(r"\s+o\s+|\|", esperado)
+            if token.strip()
         }
         admitidas = ESPERADO_POR_CLASE[caso]
         if not alternativas or not alternativas <= admitidas:

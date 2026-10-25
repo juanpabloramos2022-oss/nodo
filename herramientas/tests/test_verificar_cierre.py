@@ -711,6 +711,28 @@ class BateriaB26Test(unittest.TestCase):
                 any("marcada PASS con observado" in f for f in fallos), fallos
             )
 
+    def test_alternativas_con_o_se_aceptan(self) -> None:
+        # Las clases sensibles admiten propuesta o silencio: la celda las
+        # declara separadas por " o " (nunca por "|", que romperia la tabla).
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            filas = []
+            numero = 1
+            for caso in CLASES_BATERIA_PRUEBA:
+                for turno in (1, 2):
+                    linea = fila_bateria(numero, caso, turno)
+                    if caso.startswith("sensible-"):
+                        linea = linea.replace(
+                            f"| {DESENLACE_ESPERADO[caso]} |",
+                            "| propose_sensitive_memory o ninguna |",
+                            1,
+                        )
+                    filas.append(linea)
+                    numero += 1
+            escribir_bateria(directorio, filas)
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertEqual(fallos, [])
+
     def test_json_que_falta_falla(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directorio = Path(tmp)
