@@ -3562,6 +3562,7 @@ final class EstadoApp: ObservableObject {
                     paso.costoUSD = selloPendienteDePaso
                 }
                 tarea.pasos[indice] = paso
+                if sellarCosto { selloPendienteDePaso = nil }
             } else {
                 tarea.pasos.append(
                     Paso(

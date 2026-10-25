@@ -520,8 +520,8 @@ final class ProgresoVivoTests: XCTestCase {
                 tipo: .costoSellado,
                 paso: 1,
                 pasosTotales: 2,
-                costoSelladoTarea: Decimal(string: "0.000012"),
-                estado: .enCurso
+                estado: .enCurso,
+                costoSelladoTarea: Decimal(string: "0.000012")
             ),
             EventoTareaEjecucion(
                 secuencia: 4,

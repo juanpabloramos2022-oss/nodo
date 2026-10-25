@@ -379,7 +379,7 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     private func retrasoDeStream(_ numero: Int) -> TimeInterval? {
         candado.lock()
         defer { candado.unlock() }
-        return retrasosDeStream.get(numero)
+        return retrasosDeStream[numero]
     }
 
     private func debeRetenerStream(_ numero: Int) -> Bool {
