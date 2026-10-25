@@ -1047,5 +1047,91 @@ class BateriaB26Test(unittest.TestCase):
             fallos = verificador.verificar_traza(ruta, "B4-COD")
             self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
 
+    # --- B4-BUS: busqueda local en el historial ---------------------------
+
+    def test_b4bus_exige_cero_lineas_y_su_humo_vivo(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B4-BUS"), 0)
+        self.assertIn("b4bus-turno1.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B4-BUS", verificador.PARTIDAS_CON_PUERTA_B)
+        # B4-BUS archiva UNA traza, no una por caso.
+        self.assertNotIn("B4-BUS", verificador.PARTIDAS_CON_VARIAS_TRAZAS)
+        # La partida nueva no debilita ninguna expectativa vigente.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B4-COD"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-B"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-A"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.5"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+        self.assertIn("B4-COD", verificador.PARTIDAS_CON_VARIAS_TRAZAS)
+
+    def test_b4bus_acepta_su_unico_nombre_de_traza(self) -> None:
+        self.assertTrue(
+            verificador.nombre_traza_valido("ui_transcript_B4-BUS.txt")
+        )
+
+    def test_b4bus_traza_con_fila_y_estado_vacio_cierra(self) -> None:
+        lineas = [
+            '[t=0.0s] SearchResultRow(titulo: "Di solo esto: la palabra de '
+            'prueba de búsqueda es ZAFIRO-4.", vistaPrevia: "Di solo esto: la '
+            'palabra de prueba de búsqueda es ZAFIRO-4.")',
+            '[t=0.1s] SearchEmptyState(termino: "no-existe-9")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B4-BUS.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B4-BUS"), [])
+
+    def test_b4bus_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        lineas = [
+            '[t=0.0s] SearchResultRow(titulo: "Notas", '
+            'vistaPrevia: "La piedra zafiro brilla")',
+            '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
+            "hasUndo: true)",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B4-BUS.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B4-BUS")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b4bus_una_etiqueta_fuera_del_catalogo_falla(self) -> None:
+        lineas = [
+            '[t=0.0s] SearchResultRow(titulo: "Notas", '
+            'vistaPrevia: "La piedra zafiro brilla")',
+            '[t=0.1s] ResultadoBusqueda(titulo: "Otra", vistaPrevia: "x")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B4-BUS.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B4-BUS")
+            self.assertTrue(
+                any("etiqueta desconocida" in f for f in fallos), fallos
+            )
+
+    def test_b4bus_la_traza_del_directorio_es_la_exacta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            escribir(
+                directorio,
+                "ui_transcript_B4-BUS.txt",
+                [
+                    '[t=0.0s] SearchResultRow(titulo: "Notas", '
+                    'vistaPrevia: "La piedra zafiro brilla")',
+                    '[t=0.1s] SearchEmptyState(termino: "no-existe-9")',
+                ],
+            )
+            self.assertEqual(
+                verificador.verificar_trazas(directorio, ["B4-BUS"]), []
+            )
+            self.assertEqual(
+                len(verificador.trazas_de_partida(directorio, "B4-BUS")), 1
+            )
+
+    def test_b4bus_sin_traza_publicada_cierra_en_fallo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fallos = verificador.verificar_trazas(Path(tmp), ["B4-BUS"])
+            self.assertTrue(
+                any("Falta la traza de B4-BUS" in f for f in fallos), fallos
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

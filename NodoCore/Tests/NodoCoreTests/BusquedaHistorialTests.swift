@@ -19,7 +19,11 @@ final class BusquedaHistorialTests: XCTestCase {
         Conversation(
             titulo: "Zafiro y oro",
             mensajes: [
-                ChatMessage(rol: .usuario, texto: "Hablemos de joyas")
+                ChatMessage(
+                    rol: .usuario,
+                    texto: "Hablemos de joyas",
+                    fecha: Date(timeIntervalSince1970: 100)
+                )
             ],
             creada: Date(timeIntervalSince1970: 100),
             actualizada: Date(timeIntervalSince1970: 100)
@@ -31,8 +35,16 @@ final class BusquedaHistorialTests: XCTestCase {
         Conversation(
             titulo: "Notas del taller",
             mensajes: [
-                ChatMessage(rol: .usuario, texto: "La piedra zafiro brilla"),
-                ChatMessage(rol: .asistente, texto: "Queda anotado")
+                ChatMessage(
+                    rol: .usuario,
+                    texto: "La piedra zafiro brilla",
+                    fecha: Date(timeIntervalSince1970: 200)
+                ),
+                ChatMessage(
+                    rol: .asistente,
+                    texto: "Queda anotado",
+                    fecha: Date(timeIntervalSince1970: 200)
+                )
             ],
             creada: Date(timeIntervalSince1970: 200),
             actualizada: Date(timeIntervalSince1970: 200)
@@ -44,7 +56,11 @@ final class BusquedaHistorialTests: XCTestCase {
         Conversation(
             titulo: "Recetas",
             mensajes: [
-                ChatMessage(rol: .usuario, texto: "Hablemos de sopas")
+                ChatMessage(
+                    rol: .usuario,
+                    texto: "Hablemos de sopas",
+                    fecha: Date(timeIntervalSince1970: 300)
+                )
             ],
             creada: Date(timeIntervalSince1970: 300),
             actualizada: Date(timeIntervalSince1970: 300)

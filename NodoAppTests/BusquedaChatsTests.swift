@@ -25,7 +25,16 @@ final class BusquedaChatsTests: XCTestCase {
     ) -> Conversation {
         Conversation(
             titulo: titulo,
-            mensajes: textos.map { ChatMessage(rol: .usuario, texto: $0) },
+            mensajes: textos.map { texto in
+                ChatMessage(
+                    rol: .usuario,
+                    texto: texto,
+                    // La actividad de una conversacion es la fecha de su
+                    // ultimo mensaje: se fija aqui para que el orden no
+                    // dependa del reloj de la corrida.
+                    fecha: Date(timeIntervalSince1970: actualizada)
+                )
+            },
             creada: Date(timeIntervalSince1970: actualizada),
             actualizada: Date(timeIntervalSince1970: actualizada),
             fijada: fijada,
