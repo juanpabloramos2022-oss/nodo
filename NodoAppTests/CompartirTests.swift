@@ -180,8 +180,9 @@ final class CompartirTests: XCTestCase {
 
     // MARK: - Chat Temporal: la accion no existe
 
-    /// En un hilo temporal la puerta unica que consulta la vista esta cerrada y
-    /// las dos acciones son no-ops: no hay forma de exportar desde ahi.
+    /// En un hilo temporal la puerta unica que consulta la vista esta cerrada,
+    /// las dos acciones de compartir y el comando /exportar son no-ops: no hay
+    /// forma de exportar desde ahi.
     func testEnChatTemporalNoHayFormaDeCompartir() async throws {
         let arnes = try ArnesApp()
         defer { arnes.limpiar() }
@@ -210,6 +211,12 @@ final class CompartirTests: XCTestCase {
         arnes.estado.compartirRespuesta(de: respuesta)
         XCTAssertNil(arnes.estado.textoParaCompartirSolicitado)
         arnes.estado.compartirHilo()
+        XCTAssertNil(arnes.estado.textoParaCompartirSolicitado)
+
+        // Camino real de la app: teclear /exportar y enviarlo (la caja enruta
+        // .comando a ejecutar) tampoco puede abrir la hoja del sistema.
+        arnes.estado.borrador = "/exportar"
+        arnes.estado.enviarTextoActual()
         XCTAssertNil(arnes.estado.textoParaCompartirSolicitado)
     }
 

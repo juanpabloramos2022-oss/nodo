@@ -4055,6 +4055,9 @@ final class EstadoApp: ObservableObject {
             idParaAbrir = conversacion.id
 
         case .exportar:
+            // IDEA3: mismo cierre que las acciones de compartir. El Chat
+            // Temporal no tiene ninguna forma de exportar, ni por comando.
+            guard puedeCompartir else { return }
             textoParaCompartirSolicitado = exportarConversacion()
 
         case .compact:
