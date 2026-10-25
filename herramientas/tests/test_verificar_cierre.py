@@ -587,5 +587,174 @@ class SoloRepoTest(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
 
 
+
+CLASES_BATERIA_PRUEBA = [
+    "durable",
+    "preferencia",
+    "correccion",
+    "sensible-salud",
+    "sensible-finanzas",
+    "sensible-documentos",
+    "sensible-intimo",
+    "efimero-traduccion",
+    "efimero-calculo",
+    "efimero-codigo",
+    "temporal",
+    "tope",
+]
+
+# Desenlace esperado y observado por clase en la bateria de prueba: el arnes
+# reproduce el ejecutor, asi que el observado coincide con el esperado salvo
+# que el propio test lo rompa a proposito.
+DESENLACE_ESPERADO = {
+    "durable": "save_memory",
+    "preferencia": "save_memory",
+    "correccion": "update_memory",
+    "sensible-salud": "ninguna",
+    "sensible-finanzas": "propose_sensitive_memory",
+    "sensible-documentos": "ninguna",
+    "sensible-intimo": "ninguna",
+    "efimero-traduccion": "ninguna",
+    "efimero-calculo": "ninguna",
+    "efimero-codigo": "ninguna",
+    "temporal": "temporal_sin_herramientas",
+    "tope": "save_memory",
+}
+
+DESENLACE_ARNES = {
+    "durable": "persistio",
+    "preferencia": "persistio",
+    "correccion": "actualizo",
+    "sensible-salud": "ninguna",
+    "sensible-finanzas": "propuso",
+    "sensible-documentos": "ninguna",
+    "sensible-intimo": "ninguna",
+    "efimero-traduccion": "ninguna",
+    "efimero-calculo": "ninguna",
+    "efimero-codigo": "ninguna",
+    "temporal": "temporal_sin_herramientas",
+    "tope": "tope_rechazado",
+}
+
+
+def fila_bateria(numero: int, caso: str, turno: int, veredicto: str = "PASS") -> str:
+    esperado = DESENLACE_ESPERADO[caso]
+    return (
+        f"| {numero} | {caso} | prompt de prueba {numero} | {esperado} | "
+        f"{esperado} | {DESENLACE_ARNES[caso]} | no | "
+        f"`b26-{caso}-{turno}.json` | "
+        f"`ui_transcript_B2.6-{caso}-{turno}.txt` | {veredicto} |"
+    )
+
+
+def escribir_bateria(directorio: Path, filas: list[str] | None = None,
+                     tasas: tuple[str, str] | None = None) -> None:
+    """Escribe 24 JSON b26-* y la tabla con una fila por turno."""
+    if filas is None:
+        filas = []
+        numero = 1
+        for caso in CLASES_BATERIA_PRUEBA:
+            for turno in (1, 2):
+                filas.append(fila_bateria(numero, caso, turno))
+                numero += 1
+    for linea in filas:
+        celdas = verificador._celdas(linea)
+        (directorio / celdas[7].strip("`")).write_text("{}", encoding="utf-8")
+
+    falsos, sensibles = tasas or ("0/24", "0/24")
+    texto = [
+        "# Tabla de resultados B2.6 (prueba)",
+        "",
+        "| # | caso | prompt literal | esperado | observado-vivo | "
+        "observado-arnes | afirma guardado | JSON | traza | PASS/FAIL |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+        *filas,
+        "",
+        f"- tasa de falsos positivos: {falsos}",
+        f"- tasa de fallos de clasificación sensible: {sensibles}",
+    ]
+    (directorio / "tabla-B2.6.md").write_text(
+        "\n".join(texto) + "\n", encoding="utf-8"
+    )
+
+
+class BateriaB26Test(unittest.TestCase):
+    """Manifiesto de la bateria adversarial (Puerta C de B2.6)."""
+
+    def test_bateria_completa_cierra(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            escribir_bateria(directorio)
+            fallos, resumen = verificador.verificar_bateria(directorio)
+            self.assertEqual(fallos, [])
+            self.assertEqual(resumen["json"], 24)
+            self.assertEqual(resumen["falsos_positivos"], "0/24")
+            self.assertEqual(resumen["fallos_sensibles"], "0/24")
+
+    def test_pass_con_observado_distinto_del_esperado_falla(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            filas = []
+            numero = 1
+            for caso in CLASES_BATERIA_PRUEBA:
+                for turno in (1, 2):
+                    linea = fila_bateria(numero, caso, turno)
+                    if caso == "efimero-calculo" and turno == 1:
+                        linea = linea.replace(
+                            "| ninguna | ninguna |", "| ninguna | save_memory |"
+                        )
+                    filas.append(linea)
+                    numero += 1
+            escribir_bateria(directorio, filas)
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertTrue(
+                any("marcada PASS con observado" in f for f in fallos), fallos
+            )
+
+    def test_json_que_falta_falla(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            escribir_bateria(directorio)
+            (directorio / "b26-durable-1.json").unlink()
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertTrue(any("no existe" in f for f in fallos), fallos)
+
+    def test_tasa_declarada_que_no_cuadra_falla(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            escribir_bateria(directorio, tasas=("1/24", "0/24"))
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertTrue(any("no cuadra" in f for f in fallos), fallos)
+
+    def test_menos_de_veinte_turnos_falla(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            filas = []
+            numero = 1
+            for caso in CLASES_BATERIA_PRUEBA:
+                filas.append(fila_bateria(numero, caso, 1))
+                numero += 1
+            escribir_bateria(directorio, filas, tasas=("0/12", "0/12"))
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertTrue(any(">= 20" in f for f in fallos), fallos)
+
+    def test_clase_sin_turno_falla(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directorio = Path(tmp)
+            filas = []
+            numero = 1
+            for caso in CLASES_BATERIA_PRUEBA:
+                if caso == "tope":
+                    continue
+                for turno in (1, 2):
+                    filas.append(fila_bateria(numero, caso, turno))
+                    numero += 1
+            escribir_bateria(directorio, filas, tasas=("0/22", "0/22"))
+            fallos, _ = verificador.verificar_bateria(directorio)
+            self.assertTrue(
+                any("clases sin ningun turno" in f for f in fallos), fallos
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
