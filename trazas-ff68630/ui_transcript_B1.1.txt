@@ -1,0 +1,7 @@
+[t=0.0s] UserBubble("Recuerda que mi palabra clave personal de ejemplo es LUNA-7")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Palabra clave personal de ejemplo: LUNA-7", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo, lo guardé en tu Memoria.")
+  [t=0.0s] TextSegment("Listo, lo guardé en tu Memoria.")
+[t=0.0s] UserBubble("Consulta https://example.com y dime qué es ese dominio")
+[t=0.0s] AssistantBubble("example.com es un dominio reservado para ejemplos de documentación.")
+  [t=0.0s] TextSegment("example.com es un dominio reservado para ejemplos de documentación.")
