@@ -1017,64 +1017,11 @@ private struct BurbujaAsistenteProyectada: View {
                 .fixedSize(horizontal: false, vertical: true)
 
         case .codigo(let lenguaje, let textoCrudo):
-            BloqueCodigoProyectado(
+            BloqueCodigo(
                 lenguaje: lenguaje,
                 textoCrudo: textoCrudo
             )
         }
-    }
-}
-
-/// Bloque de codigo de una respuesta, con su cabecera y su boton Copiar.
-///
-/// La cabecera dice «Código» cuando la cerca no declaro lenguaje. El texto se
-/// pinta exacto, sin las cercas de Markdown.
-private struct BloqueCodigoProyectado: View {
-    let lenguaje: String?
-    let textoCrudo: String
-
-    private var titulo: String {
-        guard let lenguaje, !lenguaje.isEmpty else { return "Código" }
-        return lenguaje
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text(titulo)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(Tema.textoSuave)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                Button {
-                    UIPasteboard.general.string = textoCrudo
-                } label: {
-                    Label("Copiar código", systemImage: "doc.on.doc")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.acento)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Copiar código")
-                .accessibilityIdentifier("copiar-codigo")
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 7)
-            .padding(.bottom, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(textoCrudo)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 9)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

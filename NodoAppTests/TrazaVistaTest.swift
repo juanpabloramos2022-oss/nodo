@@ -2059,6 +2059,161 @@ final class TrazaVistaTest: XCTestCase {
         XCTAssertEqual(try Self.fila(hilo, paso: 1).estado, .completado)
     }
 
+    // MARK: - (8) Trazas de la partida B4-COD (bloques de codigo)
+
+    /// Guion literal de B4-COD: los dos prompts del contrato X y las respuestas
+    /// REALES archivadas en `humos/b4cod-python.json` y `humos/b4cod-swift.json`
+    /// (HTTP 200, modelo combo/deepseek-v4-1-flash). La traza no se escribe a
+    /// mano: la produce `EstadoApp.elementosVisiblesDelHilo()`.
+    private static let promptPythonB4COD =
+        "Escribime una función en Python que sume dos números enteros y "
+        + "devuélvela en un bloque de código."
+    private static let promptSwiftB4COD =
+        "Escribime una función en Swift que sume dos números enteros y "
+        + "devuélvela en un bloque de código."
+
+    private static let crudoPythonB4COD = #"""
+    def sumar_enteros(a: int, b: int) -> int:
+        """Devuelve la suma de dos números enteros."""
+        return a + b
+    """#
+    private static let crudoSwiftB4COD = #"""
+    func sumar(_ a: Int, _ b: Int) -> Int {
+        return a + b
+    }
+
+    // Uso:
+    let resultado = sumar(3, 5)   // 8
+    """#
+
+    private static let respuestaPythonB4COD = #"""
+    ```python
+    def sumar_enteros(a: int, b: int) -> int:
+        """Devuelve la suma de dos números enteros."""
+        return a + b
+    ```
+
+    Uso:
+
+    ```python
+    print(sumar_enteros(3, 5))  # 8
+    ```
+
+    Si querés que valide que los argumentos sean realmente enteros (y no `float` o `bool`), decime y te la ajusto.
+    """#
+
+    private static let respuestaSwiftB4COD = #"""
+    ```swift
+    func sumar(_ a: Int, _ b: Int) -> Int {
+        return a + b
+    }
+
+    // Uso:
+    let resultado = sumar(3, 5)   // 8
+    ```
+
+    Si preferís etiquetas en los parámetros, esta variante también es válida:
+
+    ```swift
+    func sumar(a: Int, b: Int) -> Int {
+        a + b
+    }
+
+    let resultado = sumar(a: 3, b: 5)   // 8
+    ```
+
+    Nota: en Swift `Int` ya es un entero con signo del tamaño de la arquitectura, y la suma puede desbordarse; si necesitás controlar eso, usá `a.addingReportingOverflow(b)` o `&+` según el caso.
+    """#
+
+    func testElGuionB4CODPythonProduceLaTrazaDelBloque() async throws {
+        try await ejecutarGuionB4COD(
+            prompt: Self.promptPythonB4COD,
+            respuesta: Self.respuestaPythonB4COD,
+            lenguaje: "python",
+            crudoEsperado: Self.crudoPythonB4COD,
+            nombreTraza: "ui_transcript_B4-COD-python.txt"
+        )
+    }
+
+    func testElGuionB4CODSwiftProduceLaTrazaDelBloque() async throws {
+        try await ejecutarGuionB4COD(
+            prompt: Self.promptSwiftB4COD,
+            respuesta: Self.respuestaSwiftB4COD,
+            lenguaje: "swift",
+            crudoEsperado: Self.crudoSwiftB4COD,
+            nombreTraza: "ui_transcript_B4-COD-swift.txt"
+        )
+    }
+
+    /// Un turno de B4-COD: prompt literal, respuesta viva guionizada y traza.
+    ///
+    /// La proyeccion tiene que entregar DOS bloques independientes con su
+    /// lenguaje y su crudo exacto, y la traza solo etiquetas del catalogo.
+    private func ejecutarGuionB4COD(
+        prompt: String,
+        respuesta: String,
+        lenguaje: String,
+        crudoEsperado: String,
+        nombreTraza: String
+    ) async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        arnes.transporte.guionar(
+            texto: respuesta,
+            uso: UsoTokens(entrada: 1446, salida: 209)
+        )
+
+        let ruta = try Self.rutaDeTraza(nombreTraza)
+        let sesion = try SesionTraza(ruta: ruta)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+        arnes.estado.enviar(prompt)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo())
+
+        let elementos = arnes.estado.elementosVisiblesDelHilo()
+        XCTAssertEqual(elementos.count, 2)
+        guard case .burbujaUsuario(let promptVisible) = elementos[0],
+              case .burbujaAsistente(let segmentos) = elementos[1] else {
+            return XCTFail("La proyeccion no trae las dos burbujas del turno")
+        }
+        XCTAssertEqual(promptVisible, prompt)
+
+        let bloques = segmentos.filter { segmento in
+            if case .codigo = segmento { return true }
+            return false
+        }
+        XCTAssertEqual(bloques.count, 2, "El guion vivo trae dos bloques")
+        guard case .codigo(let lenguajeVisible, let crudo) = segmentos[0] else {
+            return XCTFail("El primer segmento tiene que ser el bloque")
+        }
+        XCTAssertEqual(lenguajeVisible, lenguaje)
+        XCTAssertEqual(
+            crudo,
+            crudoEsperado,
+            "El crudo es identico al codigo sin cercas, caracter por caracter"
+        )
+        XCTAssertFalse(crudo.contains("```"))
+
+        let contenido = sesion.contenido
+        XCTAssertEqual(
+            Self.cuenta(contenido, "CodeBlock(lenguaje: \"\(lenguaje)\""),
+            2,
+            "Cada bloque de la respuesta deja su CodeBlock en la traza"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 2)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        XCTAssertTrue(contenido.contains("UserBubble(\"\(prompt)"))
+
+        Self.comprobarConteosDeLaPuertaC(contenido)
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     /// Fila viva del paso K, sin indice que pueda salirse del arreglo.
     private static func fila(
         _ hilo: HiloTareaViewModel,

@@ -159,55 +159,8 @@ private struct ContenidoAsistente: View {
                 .fixedSize(horizontal: false, vertical: true)
 
         case .codigo(let lenguaje, let contenido):
-            BloqueCodigo(lenguaje: lenguaje, contenido: contenido)
+            BloqueCodigo(lenguaje: lenguaje, textoCrudo: contenido)
         }
-    }
-}
-
-/// Bloque monoespaciado con su boton "Copiar código" arriba a la derecha.
-private struct BloqueCodigo: View {
-    let lenguaje: String?
-    let contenido: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                if let lenguaje, !lenguaje.isEmpty {
-                    Text(lenguaje)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Tema.textoSuave)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    UIPasteboard.general.string = contenido
-                } label: {
-                    Label("Copiar código", systemImage: "doc.on.doc")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.acento)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Copiar código")
-                .accessibilityIdentifier("copiar-codigo")
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 7)
-            .padding(.bottom, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(contenido)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 9)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
