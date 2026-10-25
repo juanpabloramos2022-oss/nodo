@@ -2503,6 +2503,7 @@ final class EstadoApp: ObservableObject {
 
         // El paso K se congela tal como estaba: ni Completado ni cobrado. Los
         // pasos 1..K-1 ya resueltos quedan intactos en el libro.
+        selloPendienteDePaso = nil
         let pasoDetenido = tareas.first(where: { $0.id == id })
             .flatMap { tarea in
                 tarea.pasos.firstIndex(where: { $0.estado == .enCurso })
@@ -3398,7 +3399,8 @@ final class EstadoApp: ObservableObject {
             generacion: generacion,
             estado: fallo ? .fallido : .terminado,
             resultado: resultado,
-            fechaFin: Date()
+            fechaFin: Date(),
+            sellarCosto: true
         )
         cerrarFilaDePaso(
             idTarea: idTarea,
@@ -3423,6 +3425,9 @@ final class EstadoApp: ObservableObject {
             resultado: motivo,
             fechaFin: Date()
         )
+        // Un paso denegado no se cobra como ejecutado: el sello del modelo que
+        // lo propuso se descarta aqui para que no se atribuya a otro paso.
+        selloPendienteDePaso = nil
         cerrarFilaDePaso(
             idTarea: idTarea,
             llamadaID: llamada.id,
@@ -3526,7 +3531,8 @@ final class EstadoApp: ObservableObject {
         resultado: String? = nil,
         descripcion: String? = nil,
         fechaInicio: Date? = nil,
-        fechaFin: Date? = nil
+        fechaFin: Date? = nil,
+        sellarCosto: Bool = false
     ) {
         guard generacion == generacionEjecucionTarea else { return }
 
@@ -3549,6 +3555,12 @@ final class EstadoApp: ObservableObject {
                 if paso.herramienta == nil { paso.herramienta = llamada.nombre }
                 if paso.argumentos == nil { paso.argumentos = llamada.argumentos }
                 if paso.url == nil { paso.url = urlDeLlamada(llamada) }
+                // El sello de la llamada al modelo que produjo este paso se
+                // escribe UNA vez, al CERRARLO, con el importe ya emitido: la
+                // fila nunca recalcula precios ni cobra un paso que no corrio.
+                if sellarCosto, paso.costoUSD == nil {
+                    paso.costoUSD = selloPendienteDePaso
+                }
                 tarea.pasos[indice] = paso
             } else {
                 tarea.pasos.append(
@@ -3561,15 +3573,12 @@ final class EstadoApp: ObservableObject {
                         llamadaID: llamada.id,
                         url: urlDeLlamada(llamada),
                         aprobacion: aprobacion,
-                        // El sello de la llamada al modelo que produjo este
-                        // paso se escribe UNA vez, aqui, con el importe ya
-                        // emitido: la fila nunca recalcula precios.
-                        costoUSD: selloPendienteDePaso,
+                        costoUSD: sellarCosto ? selloPendienteDePaso : nil,
                         fechaInicio: fechaInicio,
                         fechaFin: fechaFin
                     )
                 )
-                selloPendienteDePaso = nil
+                if sellarCosto { selloPendienteDePaso = nil }
             }
         }
     }

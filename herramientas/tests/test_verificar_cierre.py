@@ -476,7 +476,7 @@ class TrazaValidaTest(unittest.TestCase):
             '"0.00000412")',
             '[t=8.97s] StepRow(paso: 2, estado: "Denegado", etiqueta: '
             '"Guardar en Memoria · Denegada por ti", duracion: 2.3, '
-            'costo: "0.00000412")',
+            "costo: nil)",
             '[t=8.98s] TaskHeader(estado: "Completada", pasoActual: 2, '
             'pasosTotales: 7, costoSellado: "0.00000646")',
         ]
@@ -513,6 +513,45 @@ class TrazaValidaTest(unittest.TestCase):
             ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
             fallos = verificador.verificar_traza(ruta, "B3-B")
             self.assertTrue(any("desconocida" in f for f in fallos), fallos)
+
+    def test_b3b_ningun_paso_llega_a_completado_sin_en_curso(self) -> None:
+        # Invariante negativa de §2.2: un paso que «cae de golpe» a Completado
+        # es fallo de puerta, no un detalle de presentacion.
+        lineas = [
+            "modo: vivo",
+            '[t=0.0s] StepRow(paso: 1, estado: "En curso", etiqueta: '
+            '"Acceder al dominio", duracion: nil, costo: nil)',
+            '[t=2.4s] StepRow(paso: 1, estado: "Completado", etiqueta: '
+            '"Acceder al dominio", duracion: 2.4, costo: "0.00000234")',
+            '[t=2.5s] StepRow(paso: 2, estado: "Completado", etiqueta: '
+            '"Guardar en Memoria", duracion: 0.1, costo: "0.00000090")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B3-B")
+            self.assertTrue(
+                any("sin haber pasado por «En curso»" in f for f in fallos),
+                fallos,
+            )
+
+    def test_b3b_un_paso_denegado_no_necesita_en_curso(self) -> None:
+        # Denegar ocurre ANTES de ejecutar: su camino legitimo es
+        # Pendiente/Esperando aprobacion -> Denegado y no es un salto.
+        lineas = [
+            "modo: vivo",
+            '[t=0.0s] StepRow(paso: 1, estado: "En curso", etiqueta: '
+            '"Acceder al dominio", duracion: nil, costo: nil)',
+            '[t=2.4s] StepRow(paso: 1, estado: "Completado", etiqueta: '
+            '"Acceder al dominio", duracion: 2.4, costo: "0.00000234")',
+            '[t=2.5s] StepRow(paso: 2, estado: "Esperando aprobación", '
+            'etiqueta: "Guardar en Memoria", duracion: nil, costo: nil)',
+            '[t=4.9s] StepRow(paso: 2, estado: "Denegado", etiqueta: '
+            '"Guardar en Memoria · Denegada por ti", duracion: 2.4, '
+            "costo: nil)",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B3-B"), [])
 
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [

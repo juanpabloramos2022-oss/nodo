@@ -258,7 +258,7 @@ struct TareaView: View {
 
         case .filaPaso(
             let paso,
-            let estado,
+            let estadoDelPaso,
             let etiqueta,
             let duracion,
             let costo
@@ -266,7 +266,7 @@ struct TareaView: View {
             VStack(alignment: .leading, spacing: 8) {
                 filaDePaso(
                     paso: paso,
-                    estado: estado,
+                    estado: estadoDelPaso,
                     etiqueta: etiqueta,
                     duracion: duracion,
                     costo: costo
@@ -274,7 +274,7 @@ struct TareaView: View {
 
                 // La hoja de aprobacion se despliega EN EL HILO, pegada a la
                 // fila que la pide: la decision no se toma fuera de contexto.
-                if estado == .esperandoAprobacion,
+                if estadoDelPaso == .esperandoAprobacion,
                    let solicitud = estado.solicitudAprobacion,
                    solicitud.tareaID == tarea.id {
                     FilaAprobacionEnHilo(solicitud: solicitud)

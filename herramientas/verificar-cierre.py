@@ -300,6 +300,37 @@ def _verificar_modo(lineas: list[str], partida: str) -> list[str]:
     return fallos
 
 
+PATRON_FILA_PASO = re.compile(
+    r'\]\s+StepRow\(paso:\s*(?P<paso>[0-9]+),\s*estado:\s*"(?P<estado>[^"]+)"'
+)
+
+def _verificar_transiciones_de_paso(lineas: list[str], partida: str) -> list[str]:
+    """B3-B: ninguna fila llega a Completado sin haber pasado por En curso.
+
+    Es la invariante negativa de §2.2 ("un paso que cae de golpe es fallo de
+    puerta") aplicada sobre la traza publicada. Un paso Denegado queda exento:
+    se deniega ANTES de ejecutarse, asi que su camino legitimo es
+    Pendiente/Esperando aprobacion -> Denegado.
+    """
+    if partida != "B3-B":
+        return []
+
+    vistos: dict[int, set[str]] = {}
+    fallos: list[str] = []
+    for numero, linea in enumerate(lineas, start=1):
+        m = PATRON_FILA_PASO.search(linea)
+        if m is None:
+            continue
+        paso = int(m.group("paso"))
+        estado = m.group("estado")
+        if estado == "Completado" and "En curso" not in vistos.get(paso, set()):
+            fallos.append(
+                f"Linea {numero}: el paso {paso} aparece Completado sin "
+                "haber pasado por «En curso» (B3-B §2.2)"
+            )
+        vistos.setdefault(paso, set()).add(estado)
+    return fallos
+
 def verificar_traza(
     ruta: Path,
     partida: str,
@@ -318,6 +349,7 @@ def verificar_traza(
 
     lineas = _lineas_de_traza(ruta)
     fallos.extend(_verificar_modo(lineas, partida))
+    fallos.extend(_verificar_transiciones_de_paso(lineas, partida))
 
     etiquetas: list[str] = []
     en_burbuja_asistente = False

@@ -429,13 +429,12 @@ final class HiloTareaViewModel: ObservableObject {
         case .pasoCerrado:
             // Ninguna fila cae de golpe a Completado: si el cierre llega sin
             // su En curso previo, se emite primero esa transicion visible.
-            if let previa = filasVivas[evento.paso], previa.estado != .enCurso {
-                var transicion = previa
-                transicion.estado = .enCurso
-                filasVivas[evento.paso] = transicion
-                recomponer(ahora: evento.fecha)
-            } else if filasVivas[evento.paso] == nil {
-                var transicion = FilaViva(
+            // Solo una fila PENDIENTE necesita su transicion previa: una fila
+            // que venia de «Esperando tu aprobacion» pasa directo a su
+            // desenlace (Denegado), porque nunca llego a ejecutarse.
+            let previa = filasVivas[evento.paso]
+            if previa == nil || previa?.estado == .pendiente {
+                var transicion = previa ?? FilaViva(
                     paso: evento.paso,
                     nombre: nombreDelPaso(
                         evento.paso,
@@ -450,6 +449,10 @@ final class HiloTareaViewModel: ObservableObject {
                 transicion.estado = .enCurso
                 filasVivas[evento.paso] = transicion
                 recomponer(ahora: evento.fecha)
+            }
+            // La decision ya se tomo: el hilo deja de estar congelado.
+            if aprobacionPendiente == evento.paso {
+                aprobacionPendiente = nil
             }
             fijarFila(evento)
             actualizarCabecera(
