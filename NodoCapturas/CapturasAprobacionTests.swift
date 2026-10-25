@@ -7,8 +7,19 @@ import XCTest
 /// pero el juez B3 exige evidencia de que la hoja EN EL HILO se pinta junto a
 /// su fila y de que sus DOS botones ejercen la decision. Estos tests arrancan
 /// la app con el estado sembrado `tarea-aprobacion-pendiente`, navegan por la
-/// UI real hasta la tarea y tocan `denegar-solicitud-hilo` /
-/// `aprobar-solicitud-hilo`, igual que lo haria el dueno.
+/// UI real hasta la tarea y tocan [Denegar] / [Aprobar] por su ETIQUETA
+/// VISIBLE, igual que lo haria el dueno.
+///
+/// HALLAZGO (corrida CI 40182942035 sobre 79de6ec): en el arbol de
+/// accesibilidad REAL todos los elementos de la tarjeta exponen el identifier
+/// del contenedor `aprobacion-en-hilo`, botones incluidos; los identifiers
+/// `denegar-solicitud-hilo` / `aprobar-solicitud-hilo` que declara el producto
+/// NO aparecen en ningun punto del arbol. El identifier del contenedor
+/// ENSOMBRECE al de sus botones, asi que `app.buttons["denegar-solicitud-hilo"]`
+/// no podia existir nunca: el fallo era del LOCALIZADOR del test, no del
+/// comportamiento. Los botones existen, se ven y son tocables por su etiqueta
+/// visible, que es lo que el dueno toca. Cambiar el esquema de identifiers es
+/// decision de producto aparte y NO se hace en esta correccion.
 ///
 /// El estado sembrado no tiene ToolLoop vivo: al tocar, el estado aplica al
 /// libro el efecto inmediato y determinista de la decision (Denegado al
@@ -35,7 +46,7 @@ final class CapturasAprobacionTests: XCTestCase {
         abrirTareaSembrada()
         afirmarTarjetaJuntoASuFila()
 
-        let denegar = app.buttons["denegar-solicitud-hilo"]
+        let denegar = app.buttons["Denegar"]
         XCTAssertTrue(
             denegar.waitForExistence(timeout: 30),
             "No aparecio el boton Denegar de la tarjeta en el hilo"
@@ -48,7 +59,7 @@ final class CapturasAprobacionTests: XCTestCase {
             "La tarjeta de aprobacion no desaparecio tras denegar"
         )
         esperarDesaparicionElemento(
-            app.buttons["denegar-solicitud-hilo"],
+            app.buttons["Denegar"],
             "El boton Denegar sigue en pantalla tras resolver la aprobacion"
         )
 
@@ -87,7 +98,7 @@ final class CapturasAprobacionTests: XCTestCase {
         abrirTareaSembrada()
         afirmarTarjetaJuntoASuFila()
 
-        let aprobar = app.buttons["aprobar-solicitud-hilo"]
+        let aprobar = app.buttons["Aprobar"]
         XCTAssertTrue(
             aprobar.waitForExistence(timeout: 30),
             "No aparecio el boton Aprobar de la tarjeta en el hilo"
@@ -100,7 +111,7 @@ final class CapturasAprobacionTests: XCTestCase {
             "La tarjeta de aprobacion no desaparecio tras aprobar"
         )
         esperarDesaparicionElemento(
-            app.buttons["aprobar-solicitud-hilo"],
+            app.buttons["Aprobar"],
             "El boton Aprobar sigue en pantalla tras resolver la aprobacion"
         )
         XCTAssertTrue(
@@ -181,12 +192,14 @@ final class CapturasAprobacionTests: XCTestCase {
 
         // El identificador de la tarjeta se comprueba por la via directa y,
         // si iOS no expone el contenedor, por sus dos botones: las tres rutas
-        // solo existen cuando la tarjeta esta pintada.
+        // solo existen cuando la tarjeta esta pintada. Los botones se buscan
+        // por ETIQUETA visible porque el identifier del contenedor los
+        // ensombrece en el arbol real (ver cabecera del archivo).
         let tarjeta = elemento("aprobacion-en-hilo")
         XCTAssertTrue(
             tarjeta.waitForExistence(timeout: 10)
-                || app.buttons["denegar-solicitud-hilo"].exists
-                || app.buttons["aprobar-solicitud-hilo"].exists,
+                || app.buttons["Denegar"].exists
+                || app.buttons["Aprobar"].exists,
             "La tarjeta no expone 'aprobacion-en-hilo' ni sus botones"
         )
 
