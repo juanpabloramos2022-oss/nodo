@@ -43,6 +43,10 @@ struct ChatView: View {
             filaCompactando
             franjaAvisoComando
             selectorSugerencias
+            // IDEA4: banda del tope mensual SOBRE el composer y fuera del
+            // hilo. No envuelve ni deshabilita el envio.
+            BandaTopeMensual(estado: estado.estadoTopeMensual())
+                .padding(.bottom, 6)
             barraDeEntrada
         }
         .background(Tema.fondo.ignoresSafeArea())

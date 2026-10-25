@@ -12,16 +12,24 @@ import NodoCore
 /// mover ni un centavo de estas barras.
 struct GastoView: View {
     @EnvironmentObject private var estado: EstadoApp
+    /// Borrador del campo del tope mensual (IDEA4). El valor guardado vive en
+    /// `AppConfig`; este texto solo evita reescribir el campo en cada tecla.
+    @State private var topeTexto = ""
 
     var body: some View {
         // El resumen se arma una sola vez por pasada: leer el libro crea un
         // formateador de fecha por cada dia de la ventana de 30 dias.
         pantalla(estado.resumenDeGasto())
+            .onAppear { sincronizarCampoTope() }
     }
 
     private func pantalla(_ resumen: ResumenGasto) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // IDEA4 va primero: es la configuracion del tope mensual y la
+                // lectura del acumulado contra el. IDEA5 agregara sus cifras
+                // como secciones nuevas de esta misma vista, sin duplicarla.
+                tarjetaTopeMensual(resumen)
                 tarjetaHoy(resumen)
                 tarjetaMes(resumen)
                 tarjetaModelos(resumen)
@@ -33,6 +41,131 @@ struct GastoView: View {
         .background(Tema.fondo.ignoresSafeArea())
         .navigationTitle("Gasto")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Tope mensual personal (IDEA4)
+
+    /// Configuracion y lectura del tope mensual.
+    ///
+    /// El acumulado sale del MISMO resumen sellado que el resto de la vista
+    /// (`resumen.mes.usd`), asi que cambiar de modelo activo no lo mueve. La
+    /// banda de aviso no bloquea nada: aqui solo se informa.
+    private func tarjetaTopeMensual(_ resumen: ResumenGasto) -> some View {
+        let tope = estado.estadoTopeMensual(acumuladoDelMes: resumen.mes.usd)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("TOPE MENSUAL")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Tema.textoSuave)
+                .tracking(1.2)
+
+            Text(descripcionDelTope(tope))
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("tope-mensual")
+
+            barraDelTope(tope)
+
+            HStack(spacing: 8) {
+                TextField("0.00", text: $topeTexto)
+                    .keyboardType(.decimalPad)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Tema.superficieAlta)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                    .accessibilityIdentifier("tope-mensual-campo")
+
+                Button("Guardar") {
+                    guardarTopeMensual()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+                .foregroundStyle(Tema.acento)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("tope-mensual-guardar")
+
+                Button("Quitar") {
+                    estado.fijarTopeMensual(nil)
+                    topeTexto = ""
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("tope-mensual-quitar")
+            }
+
+            Text(TopeMensualGasto.nota)
+                .font(.caption2)
+                .foregroundStyle(Tema.textoSuave)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("tope-mensual-nota")
+
+            BandaTopeMensual(estado: tope, conMargen: false)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+
+    private func descripcionDelTope(_ tope: TopeMensualGasto) -> String {
+        guard let valor = tope.tope else {
+            return "Sin tope: fija un monto mensual para recibir un aviso "
+                + "al 80 % y al 100 %."
+        }
+        return "Tope: \(importeDelTope(valor)) · Acumulado: "
+            + "\(importe(tope.acumulado)) (\(tope.porcentajeEntero) %)"
+    }
+
+    private func barraDelTope(_ tope: TopeMensualGasto) -> some View {
+        GeometryReader { geometria in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Tema.superficieAlta)
+
+                Capsule()
+                    .fill(Tema.acento)
+                    .frame(
+                        width: geometria.size.width * CGFloat(tope.fraccion)
+                    )
+            }
+        }
+        .frame(height: 10)
+        .accessibilityElement()
+        .accessibilityIdentifier("tope-mensual-barra")
+        .accessibilityLabel("Consumo del tope mensual")
+        .accessibilityValue("\(tope.porcentajeEntero) por ciento")
+    }
+
+    private func sincronizarCampoTope() {
+        if let tope = estado.config.topeMensualGasto {
+            topeTexto = String(format: "%.2f", tope)
+        } else {
+            topeTexto = ""
+        }
+    }
+
+    /// Guarda el monto escrito. Un texto vacio o no numerico NO borra el tope:
+    /// para eso esta [Quitar], que es una accion explicita.
+    private func guardarTopeMensual() {
+        let limpio = topeTexto
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let valor = Double(limpio), valor > 0, valor.isFinite else {
+            return
+        }
+        estado.fijarTopeMensual(valor)
+        topeTexto = String(format: "%.2f", valor)
+    }
+
+    private func importeDelTope(_ valor: Double) -> String {
+        "$" + String(format: "%.2f", valor)
     }
 
     // MARK: - HOY

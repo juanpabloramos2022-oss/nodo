@@ -124,6 +124,11 @@ struct TareaView: View {
                 }
             }
 
+            // IDEA4: la banda del tope mensual tambien va sobre el composer
+            // unico de Tarea, fuera del hilo y sin bloquear el envio.
+            BandaTopeMensual(estado: estado.estadoTopeMensual())
+                .padding(.bottom, 6)
+
             ComposerMensaje(
                 texto: $estado.borrador,
                 placeholder: "Escribe el encargo o un ajuste",

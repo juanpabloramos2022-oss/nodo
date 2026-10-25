@@ -1437,6 +1437,37 @@ final class EstadoApp: ObservableObject {
         config.topeAvisoCosto = valor
     }
 
+    /// Estado de la banda del tope MENSUAL personal (IDEA4).
+    ///
+    /// Es la unica fuente de verdad de la banda: la vista Gasto y la banda
+    /// sobre el composer pintan lo que devuelve este metodo y los tests
+    /// afirman sus estados sin presentar UI. Se calcula sobre el acumulado
+    /// SELLADO del mes (`config.usoApp`), no sobre el chat abierto: por eso
+    /// cambiar de modelo activo no mueve ni un centavo. `acumuladoDelMes` se
+    /// puede pasar cuando la vista ya armo el resumen, para no leerlo dos veces.
+    func estadoTopeMensual(
+        acumuladoDelMes: Double? = nil,
+        ahora: Date = Date()
+    ) -> TopeMensualGasto {
+        let acumulado = acumuladoDelMes ?? config.usoApp.mes(ahora).usd
+        return TopeMensualGasto.calcular(
+            tope: config.topeMensualGasto,
+            acumulado: acumulado
+        )
+    }
+
+    /// Fija (o quita, con nil) el tope mensual personal y lo persiste.
+    ///
+    /// Un valor no positivo o no finito se interpreta como "sin tope": la
+    /// banda desaparece. Este metodo no toca el envio ni el tope por chat.
+    func fijarTopeMensual(_ valor: Double?) {
+        guard let valor, valor.isFinite, valor > 0 else {
+            config.topeMensualGasto = nil
+            return
+        }
+        config.topeMensualGasto = valor
+    }
+
     /// Enciende o apaga «Memoria inteligente» desde Mi Contexto (B2.3).
     ///
     /// Cambiar el interruptor NO crea, borra ni edita ninguna entrada: solo

@@ -2809,6 +2809,165 @@ final class TrazaVistaTest: XCTestCase {
         contenido.components(separatedBy: aguja).count - 1
     }
 
+    // MARK: - (11) Traza de la partida IDEA4 (tope mensual de gasto)
+
+    /// Guion literal de IDEA4: un turno normal y sellos ya acumulados.
+    ///
+    /// No hay JSON vivo nuevo: la idea es local y su humo es $0,00. El turno
+    /// se reproduce con el transporte guionizado y los sellos se siembran en
+    /// el libro del estado, sin llamar a InferHub.
+    private static let promptIDEA4 =
+        "Explícame en una frase qué es un sello de costo."
+    private static let respuestaIDEA4 =
+        "Un sello de costo es el importe que quedó cerrado en el mensaje "
+        + "cuando se recibió la respuesta."
+
+    /// Traza de IDEA4: la banda del tope vive FUERA del hilo.
+    ///
+    /// El hilo queda en UserBubble + AssistantBubble (0 elementos de banda).
+    /// Después se cruzan el 80 % y el 100 % con sellos ya existentes y se
+    /// vuelve a capturar: el archivo no cambia ni un byte. La evidencia de la
+    /// banda y del composer operativo queda en `gasto-IDEA4.txt`, SIN bloque
+    /// `TRAZA` (el extractor solo acepta ui_transcript_<ID>.txt).
+    func testElGuionIDEA4ProduceLaTrazaDelTopeMensual() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+        arnes.estado.fijarTopeMensual(10.00)
+
+        // Reloj fijo: la traza es determinista para la réplica en Python.
+        let inicio = Date(timeIntervalSince1970: 1_000)
+        let ahora = Date()
+        arnes.estado.config.usoApp.registrar(
+            uso: UsoTokens(entrada: 1_000, salida: 500),
+            usd: 7.00,
+            fecha: ahora,
+            modelo: arnes.proveedor.modelo,
+            conPrecio: true
+        )
+
+        arnes.transporte.guionar(texto: Self.respuestaIDEA4)
+        let ruta = try Self.rutaDeTraza("ui_transcript_IDEA4.txt")
+        let sesion = try SesionTraza(ruta: ruta, inicio: inicio)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        arnes.estado.enviar(Self.promptIDEA4)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "La banda no es un elemento del hilo"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 1)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        XCTAssertTrue(contenido.contains("UserBubble(\"\(Self.promptIDEA4)"))
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // 70 %: todavía no hay banda.
+        let inicial = arnes.estado.estadoTopeMensual(ahora: ahora)
+        XCTAssertEqual(inicial.estado, .bajoUmbral)
+        XCTAssertFalse(inicial.visible)
+
+        // Cruzar el 80 % con sellos ya acumulados (sin InferHub).
+        arnes.estado.config.usoApp.registrar(
+            uso: UsoTokens(entrada: 100, salida: 50),
+            usd: 1.00,
+            fecha: ahora,
+            modelo: arnes.proveedor.modelo,
+            conPrecio: true
+        )
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        let alOchenta = arnes.estado.estadoTopeMensual(ahora: ahora)
+        XCTAssertEqual(alOchenta.estado, .aviso)
+        XCTAssertTrue(alOchenta.visible)
+        XCTAssertEqual(
+            try String(contentsOf: ruta, encoding: .utf8),
+            contenido,
+            "La banda vive fuera del hilo: el archivo no gana elementos"
+        )
+
+        // Cruzar el 100 %.
+        arnes.estado.config.usoApp.registrar(
+            uso: UsoTokens(entrada: 100, salida: 50),
+            usd: 2.00,
+            fecha: ahora,
+            modelo: arnes.proveedor.modelo,
+            conPrecio: true
+        )
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        let alCien = arnes.estado.estadoTopeMensual(ahora: ahora)
+        XCTAssertEqual(alCien.estado, .alcanzado)
+        XCTAssertEqual(
+            try String(contentsOf: ruta, encoding: .utf8),
+            contenido,
+            "El tope alcanzado tampoco entra al hilo"
+        )
+
+        // Composer operativo con la banda visible: el segundo envío se acepta
+        // y la respuesta se cierra. Nada se cancela solo.
+        arnes.transporte.guionar(texto: "Sigo.")
+        arnes.estado.enviar("Sigo con el tope alcanzado")
+        try await arnes.esperarTurno()
+        XCTAssertFalse(arnes.estado.enviando)
+        XCTAssertEqual(
+            arnes.estado.conversacion.mensajes.filter { $0.rol == .asistente }
+                .count,
+            2
+        )
+
+        // Evidencia de la banda y del composer junto a la traza, sin bloque
+        // TRAZA: el extractor rechaza un nombre que no sea ui_transcript_<ID>.
+        let rutaGasto = ruta.deletingLastPathComponent()
+            .appendingPathComponent("gasto-IDEA4.txt")
+        try TrazaVista.escribir(
+            Self.lineasDelTopeMensual(
+                inicial: inicial,
+                alOchenta: alOchenta,
+                alCien: alCien
+            ),
+            a: rutaGasto
+        )
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Lineas de evidencia de la banda: una por umbral, con el composer.
+    private static func lineasDelTopeMensual(
+        inicial: TopeMensualGasto,
+        alOchenta: TopeMensualGasto,
+        alCien: TopeMensualGasto
+    ) -> [String] {
+        func dinero(_ valor: Double) -> String {
+            "$" + String(format: "%.4f", valor)
+        }
+        return [
+            "== TOPE MENSUAL (IDEA4) ==",
+            "tope guardado: $10.00",
+            "nota: \(TopeMensualGasto.nota)",
+            "acumulado inicial: \(dinero(inicial.acumulado)) "
+                + "(\(inicial.porcentajeEntero) %)",
+            "banda inicial: \(inicial.estado.rawValue)",
+            "acumulado al cruzar 80 %: \(dinero(alOchenta.acumulado)) "
+                + "(\(alOchenta.porcentajeEntero) %)",
+            "banda al 80 %: \(alOchenta.estado.rawValue)",
+            "acumulado al cruzar 100 %: \(dinero(alCien.acumulado)) "
+                + "(\(alCien.porcentajeEntero) %)",
+            "banda al 100 %: \(alCien.estado.rawValue)",
+            "hilo: 2 elementos (UserBubble + AssistantBubble); "
+                + "0 elementos de banda",
+            "composer: operativo (segundo envío aceptado con la banda visible)"
+        ]
+    }
+
     /// Los cuatro conteos de G-04 tal como los aplica la Puerta C.
     private static func comprobarConteosDeLaPuertaC(
         _ contenido: String,

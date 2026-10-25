@@ -69,6 +69,12 @@ public struct AppConfig: Codable, Equatable {
     /// Tope de aviso por chat, en dolares estimados. nil usa el valor por
     /// defecto; 0 o negativo desactiva el aviso.
     public var topeAvisoCosto: Double?
+    /// Tope mensual personal de gasto (IDEA4), en USD. nil = sin tope.
+    ///
+    /// Se persiste con la configuracion, igual que el resto de ajustes
+    /// locales. Solo compara el acumulado SELLADO del libro de gasto: no
+    /// refleja cargos fuera de esta app y nunca bloquea un envio.
+    public var topeMensualGasto: Double?
     /// Herramientas que no piden aprobacion en modo Tarea, aunque tengan
     /// consecuencias. nil equivale a la lista vacia, que es el valor por
     /// defecto que manda la SPEC (§4.3).
@@ -98,6 +104,7 @@ public struct AppConfig: Codable, Equatable {
         memoriaInteligente: Bool = false,
         servidor: ServerConfig = ServerConfig(),
         topeAvisoCosto: Double? = nil,
+        topeMensualGasto: Double? = nil,
         herramientasSinAprobacion: [String]? = nil,
         skills: [SkillLocal] = [],
         packSkillsVersion: Int = 0,
@@ -111,6 +118,7 @@ public struct AppConfig: Codable, Equatable {
         self.memoriaInteligente = memoriaInteligente
         self.servidor = servidor
         self.topeAvisoCosto = topeAvisoCosto
+        self.topeMensualGasto = topeMensualGasto
         self.herramientasSinAprobacion = herramientasSinAprobacion
         self.skills = skills
         self.packSkillsVersion = packSkillsVersion
@@ -126,6 +134,7 @@ public struct AppConfig: Codable, Equatable {
         case memoriaInteligente
         case servidor
         case topeAvisoCosto
+        case topeMensualGasto
         case herramientasSinAprobacion
         case skills
         case packSkillsVersion
@@ -165,6 +174,12 @@ public struct AppConfig: Codable, Equatable {
         ) ?? false
         servidor = try contenedor.decode(ServerConfig.self, forKey: .servidor)
         topeAvisoCosto = try contenedor.decodeIfPresent(Double.self, forKey: .topeAvisoCosto)
+        // IDEA4: las configuraciones anteriores al tope mensual se leen sin
+        // tope, que es el estado seguro: no aparece ninguna banda.
+        topeMensualGasto = try contenedor.decodeIfPresent(
+            Double.self,
+            forKey: .topeMensualGasto
+        )
         herramientasSinAprobacion = try contenedor.decodeIfPresent(
             [String].self,
             forKey: .herramientasSinAprobacion
