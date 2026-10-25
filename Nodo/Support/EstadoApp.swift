@@ -392,7 +392,7 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var clavesVersion = 0
     /// Que clase de turno fallo, para que `reintentar()` sepa si debe volver a
     /// enviar el historial actual o regenerar la ultima respuesta restaurada.
-    private enum TipoTurnoFallido: Equatable {
+    private enum TipoTurnoFallido {
         case envio
         case regeneracion
     }
