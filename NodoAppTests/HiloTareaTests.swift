@@ -74,17 +74,15 @@ final class HiloTareaTests: XCTestCase {
             ]
         )
 
-        // Asercion negativa sobre TIPOS de elemento: nada de caja de
-        // instruccion, boton de guardar ni seccion de formulario.
+        // Asercion negativa sobre TIPOS de elemento: el hilo solo puede
+        // proyectar burbuja, tarjeta, fila, error y resultado. No existe
+        // ningun caso de caja de instruccion, boton de guardar ni seccion de
+        // formulario; el switch es exhaustivo sobre el enum cerrado.
         for elemento in hilo.elementos {
-            let descripcion = String(describing: elemento)
-            for prohibido in [
-                "instruccion", "Instrucción", "guardar", "formulario", "seccion"
-            ] {
-                XCTAssertFalse(
-                    descripcion.contains(prohibido),
-                    "El hilo no puede proyectar \(prohibido): \(descripcion)"
-                )
+            switch elemento {
+            case .burbujaUsuario, .tarjetaPlan, .filaPaso, .errorEnLinea,
+                 .resultadoFinal:
+                break
             }
         }
     }
@@ -369,7 +367,22 @@ final class HiloTareaTests: XCTestCase {
         XCTAssertTrue(antes.pasos.isEmpty)
         let peticiones = arnes.transporte.peticionesRegistradas.count
 
-        // E3: la vista no tiene cuenta atras ni ejecucion parcial.
+        // E2: plan recien propuesto, con las dos acciones y sin ejecucion.
+        let planE2 = try XCTUnwrap(antes.plan)
+        let hiloE2 = hiloDe(arnes.estado, antes)
+        XCTAssertEqual(
+            hiloE2.elementos.last,
+            .some(
+                .tarjetaPlan(
+                    pasos: planE2.pasos,
+                    version: 1,
+                    acciones: [.empezar, .ajustar]
+                )
+            )
+        )
+
+        // E3: la vista no tiene cuenta atras ni ejecucion parcial; tras la
+        // espera el plan sigue siendo el mismo y no se pidio nada nuevo.
         try await Task.sleep(nanoseconds: 150_000_000)
 
         let despues = try tareaActual(arnes, tarea.id)
@@ -377,6 +390,7 @@ final class HiloTareaTests: XCTestCase {
         XCTAssertTrue(despues.pasos.isEmpty)
         XCTAssertEqual(despues.plan?.version, 1)
         XCTAssertEqual(arnes.transporte.peticionesRegistradas.count, peticiones)
+        XCTAssertEqual(hiloDe(arnes.estado, despues).elementos, hiloE2.elementos)
     }
 
     // MARK: - E7: error en linea, persistido y en su punto
@@ -543,5 +557,28 @@ final class HiloTareaTests: XCTestCase {
             raizTareas.contains("TextEditor"),
             "Crear tarea ya no pasa por una hoja de formulario"
         )
+
+        // El catalogo cerrado de Tarea sigue teniendo SOLO sus tres casos: esta
+        // partida no lo amplia ni le cuela un elemento de formulario.
+        let catalogo = try String(
+            contentsOf: raiz.appendingPathComponent(
+                "Nodo/Support/ElementoTareaVisible.swift"
+            ),
+            encoding: .utf8
+        )
+        for esperado in [
+            "case cabeceraTarea(", "case tarjetaPlan(", "case filaPaso("
+        ] {
+            XCTAssertTrue(catalogo.contains(esperado), "Falta \(esperado)")
+        }
+        for prohibido in [
+            "cajaInstruccion", "botonGuardar", "seccionFormulario",
+            "cajaTexto", "seccionPlan", "seccionTrabajo"
+        ] {
+            XCTAssertFalse(
+                catalogo.contains(prohibido),
+                "El catalogo de Tarea no puede tener \(prohibido)"
+            )
+        }
     }
 }
