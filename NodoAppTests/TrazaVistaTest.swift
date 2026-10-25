@@ -1680,9 +1680,13 @@ final class TrazaVistaTest: XCTestCase {
     ///
     /// Los valores salen de `humos/b3b-corrida1-humo.json` (controlador vivo
     /// `humos/humo_b3b.py`, modelo combo/deepseek-v4-1-flash). En CI no hay
-    /// directorio de humos: este fixture reproduce LOS MISMOS desplazamientos
-    /// de reloj de pared de la captura, y el replay los espera de verdad. La
-    /// traza se sigue produciendo el ViewModel, nunca a mano.
+    /// directorio de humos: este fixture reproduce los MISMOS tiempos de reloj
+    /// de pared de la captura, y el replay los espera de verdad. La traza se
+    /// sigue produciendo el ViewModel, nunca a mano.
+    ///
+    /// La fidelidad es de TIEMPOS, no byte a byte: la prosa y el HTML de los
+    /// textos archivados van adaptados (sin la envoltura del JSON vivo), asi
+    /// que la traza no es copia literal del archivo del humo.
     private static let contenidoArchivadoDelDominio = """
     <!doctype html><html lang=en><head><meta charset=utf-8><title>Example \
     Domain</title></head><body><p>This domain is for use in documentation \
@@ -1837,6 +1841,8 @@ final class TrazaVistaTest: XCTestCase {
         )
 
         // La primera senal ya nombra el paso real y un estado dinamico real.
+        // M1: el denominador es el libro, que acaba de resetearse, asi que la
+        // primera senal es «Paso 1/1» aunque el plan tenga siete pasos.
         let trasElToque = hilo.traza.first { $0.contains("actividad:") }
         let lineaSenal = try XCTUnwrap(trasElToque)
         XCTAssertTrue(
@@ -1844,8 +1850,8 @@ final class TrazaVistaTest: XCTestCase {
             "La primera señal no tiene estado dinámico real: \(lineaSenal)"
         )
         XCTAssertTrue(
-            lineaSenal.contains("Paso 1/"),
-            "La primera señal no nombra el paso: \(lineaSenal)"
+            lineaSenal.contains("Paso 1/1"),
+            "La primera señal no nombra el paso del libro: \(lineaSenal)"
         )
 
         // El paso 1 (traer_url) se completa ANTES de que el dueno decida nada:
@@ -1882,9 +1888,65 @@ final class TrazaVistaTest: XCTestCase {
             Decimal(enLibro.costoAcumuladoUSD ?? 0)
         )
 
+        // M1: la cabecera cierra en 2/2. El plan tiene siete pasos y el libro
+        // dos; el denominador es el libro, nunca el plan.
+        XCTAssertEqual(hilo.cabecera.estado, .completada)
+        XCTAssertEqual(hilo.cabecera.pasoActual, 2)
+        XCTAssertEqual(hilo.cabecera.pasosTotales, 2)
+        XCTAssertEqual(enLibro.pasos.count, 2)
+        XCTAssertEqual(enLibro.plan?.pasos.count, 7)
+
         let contenido = "modo: \(registro.modo)\n" + hilo.trazaTexto
         let ruta = try Self.rutaDeTraza("ui_transcript_B3-B.txt")
         try contenido.write(to: ruta, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(
+            contenido.contains(
+                "estado: \"Completada\", pasoActual: 2, pasosTotales: 2"
+            ),
+            "La traza no cierra en Completada 2/2:\n\(contenido)"
+        )
+
+        // M1-2: el hueco entre pasos no anticipa el paso siguiente. El plan
+        // tiene siete pasos, pero la traza no puede nombrar un «Paso 3/»
+        // porque ese paso no llegó a existir.
+        XCTAssertFalse(
+            contenido.contains("Paso 3/"),
+            "La traza anticipó un paso que el motor no ejecutó:\n\(contenido)"
+        )
+
+        // M1-3: la burbuja final declara los pasos del plan que quedaron sin
+        // ejecutar, y el texto guardado en la tarea no se reescribe.
+        XCTAssertTrue(
+            contenido.contains(
+                "Los pasos 3–7 del plan quedaron sin ejecutar: "
+                    + "la tarea se completó sin ellos."
+            ),
+            "La burbuja final no declara el abandono del plan:\n\(contenido)"
+        )
+        // El motor acumula el texto de todas las piernas del bucle
+        // (`ToolLoop` concatena sin separador: m3, preexistente), asi que el
+        // guardado es «I'll fetch the page first.» + la prosa final. Por eso
+        // se comprueba que la prosa esta, no que encabece.
+        XCTAssertTrue(
+            enLibro.resultado?.contains("He consultado https://example.com")
+                == true,
+            "El resultado guardado no conserva la prosa del modelo"
+        )
+        XCTAssertFalse(
+            enLibro.resultado?.contains("quedaron sin ejecutar") == true,
+            "La declaración de abandono se escribió en el resultado guardado"
+        )
+
+        // Y la reapertura (proyección) dice lo mismo que el vivo: 2/2.
+        let reabierto = HiloTareaViewModel()
+        reabierto.reconstruir(
+            con: enLibro,
+            proyeccion: arnes.estado.elementosVisiblesDeTarea(enLibro)
+        )
+        XCTAssertEqual(reabierto.cabecera.estado, .completada)
+        XCTAssertEqual(reabierto.cabecera.pasoActual, 2)
+        XCTAssertEqual(reabierto.cabecera.pasosTotales, 2)
 
         // (a) Ninguna fila llega a Completado sin En curso previo, ni a
         // Denegado sin pasar por la hoja (denegar ocurre antes de ejecutar).

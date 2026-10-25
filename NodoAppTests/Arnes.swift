@@ -222,7 +222,9 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     /// Lee el guion exacto de un archivo de humo, sin encolarlo.
     ///
     /// Lo usan el arnes y los tests que necesitan afirmar sobre el contenido
-    /// archivado (por ejemplo, que la traza reproduce esa misma prosa).
+    /// archivado (por ejemplo, qué prosa y qué llamadas trae el archivo). La
+    /// traza no es copia de esa prosa: la presentación puede añadir texto,
+    /// como la declaración de pasos del plan no ejecutados.
     static func leerGuionDesdeArchivo(_ ruta: URL) throws -> GuionRespuesta {
         let datos = try Data(contentsOf: ruta)
         guard

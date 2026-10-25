@@ -2337,6 +2337,12 @@ final class EstadoApp: ObservableObject {
     var secuenciaEventoTareaActual: Int { secuenciaEventoTarea }
 
     /// Emite un evento del libro con su marca de tiempo de pared.
+    ///
+    /// `pasosTotales` NO se pasa nunca desde el plan (M1): el denominador de
+    /// la cabecera es la unidad del LIBRO y lo calcula `totalVisibleDeTarea`
+    /// sobre `tarea.pasos`. Ningun sitio de emision debe volver a derivarlo
+    /// del plan; si alguno lo hiciera, la cabecera prometeria pasos que el
+    /// modelo todavia no decidio y el denominador cambiaria al reabrir.
     private func emitirEventoTarea(
         _ tipo: EventoTareaEjecucion.Tipo,
         idTarea: UUID,
@@ -2373,10 +2379,18 @@ final class EstadoApp: ObservableObject {
         }
     }
 
-    /// Pasos totales visibles: los del plan mandan mientras haya plan, porque
-    /// la cabecera promete «Paso K de N» desde el primer instante.
+    /// Pasos totales visibles: la unidad es el LIBRO, nunca el plan (M1).
+    ///
+    /// POR QUE el libro y no el plan: no hay mapeo 1:1 entre los pasos del
+    /// plan (texto que el modelo propone al planificar) y los pasos del libro
+    /// (llamadas de herramienta que el modelo decide turno a turno), asi que
+    /// un numerador en unidad plan es indefinible. El libro es estado real y
+    /// es exactamente lo que el hilo pinta como filas; con el plan como
+    /// denominador, «Completada 2/7» se leia incompleta y el total cambiaba
+    /// al reabrir la tarea. La tarjeta de plan sigue mostrando sus pasos: eso
+    /// es el plan, no el progreso.
     private func totalVisibleDeTarea(_ tarea: Tarea) -> Int {
-        max(tarea.plan?.pasos.count ?? 0, tarea.pasos.count, 1)
+        max(tarea.pasos.count, 1)
     }
 
     /// Indice visible (1-based) del paso de una llamada, o 0 si no esta.
@@ -2448,12 +2462,16 @@ final class EstadoApp: ObservableObject {
         // Primera senal (B.2): el evento sale en el MISMO ciclo del toque en
         // [Empezar], antes de abrir la red. La fila 1 ya lleva el nombre real
         // del paso y un estado dinamico atado a lo que el motor hace ahora.
+        //
+        // M1: el total lo calcula el emisor desde el libro, que acaba de
+        // quedar vacio, asi que la primera senal es «Paso 1/1». Antes se
+        // pasaba el plan aqui y la cabecera abria con «Paso 1/7» para una
+        // corrida que podia cerrar en 2 pasos.
         selloPendienteDePaso = nil
         emitirEventoTarea(
             .turnoIniciado,
             idTarea: id,
             paso: 1,
-            pasosTotales: max(tarea.plan?.pasos.count ?? 0, 1),
             etiqueta: tarea.plan?.pasos.first?.texto ?? "",
             estadoDinamico: "Consultando modelo…",
             estado: .enCurso

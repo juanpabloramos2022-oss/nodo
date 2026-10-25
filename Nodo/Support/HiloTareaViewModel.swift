@@ -229,9 +229,10 @@ final class HiloTareaViewModel: ObservableObject {
             nuevoEpilogo.append(.errorEnLinea(texto: error))
         }
 
-        if let resultado = tarea.resultado,
-           !resultado.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            nuevoEpilogo.append(.resultadoFinal(texto: resultado))
+        // M1-3: el epilogo declara el abandono del plan. La declaracion se
+        // anade en presentacion; `tarea.resultado` guardado no se reescribe.
+        if let texto = textoFinalDeTarea(tarea) {
+            nuevoEpilogo.append(.resultadoFinal(texto: texto))
         }
 
         for turno in posteriores where turno.rol == .usuario {
@@ -291,6 +292,77 @@ final class HiloTareaViewModel: ObservableObject {
         return delLibro.herramienta == nil
             && delLibro.estado == .fallido
             && delLibro.descripcion.hasPrefix("Error: ")
+    }
+
+    // MARK: - Epilogo: la burbuja final declara el plan abandonado (M1-3)
+
+    /// Texto visible del resultado final, con la declaracion de abandono.
+    ///
+    /// POR QUE solo presentacion: `tarea.resultado` es lo que el modelo
+    /// respondio y NO se reescribe. Lo que se anade es una frase de lectura
+    /// para el dueno: si la tarea se completo sin ejecutar todos los pasos del
+    /// plan, la burbuja dice que pasos quedaron sin ejecutar. Sin eso, una
+    /// tarjeta de 7 pasos junto a un libro de 2 deja al dueno adivinando que
+    /// paso de verdad y que no.
+    ///
+    /// La unidad vuelve a ser el libro: se cuentan los pasos reales del libro
+    /// (el paso sintetico «Error: …» no es un paso del plan y no cuenta) y se
+    /// comparan con los del plan. Sin plan, con libro >= plan o con la tarea
+    /// fuera de `.completada` el texto se devuelve intacto.
+    private func textoFinalDeTarea(_ tarea: Tarea) -> String? {
+        guard let resultado = tarea.resultado,
+              !resultado.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        else { return nil }
+
+        guard tarea.estado == .completada, let plan = tarea.plan else {
+            return resultado
+        }
+
+        let pasosDelLibro = tarea.pasos.indices
+            .filter { !esPasoDeErrorDeTarea(paso: $0 + 1, en: tarea) }
+            .count
+        let pasosDelPlan = plan.pasos.count
+        guard pasosDelPlan > pasosDelLibro else { return resultado }
+
+        let primero = pasosDelLibro + 1
+        let declaracion: String
+        if primero == pasosDelPlan {
+            declaracion = "El paso \(primero) del plan quedó sin ejecutar: "
+                + "la tarea se completó sin él."
+        } else {
+            declaracion = "Los pasos \(primero)–\(pasosDelPlan) del plan "
+                + "quedaron sin ejecutar: la tarea se completó sin ellos."
+        }
+        let cuerpo = resultado.trimmingCharacters(in: .newlines)
+        return cuerpo + "\n\n" + declaracion
+    }
+
+    // MARK: - Aprobacion en el hilo (M2-unit)
+
+    /// Solicitud que la fila de un paso debe desplegar EN EL HILO.
+    ///
+    /// Es la UNICA condicion de render de la tarjeta de aprobacion: la fila
+    /// tiene que estar en «Esperando aprobacion» y la solicitud vigente del
+    /// estado tiene que ser de ESTA tarea. La regla vive aqui, no en la vista,
+    /// para que no existan dos copias que se puedan separar.
+    ///
+    /// `paso` identifica la fila de la que cuelga la tarjeta; no se usa como
+    /// veto contra las filas vivas a proposito: tras reconectar a mitad de una
+    /// aprobacion el hilo reconstruye sus filas desde el libro y podria no
+    /// tener todavia la fila viva, y vetarla ahi esconderia la decision que el
+    /// motor esta esperando (una aprobacion invisible).
+    func solicitudAprobacionEnHilo(
+        paso: Int,
+        estado: ElementoTareaVisible.EstadoPaso
+    ) -> SolicitudAprobacion? {
+        guard paso >= 1, estado == .esperandoAprobacion else { return nil }
+        guard let estadoApp = estadoObservado,
+              let tareaID = tareaObservada,
+              let solicitud = estadoApp.solicitudAprobacion,
+              solicitud.tareaID == tareaID
+        else { return nil }
+        return solicitud
     }
 
     // MARK: - Tuberia viva (B3-B, B.1)
@@ -358,6 +430,11 @@ final class HiloTareaViewModel: ObservableObject {
         ejecucionViva = true
         termino = false
         aprobacionPendiente = nil
+        // M1: la cabecera arranca en cero para que un total o un paso de otra
+        // corrida no persista. El costo sellado NO se resetea: el gasto de
+        // planificacion ya ocurrio en esta misma tarea y se conserva.
+        cabecera.pasoActual = 0
+        cabecera.pasosTotales = 0
     }
 
     /// Aplica un evento de ejecucion respetando el orden de emision.
@@ -464,26 +541,44 @@ final class HiloTareaViewModel: ObservableObject {
                 aprobacionPendiente = nil
             }
             fijarFila(evento)
+            // El hueco entre pasos NO anticipa el paso siguiente (M1-2).
+            //
+            // POR QUE no se cumple §2.3 literal aqui: «la fila K+1 nace En
+            // curso en el acto al cerrar K» presupone una secuencia de pasos
+            // pre-conocida. En este motor los pasos los propone el modelo
+            // turno a turno: al cerrar K, K+1 todavia NO existe (el modelo
+            // puede pedir otra herramienta, pedir aprobacion o cerrar el
+            // turno). Si K+1 acaba necesitando aprobacion, nace «Esperando
+            // aprobacion», nunca «En curso», porque no se ejecuto: la propia
+            // Puerta C documenta que un Denegado no pasa por En curso.
+            // Pintar una fila En curso por anticipado seria pintar ejecucion
+            // que no ocurrio (forma sin fondo), y eso esta PROHIBIDO.
+            //
+            // Lo que se implementa: la actividad del hueco es el texto plano
+            // «Esperando la respuesta del modelo…» SIN prefijo de paso, la
+            // cabecera se queda en K (ultimo paso real) y el latido la sigue
+            // renovando cada <=1,5 s. La fila K+1 nace en el acto de su
+            // primer evento real (`pasoIniciado` o `aprobacionPendiente`).
+            //
+            // La ratificacion de esta lectura frente a §2.3 literal queda
+            // para el lead/juez: aqui NO se declara §2.3 cumplido.
             actualizarCabecera(
                 estado: evento.estado == .denegado
                     ? .enCurso
                     : (evento.estado == .error ? .error : .enCurso),
                 evento: evento,
                 actividad: Self.actividad(
-                    paso: min(evento.paso + 1, max(evento.pasosTotales, 1)),
+                    paso: 0,
                     total: evento.pasosTotales,
-                    texto: "Esperando la respuesta del modelo…"
+                    texto: Self.textoEsperaDelModelo
                 )
             )
             // El motor vuelve al modelo para el paso siguiente: la espera real
             // sigue y el latido no se corta entre pasos.
             iniciarLatido(
                 paso: evento.paso,
-                pasoActividad: min(
-                    evento.paso + 1,
-                    max(evento.pasosTotales, 1)
-                ),
-                detalle: "Esperando la respuesta del modelo…",
+                pasoActividad: 0,
+                detalle: Self.textoEsperaDelModelo,
                 en: evento.fecha
             )
 
@@ -604,9 +699,10 @@ final class HiloTareaViewModel: ObservableObject {
            !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             nuevoEpilogo.append(.errorEnLinea(texto: error))
         }
-        if let resultado = tarea.resultado,
-           !resultado.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            nuevoEpilogo.append(.resultadoFinal(texto: resultado))
+        // Mismo helper que la reconstruccion: el hilo vivo y la reapertura
+        // tienen que ensenar exactamente el mismo epilogo.
+        if let texto = textoFinalDeTarea(tarea) {
+            nuevoEpilogo.append(.resultadoFinal(texto: texto))
         }
         for turno in tarea.turnos where turno.despuesDeEjecutar
             && turno.rol == .usuario {
@@ -665,7 +761,17 @@ final class HiloTareaViewModel: ObservableObject {
         primeraSenal = evento.fecha
     }
 
+    /// Texto del hueco entre pasos: espera real, sin numero de paso.
+    ///
+    /// M1-2: mientras el motor vuelve al modelo no hay paso que nombrar; el
+    /// siguiente todavia no existe. El texto va sin prefijo «Paso K/N».
+    private static let textoEsperaDelModelo = "Esperando la respuesta del modelo…"
+
     /// Rotulo del paso en curso: siempre nombra el paso real y su actividad.
+    ///
+    /// Con `paso` 0 no hay paso que nombrar (hueco entre pasos): el texto va
+    /// limpio, sin prefijo. Es la unica forma de que la espera entre pasos no
+    /// invente un paso que el modelo aun no propuso.
     private static func actividad(
         paso: Int,
         total: Int,
@@ -673,6 +779,7 @@ final class HiloTareaViewModel: ObservableObject {
     ) -> String {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty else { return "" }
+        guard paso > 0 else { return limpio }
         guard total > 0 else { return limpio }
         return "Paso \(paso)/\(total) · \(limpio)"
     }

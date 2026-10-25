@@ -459,9 +459,22 @@ final class HiloTareaTests: XCTestCase {
         XCTAssertNil(actual.ultimoError)
 
         let hilo = hiloDe(arnes.estado, actual)
-        XCTAssertEqual(
-            hilo.elementos.last,
-            .some(.resultadoFinal(texto: "Respuesta final de prueba"))
+        // M1-3: el resultado sigue siendo el último elemento y conserva el
+        // texto del modelo; además declara, como párrafo aparte, el paso del
+        // plan que no llegó a ejecutarse (el libro quedó vacío).
+        guard case .some(.resultadoFinal(let texto)) = hilo.elementos.last else {
+            return XCTFail("El resultado final no es el último elemento")
+        }
+        XCTAssertTrue(
+            texto.hasPrefix("Respuesta final de prueba"),
+            "El resultado final perdió el texto del modelo: \(texto)"
+        )
+        XCTAssertTrue(
+            texto.contains(
+                "El paso 1 del plan quedó sin ejecutar: "
+                    + "la tarea se completó sin él."
+            ),
+            "La burbuja final no declara el paso abandonado: \(texto)"
         )
     }
 

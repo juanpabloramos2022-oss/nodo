@@ -274,9 +274,13 @@ struct TareaView: View {
 
                 // La hoja de aprobacion se despliega EN EL HILO, pegada a la
                 // fila que la pide: la decision no se toma fuera de contexto.
-                if estadoDelPaso == .esperandoAprobacion,
-                   let solicitud = estado.solicitudAprobacion,
-                   solicitud.tareaID == tarea.id {
+                // La condicion de render es UNA sola, la del ViewModel
+                // (`solicitudAprobacionEnHilo`): la vista no tiene su propia
+                // copia de la regla y aqui solo se desempaqueta la solicitud.
+                if let solicitud = hilo.solicitudAprobacionEnHilo(
+                    paso: paso,
+                    estado: estadoDelPaso
+                ) {
                     FilaAprobacionEnHilo(solicitud: solicitud)
                         .padding(.leading, 28)
                 }
