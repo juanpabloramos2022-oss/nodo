@@ -1,0 +1,6 @@
+[t=0.0s] UserBubble("Escribime una función en Python que sume dos números enteros y devuélvela en un bloque de código.")
+[t=0.0s] AssistantBubble("def sumar_enteros(a: int, b: int) -> int:\n    \"\"\"Devuelve la suma de dos números enteros.\"\"\"\n    return a + b\nUso:\nprint(sumar_enteros(3, 5))  # 8\nSi querés que valide que los argumentos sean realmente enteros (y no `float` o `bool`), decime y te la ajusto.")
+  [t=0.0s] CodeBlock(lenguaje: "python", textoCrudo: "def sumar_enteros(a: int, b: int) -> int:\n    \"\"\"Devuelve la suma de dos números enteros.\"\"\"\n    return a + b")
+  [t=0.0s] TextSegment("Uso:")
+  [t=0.0s] CodeBlock(lenguaje: "python", textoCrudo: "print(sumar_enteros(3, 5))  # 8")
+  [t=0.0s] TextSegment("Si querés que valide que los argumentos sean realmente enteros (y no `float` o `bool`), decime y te la ajusto.")

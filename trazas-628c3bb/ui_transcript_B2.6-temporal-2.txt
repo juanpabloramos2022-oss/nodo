@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Recuerda que mi clave de prueba es SOL-9 para esta conversación")
+[t=0.0s] AssistantBubble("Entendido. Para esta conversación recordaré que tu clave de prueba es **SOL-9**.")
+  [t=0.0s] TextSegment("Entendido. Para esta conversación recordaré que tu clave de prueba es **SOL-9**.")

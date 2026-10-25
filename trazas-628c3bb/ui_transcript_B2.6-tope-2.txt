@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Prefiero que me respondas en párrafos cortos")
+[t=0.0s] AssistantBubble("Entendido.")
+  [t=0.0s] TextSegment("Entendido.")
