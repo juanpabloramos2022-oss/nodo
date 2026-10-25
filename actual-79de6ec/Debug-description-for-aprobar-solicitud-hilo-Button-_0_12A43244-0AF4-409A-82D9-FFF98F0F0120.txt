@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'com.nodo.ios'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"aprobar-solicitud-hilo" IN identifiers'

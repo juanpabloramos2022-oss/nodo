@@ -1,0 +1,67 @@
+Application, 0x1057913a0, pid: 24662, label: 'Nodo' <App element pid: 24662>
+  Window (Main), 0x10570d6e0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4379046832.4>
+    Other, 0x1057473f0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4379979472.5>
+      Other, 0x105747510, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378224560.6>
+        Other, 0x105747150, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378191680.7>
+          Other, 0x105747270, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4379048896.8>
+            Other, 0x105747630, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378044304.9>
+              Other, 0x105747750, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378042896.10>
+                Other, 0x105747870, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378913520.12>
+                  Other, 0x105747990, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378262560.56>
+                    Other, 0x105747ab0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4380665920.58>
+                      Other, 0x105747bd0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4380242928.59>
+                        Other, 0x105747cf0, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4380627984.60>
+                          NavigationBar, 0x105747e10, {{0.0, 53.7}, {393.0, 44.0}}, identifier: 'Tarea' <AX element pid: 24662, elementOrHash.elementID: 4380618896.61>
+                            Button, 0x105747f30, {{0.0, 53.7}, {80.7, 44.0}}, identifier: 'BackButton', label: 'Tareas' <AX element pid: 24662, elementOrHash.elementID: 105553141092480.88>
+                            StaticText, 0x105791720, {{174.7, 65.3}, {44.0, 20.3}}, label: 'Tarea' <AX element pid: 24662, elementOrHash.elementID: 4378690960.89>
+                            Other, 0x105791840, {{343.0, 58.7}, {34.0, 34.0}}, identifier: 'menu-tarea', label: 'Acciones de la tarea' <AX element pid: 24662, elementOrHash.elementID: 4422810624.90>
+                              Other, 0x105791960, {{343.0, 58.7}, {34.0, 34.0}} <AX element pid: 24662, elementOrHash.elementID: 4380740864.91>
+                                Button, 0x105791a80, {{343.0, 58.7}, {34.0, 34.0}}, identifier: 'menu-tarea', label: 'Acciones de la tarea' <AX element pid: 24662, elementOrHash.elementID: 4379643808.93>
+                                  Button, 0x105791ba0, {{343.0, 58.7}, {34.0, 34.0}} <AX element pid: 24662, elementOrHash.elementID: 4380731920.95>
+                                    Other, 0x105791cc0, {{343.0, 58.7}, {34.0, 34.0}} <AX element pid: 24662, elementOrHash.elementID: 4379643136.107>
+                                      Image, 0x105791de0, {{343.0, 58.7}, {34.0, 34.0}}, identifier: 'ellipsis.circle', label: 'More' <AX element pid: 24662, elementOrHash.elementID: 4379301200.114>
+                          Other, 0x105791f00, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4380628432.62>
+                            Other, 0x105792020, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4378570000.65>
+                              Other, 0x105792140, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4379467680.92>
+                                Other, 0x105792260, {{0.0, 0.0}, {393.0, 852.0}} <AX element pid: 24662, elementOrHash.elementID: 4705128544.94>
+                                  StaticText, 0x105792380, {{16.0, 110.5}, {44.0, 20.3}}, identifier: 'hilo-tarea', label: 'Tarea' <AX element pid: 24662, elementOrHash.elementID: 4705058736.96>
+                                  StaticText, 0x1057924a0, {{68.0, 109.7}, {152.0, 22.0}}, identifier: 'hilo-tarea', label: 'Esperando aprobación' <AX element pid: 24662, elementOrHash.elementID: 4705059168.97>
+                                  Button, 0x1057925c0, {{347.0, 105.7}, {30.0, 30.0}}, identifier: 'hilo-tarea', label: 'Ocultar el detalle de la tarea' <AX element pid: 24662, elementOrHash.elementID: 4705059600.98>
+                                  StaticText, 0x1057926e0, {{16.0, 151.7}, {71.7, 14.3}}, identifier: 'hilo-tarea', label: '≈$0.012000' <AX element pid: 24662, elementOrHash.elementID: 4705034400.99>
+                                  StaticText, 0x105792800, {{97.7, 151.7}, {49.0, 14.3}}, identifier: 'hilo-tarea', label: 'Paso 2/2' <AX element pid: 24662, elementOrHash.elementID: 4705034832.100>
+                                  Button, 0x105792920, {{266.3, 141.7}, {110.7, 34.3}}, identifier: 'hilo-tarea', label: 'Detener' <AX element pid: 24662, elementOrHash.elementID: 4705110288.101>
+                                    Image, 0x105792a40, {{280.3, 152.0}, {13.7, 13.7}}, identifier: 'stop.fill', label: 'Stop' <AX element pid: 24662, elementOrHash.elementID: 4705037584.108>
+                                    StaticText, 0x105792b60, {{266.3, 141.7}, {110.7, 34.3}}, label: 'Detener' <AX element pid: 24662, elementOrHash.elementID: 4705109856.109>
+                                  ScrollView, 0x105792c80, {{0.0, 184.0}, {393.0, 574.0}}, identifier: 'hilo-tarea' <AX element pid: 24662, elementOrHash.elementID: 4414746624.102>
+                                    Other, 0x105792da0, {{0.0, 184.0}, {393.0, 445.0}} <AX element pid: 24662, elementOrHash.elementID: 4379529520.110>
+                                      Other, 0x105792ec0, {{19.0, 196.0}, {358.0, 408.3}} <AX element pid: 24662, elementOrHash.elementID: 4705130224.115>
+                                        StaticText, 0x105792fe0, {{122.7, 196.0}, {254.3, 40.3}}, identifier: 'burbuja-encargo-tarea', label: 'Revisar el material de ejemplo' <AX element pid: 24662, elementOrHash.elementID: 4705112256.118>
+                                        StaticText, 0x105793100, {{28.0, 261.0}, {31.0, 18.0}}, identifier: 'tarjeta-plan-tarea', label: 'Plan' <AX element pid: 24662, elementOrHash.elementID: 4705112688.119>
+                                        StaticText, 0x105793220, {{75.0, 263.3}, {12.0, 13.3}}, identifier: 'tarjeta-plan-tarea', label: 'v1' <AX element pid: 24662, elementOrHash.elementID: 4705113360.120>
+                                        StaticText, 0x105793340, {{38.0, 289.7}, {12.0, 15.7}}, identifier: 'tarjeta-plan-tarea', label: '1.' <AX element pid: 24662, elementOrHash.elementID: 4705113792.121>
+                                        StaticText, 0x105793460, {{60.0, 289.7}, {217.0, 18.0}}, identifier: 'tarjeta-plan-tarea', label: 'Preparar el material de ejemplo.' <AX element pid: 24662, elementOrHash.elementID: 4705114576.122>
+                                        StaticText, 0x105793580, {{38.0, 317.7}, {12.0, 15.7}}, identifier: 'tarjeta-plan-tarea', label: '2.' <AX element pid: 24662, elementOrHash.elementID: 4705115360.123>
+                                        StaticText, 0x1057936a0, {{60.0, 317.7}, {178.3, 18.0}}, identifier: 'tarjeta-plan-tarea', label: 'Leer el enlace de ejemplo.' <AX element pid: 24662, elementOrHash.elementID: 4705116144.124>
+                                        Image, 0x105793aa0, {{19.0, 364.7}, {12.0, 12.0}}, identifier: 'fila-paso-tarea', label: 'Selected', Selected <AX element pid: 24662, elementOrHash.elementID: 4705120960.125>
+                                        StaticText, 0x105793bc0, {{44.0, 361.7}, {231.7, 18.0}}, identifier: 'fila-paso-tarea', label: '1. Preparar el material de ejemplo.' <AX element pid: 24662, elementOrHash.elementID: 4705121392.126>
+                                        StaticText, 0x105793ce0, {{310.7, 365.7}, {66.3, 13.3}}, identifier: 'fila-paso-tarea', label: 'Completado' <AX element pid: 24662, elementOrHash.elementID: 4705121824.127>
+                                        StaticText, 0x105793e00, {{44.0, 382.7}, {26.3, 13.3}}, identifier: 'fila-paso-tarea', label: '2.0 s' <AX element pid: 24662, elementOrHash.elementID: 4705122256.128>
+                                        StaticText, 0x105793f20, {{78.3, 382.7}, {66.3, 13.3}}, identifier: 'fila-paso-tarea', label: '≈$0.012000' <AX element pid: 24662, elementOrHash.elementID: 4705122688.129>
+                                        Image, 0x105794040, {{20.7, 414.7}, {9.7, 12.7}}, identifier: 'fila-paso-tarea', label: 'Block' <AX element pid: 24662, elementOrHash.elementID: 4705126480.130>
+                                        StaticText, 0x105794160, {{44.0, 412.0}, {115.7, 38.0}}, identifier: 'fila-paso-tarea', label: '2. Leer el enlace de ejemplo.' <AX element pid: 24662, elementOrHash.elementID: 4705126912.131>
+                                        StaticText, 0x105794280, {{254.7, 416.0}, {122.3, 13.3}}, identifier: 'fila-paso-tarea', label: 'Esperando aprobación' <AX element pid: 24662, elementOrHash.elementID: 4705127344.132>
+                                        Image, 0x1057943a0, {{59.3, 476.3}, {12.3, 16.3}}, identifier: 'aprobacion-en-hilo', label: 'Block' <AX element pid: 24662, elementOrHash.elementID: 4705129792.133>
+                                        StaticText, 0x1057944c0, {{59.3, 475.6}, {201.7, 18.0}}, identifier: 'aprobacion-en-hilo', label: 'Esperando tu aprobación' <AX element pid: 24662, elementOrHash.elementID: 4705130896.134>
+                                        StaticText, 0x1057945e0, {{56.0, 504.0}, {154.3, 15.7}}, identifier: 'aprobacion-en-hilo', label: 'Leer el enlace de ejemplo' <AX element pid: 24662, elementOrHash.elementID: 4705132000.135>
+                                        StaticText, 0x105794700, {{56.0, 529.7}, {289.7, 30.3}}, identifier: 'aprobacion-en-hilo', label: 'Si deniegas, no se escribirá nada y la tarea seguirá con la respuesta «denegado por el dueño».' <AX element pid: 24662, elementOrHash.elementID: 4705132432.136>
+                                        Button, 0x105794820, {{56.0, 570.0}, {148.7, 34.3}}, identifier: 'aprobacion-en-hilo', label: 'Denegar' <AX element pid: 24662, elementOrHash.elementID: 4705132864.137>
+                                        Button, 0x105794940, {{216.7, 570.0}, {148.3, 34.3}}, identifier: 'aprobacion-en-hilo', label: 'Aprobar' <AX element pid: 24662, elementOrHash.elementID: 4705133968.138>
+                                    Other, 0x105794a60, {{360.0, 184.0}, {30.0, 574.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 24662, elementOrHash.elementID: 4379671072.111>
+                                      Other, 0x105794b80, {{387.0, 899.7}, {3.0, 7.0}} <AX element pid: 24662, elementOrHash.elementID: 4379671536.116>
+                                    Other, 0x105794ca0, {{360.0, 184.0}, {30.0, 574.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 24662, elementOrHash.elementID: 4379671072.111>
+                                      Other, 0x105794dc0, {{387.0, 899.7}, {3.0, 7.0}} <AX element pid: 24662, elementOrHash.elementID: 4379671536.116>
+                                  TextField, 0x105794ee0, {{30.0, 776.0}, {241.0, 22.0}}, identifier: 'hilo-tarea', placeholderValue: 'Escribe el encargo o un ajuste' <AX element pid: 24662, elementOrHash.elementID: 4414624768.103>
+                                    Other, 0x105795000, {{30.0, 784.0}, {241.0, 11.0}}, label: 'Horizontal scroll bar, 1 page', value: 0% <AX element pid: 24662, elementOrHash.elementID: 4379674464.112>
+                                      Other, 0x105795120, {{33.0, 792.0}, {235.0, 3.0}} <AX element pid: 24662, elementOrHash.elementID: 4379674928.117>
+                                  Button, 0x105795240, {{293.0, 770.0}, {38.0, 38.0}}, identifier: 'hilo-tarea', label: 'Dictar' <AX element pid: 24662, elementOrHash.elementID: 4705129216.104>
+                                  Button, 0x105795430, {{339.0, 770.0}, {38.0, 38.0}}, identifier: 'hilo-tarea', label: 'Enviar', Disabled <AX element pid: 24662, elementOrHash.elementID: 4705123584.105>
