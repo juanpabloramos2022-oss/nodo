@@ -1886,17 +1886,24 @@ final class TrazaVistaTest: XCTestCase {
         let ruta = try Self.rutaDeTraza("ui_transcript_B3-B.txt")
         try contenido.write(to: ruta, atomically: true, encoding: .utf8)
 
-        // (a) Ninguna fila llega a Completado/Denegado sin En curso previo.
+        // (a) Ninguna fila llega a Completado sin En curso previo, ni a
+        // Denegado sin pasar por la hoja (denegar ocurre antes de ejecutar).
         let secuencia = Self.transicionesDePaso(hilo.traza)
-        var enCursoVistos: Set<Int> = []
+        var vistos: [Int: Set<String>] = [:]
         for (paso, estado) in secuencia {
-            if estado == "En curso" { enCursoVistos.insert(paso) }
-            if estado == "Completado" || estado == "Denegado" {
+            if estado == "Completado" {
                 XCTAssertTrue(
-                    enCursoVistos.contains(paso),
-                    "El paso \(paso) llegó a \(estado) sin En curso previo"
+                    vistos[paso, default: []].contains("En curso"),
+                    "El paso \(paso) llegó a Completado sin En curso previo"
                 )
             }
+            if estado == "Denegado" {
+                XCTAssertTrue(
+                    vistos[paso, default: []].contains("Esperando aprobación"),
+                    "El paso \(paso) llegó a Denegado sin pasar por la hoja"
+                )
+            }
+            vistos[paso, default: []].insert(estado)
         }
         XCTAssertTrue(secuencia.contains { $0.0 == 1 && $0.1 == "Completado" })
         XCTAssertTrue(secuencia.contains { $0.0 == 2 && $0.1 == "Denegado" })

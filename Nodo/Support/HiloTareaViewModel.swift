@@ -188,31 +188,12 @@ final class HiloTareaViewModel: ObservableObject {
             }
         }
 
-        var nuevoPreludio: [Elemento] = []
-        let dePlanificacion = tarea.turnos.filter { !$0.despuesDeEjecutar }
         let posteriores = tarea.turnos.filter { $0.despuesDeEjecutar }
+        let nuevoPreludio = Self.preludioDe(tarea, plan: plan)
 
-        for turno in dePlanificacion where turno.rol == .usuario {
-            nuevoPreludio.append(.burbujaUsuario(texto: turno.texto))
-        }
-
-        if let plan {
-            let acciones: [AccionPlan] = tarea.admiteEdicion
-                ? [.empezar, .ajustar]
-                : []
-            nuevoPreludio.append(
-                .tarjetaPlan(
-                    pasos: plan.pasos,
-                    version: plan.version,
-                    acciones: acciones
-                )
-            )
-            textosDelPlan = plan.pasos
-                .sorted { $0.orden < $1.orden }
-                .map(\.texto)
-        } else {
-            textosDelPlan = []
-        }
+        textosDelPlan = plan?.pasos
+            .sorted { $0.orden < $1.orden }
+            .map(\.texto) ?? []
 
         var nuevasFilasBase: [FilaViva] = []
         for elemento in filasProyectadas {
@@ -265,12 +246,40 @@ final class HiloTareaViewModel: ObservableObject {
         // devolver el hilo al estado de disco mientras el motor escribe.
         if !ejecucionViva {
             cabecera = deProyeccion
-            cabeceraAnterior = deProyeccion
         } else if deProyeccion.pasosTotales > cabecera.pasosTotales {
             cabecera.pasosTotales = deProyeccion.pasosTotales
         }
 
         recomponer(ahora: reloj())
+    }
+
+    /// Encargo(s) del hilo y la tarjeta de plan vigente.
+    ///
+    /// La tarjeta ofrece [Empezar] y [Ajustar] SOLO mientras la tarea admite
+    /// edicion: en cuanto la ejecucion arranca, los botones desaparecen del
+    /// hilo en la misma transicion, sin esperar a un refresco de la vista.
+    private static func preludioDe(
+        _ tarea: Tarea,
+        plan: (pasos: [PasoPlan], version: Int)?
+    ) -> [Elemento] {
+        var elementos: [Elemento] = []
+        for turno in tarea.turnos where !turno.despuesDeEjecutar
+            && turno.rol == .usuario {
+            elementos.append(.burbujaUsuario(texto: turno.texto))
+        }
+        if let plan {
+            let acciones: [AccionPlan] = tarea.admiteEdicion
+                ? [.empezar, .ajustar]
+                : []
+            elementos.append(
+                .tarjetaPlan(
+                    pasos: plan.pasos,
+                    version: plan.version,
+                    acciones: acciones
+                )
+            )
+        }
+        return elementos
     }
 
     /// El unico paso con descripcion «Error: …» y sin herramienta es el que
@@ -584,6 +593,11 @@ final class HiloTareaViewModel: ObservableObject {
             )
         }
         filasBase = nuevasBase
+
+        // La tarjeta pierde sus botones en cuanto la tarea deja de admitir
+        // edicion: la transicion se ve en el hilo, no en el siguiente refresco.
+        let plan = tarea.plan.map { (pasos: $0.pasos, version: $0.version) }
+        preludio = Self.preludioDe(tarea, plan: plan)
 
         var nuevoEpilogo: [Elemento] = []
         if let error = tarea.ultimoError,

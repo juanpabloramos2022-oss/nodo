@@ -161,21 +161,26 @@ final class ProgresoVivoTests: XCTestCase {
         let secuencia = transiciones(hilo.traza)
         XCTAssertFalse(secuencia.isEmpty, "La traza no registró transiciones")
 
-        // Para CADA paso que llegó a Completado o Denegado hubo un En curso
-        // anterior en la misma traza: ninguna fila cae de golpe.
-        var vistos: [Int: Int] = [:]
+        // Ninguna fila cae de golpe: un paso que llega a Completado pasó antes
+        // por En curso, y uno Denegado pasó antes por «Esperando aprobación»
+        // (se deniega ANTES de ejecutarse, así que nunca estuvo En curso).
+        var vistos: [Int: Set<String>] = [:]
         for (paso, estado) in secuencia {
-            if estado == "Completado" || estado == "Denegado" {
-                let enCurso = vistos[paso] ?? 0
-                XCTAssertGreaterThan(
-                    enCurso,
-                    0,
-                    "El paso \(paso) llegó a \(estado) sin En curso previo"
+            switch estado {
+            case "Completado":
+                XCTAssertTrue(
+                    vistos[paso, default: []].contains("En curso"),
+                    "El paso \(paso) llegó a Completado sin En curso previo"
                 )
+            case "Denegado":
+                XCTAssertTrue(
+                    vistos[paso, default: []].contains("Esperando aprobación"),
+                    "El paso \(paso) llegó a Denegado sin pasar por la hoja"
+                )
+            default:
+                break
             }
-            if estado == "En curso" {
-                vistos[paso] = (vistos[paso] ?? 0) + 1
-            }
+            vistos[paso, default: []].insert(estado)
         }
 
         // Y las filas finales son las del libro: 1 completada, 2 denegada.

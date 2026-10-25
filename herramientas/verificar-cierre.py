@@ -308,9 +308,9 @@ def _verificar_transiciones_de_paso(lineas: list[str], partida: str) -> list[str
     """B3-B: ninguna fila llega a Completado sin haber pasado por En curso.
 
     Es la invariante negativa de §2.2 ("un paso que cae de golpe es fallo de
-    puerta") aplicada sobre la traza publicada. Un paso Denegado queda exento:
-    se deniega ANTES de ejecutarse, asi que su camino legitimo es
-    Pendiente/Esperando aprobacion -> Denegado.
+    puerta") aplicada sobre la traza publicada. Un paso Denegado no pasa por
+    «En curso» —se deniega ANTES de ejecutarse— pero SI tiene que haber pasado
+    por «Esperando aprobación»: la hoja se decide en contexto, no por detras.
     """
     if partida != "B3-B":
         return []
@@ -327,6 +327,13 @@ def _verificar_transiciones_de_paso(lineas: list[str], partida: str) -> list[str
             fallos.append(
                 f"Linea {numero}: el paso {paso} aparece Completado sin "
                 "haber pasado por «En curso» (B3-B §2.2)"
+            )
+        if estado == "Denegado" and "Esperando aprobación" not in vistos.get(
+            paso, set()
+        ):
+            fallos.append(
+                f"Linea {numero}: el paso {paso} aparece Denegado sin haber "
+                "pasado por «Esperando aprobación» (B3-B §2.2)"
             )
         vistos.setdefault(paso, set()).add(estado)
     return fallos
