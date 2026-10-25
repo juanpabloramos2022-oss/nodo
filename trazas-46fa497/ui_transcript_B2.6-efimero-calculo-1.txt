@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("¿Cuánto es 17 por 23?")
+[t=0.0s] AssistantBubble("17 × 23 = **391**")
+  [t=0.0s] TextSegment("17 × 23 = **391**")
