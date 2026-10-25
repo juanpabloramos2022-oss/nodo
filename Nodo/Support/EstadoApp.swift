@@ -184,6 +184,20 @@ final class EstadoApp: ObservableObject {
     /// `aprobarSolicitud()` o `denegarSolicitud()`.
     @Published var solicitudAprobacion: SolicitudAprobacion?
 
+    /// Tarea cuyo hilo esta en pantalla (B3-B).
+    ///
+    /// La aprobacion de Tarea se despliega EN EL HILO, junto a su fila. La
+    /// hoja modal de la raiz queda como red de seguridad para cuando el dueno
+    /// esta en otra pantalla; si el hilo de esa tarea ya la muestra en
+    /// contexto, la hoja no la duplica.
+    @Published var tareaEnPantalla: UUID?
+
+    /// Ultimo evento de ejecucion emitido (B3-B, B.1).
+    ///
+    /// Es el canal publico para SwiftUI; la tuberia real hacia el ViewModel
+    /// son los observadores registrados con `observarEventosDeTarea`.
+    @Published private(set) var ultimoEventoTarea: EventoTareaEjecucion?
+
     /// Propuesta de escritura sensible pendiente de aprobacion (B2.4).
     ///
     /// P0.2 solo la proyecta como `.hojaAprobacionMemoria`: el flujo que la
@@ -311,6 +325,20 @@ final class EstadoApp: ObservableObject {
     /// Continuacion que espera la hoja de aprobacion. Se resuelve una sola vez.
     private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
     private var idSolicitudAprobacion: UUID?
+
+    // Tuberia de eventos del hilo de Tarea (B3-B, B.1).
+    //
+    // POR QUE un registro de observadores y no una lectura del estado: la fila
+    // de paso tiene que reaccionar en el instante en que el motor la mueve, con
+    // su marca de tiempo de pared. El emisor y los observadores viven bajo
+    // `@MainActor`, asi que cada evento se aplica en el orden de emision sin
+    // colas de fondo (§0.1).
+    private var secuenciaEventoTarea = 0
+    private var observadoresEventoTarea: [UUID: (EventoTareaEjecucion) -> Void] = [:]
+    /// Sello de la ultima llamada al modelo, pendiente de atribuirse al paso
+    /// que esa llamada produjo. Se escribe UNA vez en el paso que nace, igual
+    /// que /boost sella sus fases: no se recalcula nunca.
+    private var selloPendienteDePaso: Double?
     /// Continuacion que espera la decision de una propuesta sensible de Chat
     /// (B2.4). Es independiente de la de Tarea: el turno de Chat queda detenido
     /// mientras la hoja del hilo esta pendiente.
@@ -2267,6 +2295,107 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    // MARK: - Tuberia de eventos del hilo de Tarea (B3-B, B.1)
+
+    /// Registra un consumidor de eventos de ejecucion y devuelve su llave.
+    ///
+    /// El consumidor se invoca de forma SINCRONA en el mismo `@MainActor` que
+    /// emitio el evento: no hay hilo intermedio donde se pierda el orden.
+    func observarEventosDeTarea(
+        _ observador: @escaping (EventoTareaEjecucion) -> Void
+    ) -> UUID {
+        let llave = UUID()
+        observadoresEventoTarea[llave] = observador
+        return llave
+    }
+
+    func dejarDeObservarEventosDeTarea(_ llave: UUID) {
+        observadoresEventoTarea.removeValue(forKey: llave)
+    }
+
+    /// Ultimo numero de secuencia emitido.
+    ///
+    /// Un hilo que se conecta a mitad de una ejecucion arranca su cola aqui:
+    /// asi no espera eventos que ya pasaron ni pierde los siguientes.
+    var secuenciaEventoTareaActual: Int { secuenciaEventoTarea }
+
+    /// Emite un evento del libro con su marca de tiempo de pared.
+    private func emitirEventoTarea(
+        _ tipo: EventoTareaEjecucion.Tipo,
+        idTarea: UUID,
+        paso: Int,
+        pasosTotales: Int? = nil,
+        etiqueta: String = "",
+        estadoDinamico: String = "",
+        estado: ElementoTareaVisible.EstadoPaso = .pendiente,
+        duracion: TimeInterval? = nil,
+        costo: Decimal? = nil,
+        detalle: String = ""
+    ) {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }) else {
+            return
+        }
+        secuenciaEventoTarea += 1
+        let evento = EventoTareaEjecucion(
+            secuencia: secuenciaEventoTarea,
+            tareaID: idTarea,
+            tipo: tipo,
+            paso: paso,
+            pasosTotales: pasosTotales ?? totalVisibleDeTarea(tarea),
+            etiqueta: etiqueta,
+            estadoDinamico: estadoDinamico,
+            estado: estado,
+            duracion: duracion,
+            costo: costo,
+            costoSelladoTarea: tarea.costoAcumuladoUSD.map { Decimal($0) },
+            detalle: detalle
+        )
+        ultimoEventoTarea = evento
+        for observador in Array(observadoresEventoTarea.values) {
+            observador(evento)
+        }
+    }
+
+    /// Pasos totales visibles: los del plan mandan mientras haya plan, porque
+    /// la cabecera promete «Paso K de N» desde el primer instante.
+    private func totalVisibleDeTarea(_ tarea: Tarea) -> Int {
+        max(tarea.plan?.pasos.count ?? 0, tarea.pasos.count, 1)
+    }
+
+    /// Indice visible (1-based) del paso de una llamada, o 0 si no esta.
+    private func indiceDePaso(idTarea: UUID, llamadaID: String) -> Int {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              let indice = tarea.pasos.firstIndex(where: {
+                  $0.llamadaID == llamadaID
+              })
+        else { return 0 }
+        return indice + 1
+    }
+
+    /// Rotulo humano del paso K (nunca el nombre tecnico ni un UUID).
+    private func etiquetaHumanaDePaso(idTarea: UUID, indice: Int) -> String {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              indice >= 1,
+              indice <= tarea.pasos.count
+        else { return "Paso \(max(indice, 1))" }
+        return Self.etiquetaDinamicaDePaso(
+            tarea.pasos[indice - 1],
+            indice: indice
+        )
+    }
+
+    /// Actividad real de una herramienta mientras corre.
+    ///
+    /// Es un rotulo humano: nunca el nombre tecnico de la funcion ni sus
+    /// argumentos crudos.
+    private func actividadDeHerramienta(_ llamada: ToolCall) -> String {
+        if llamada.nombre == "traer_url", let url = urlDeLlamada(llamada) {
+            let host = URL(string: url)?.host ?? url
+            return "Consultando \(host)…"
+        }
+        return "Ejecutando la herramienta…"
+    }
+
     /// Autoriza la ejecucion y arranca el ToolLoop de la tarea.
     ///
     /// Empezar ya no deja la tarea "en curso" sin hacer nada: TASK.3 conecta el
@@ -2299,6 +2428,19 @@ final class EstadoApp: ObservableObject {
         tarea.ultimoError = nil
         guardarTarea(tarea)
         errorTarea = nil
+        // Primera senal (B.2): el evento sale en el MISMO ciclo del toque en
+        // [Empezar], antes de abrir la red. La fila 1 ya lleva el nombre real
+        // del paso y un estado dinamico atado a lo que el motor hace ahora.
+        selloPendienteDePaso = nil
+        emitirEventoTarea(
+            .turnoIniciado,
+            idTarea: id,
+            paso: 1,
+            pasosTotales: max(tarea.plan?.pasos.count ?? 0, 1),
+            etiqueta: tarea.plan?.pasos.first?.texto ?? "",
+            estadoDinamico: "Consultando modelo…",
+            estado: .enCurso
+        )
         lanzarEjecucionTarea(id: id)
         return true
     }
@@ -2359,6 +2501,14 @@ final class EstadoApp: ObservableObject {
         idTareaEjecutando = nil
         resolverAprobacion(false)
 
+        // El paso K se congela tal como estaba: ni Completado ni cobrado. Los
+        // pasos 1..K-1 ya resueltos quedan intactos en el libro.
+        let pasoDetenido = tareas.first(where: { $0.id == id })
+            .flatMap { tarea in
+                tarea.pasos.firstIndex(where: { $0.estado == .enCurso })
+                    .map { $0 + 1 }
+            }
+
         modificarTarea(id: id) { tarea in
             tarea.estado = .detenida
             for indice in tarea.pasos.indices {
@@ -2370,11 +2520,36 @@ final class EstadoApp: ObservableObject {
                 }
             }
         }
+
+        let detenido = pasoDetenido ?? max(
+            tareas.first(where: { $0.id == id })?.pasos.count ?? 1,
+            1
+        )
+        emitirEventoTarea(
+            .detenido,
+            idTarea: id,
+            paso: detenido,
+            etiqueta: etiquetaHumanaDePaso(idTarea: id, indice: detenido),
+            estado: .detenido,
+            detalle: "Detenida por ti"
+        )
+    }
+
+    /// Aprobacion que debe presentar la hoja modal de la raiz.
+    ///
+    /// nil cuando el hilo de esa tarea ya la muestra en contexto (B3-B): la
+    /// hoja no puede tapar la fila que espera la decision. Sigue existiendo
+    /// como red de seguridad si el dueno esta en otra pantalla, para que el
+    /// motor nunca espere una decision invisible.
+    var solicitudAprobacionModal: SolicitudAprobacion? {
+        guard let solicitudAprobacion else { return nil }
+        return solicitudAprobacion.tareaID == tareaEnPantalla
+            ? nil
+            : solicitudAprobacion
     }
 
     /// Resuelve la hoja a favor: la herramienta se ejecuta y el paso sigue.
-    func aprobarSolicitud() {
-        resolverAprobacion(true)
+    func aprobarSolicitud() {        resolverAprobacion(true)
     }
 
     /// Resuelve la hoja en contra: no se escribe nada y el paso queda Denegado.
@@ -2576,6 +2751,14 @@ final class EstadoApp: ObservableObject {
                     tarea.resultado = resultado.texto
                     tarea.ultimoError = nil
                 }
+                emitirEventoTarea(
+                    .finalizada,
+                    idTarea: id,
+                    paso: max(
+                        tareas.first(where: { $0.id == id })?.pasos.count ?? 1,
+                        1
+                    )
+                )
             }
         } catch is CancellationError {
             // Detener ya dejo el estado Detenida y los pasos previos intactos.
@@ -3139,6 +3322,25 @@ final class EstadoApp: ObservableObject {
 
         guard generacion == generacionEjecucionTarea else { return false }
 
+        // La fila pasa a «Esperando tu aprobacion» y la cabecera a
+        // «Esperando aprobación» en el mismo instante en que el motor se
+        // detiene a esperar la decision (§2.2).
+        let indicePendiente = indiceDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id
+        )
+        emitirEventoTarea(
+            .aprobacionPendiente,
+            idTarea: idTarea,
+            paso: indicePendiente,
+            etiqueta: etiquetaHumanaDePaso(
+                idTarea: idTarea,
+                indice: indicePendiente
+            ),
+            estadoDinamico: "Esperando tu aprobación",
+            estado: .esperandoAprobacion
+        )
+
         let solicitud = SolicitudAprobacion(
             tareaID: idTarea,
             herramienta: llamada.nombre,
@@ -3172,6 +3374,15 @@ final class EstadoApp: ObservableObject {
             estado: .enCurso,
             fechaInicio: Date()
         )
+        let indice = indiceDePaso(idTarea: idTarea, llamadaID: llamada.id)
+        emitirEventoTarea(
+            .pasoIniciado,
+            idTarea: idTarea,
+            paso: indice,
+            etiqueta: etiquetaHumanaDePaso(idTarea: idTarea, indice: indice),
+            estadoDinamico: actividadDeHerramienta(llamada),
+            estado: .enCurso
+        )
     }
 
     private func pasoTerminado(
@@ -3188,6 +3399,12 @@ final class EstadoApp: ObservableObject {
             estado: fallo ? .fallido : .terminado,
             resultado: resultado,
             fechaFin: Date()
+        )
+        cerrarFilaDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id,
+            estado: fallo ? .error : .completado,
+            detalle: fallo ? "La herramienta devolvió un error" : ""
         )
     }
 
@@ -3206,6 +3423,42 @@ final class EstadoApp: ObservableObject {
             resultado: motivo,
             fechaFin: Date()
         )
+        cerrarFilaDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id,
+            estado: .denegado,
+            detalle: "Denegada por ti"
+        )
+    }
+
+    /// Cierra la fila del hilo con la duracion y el sello que quedaron en el
+    /// libro. Se lee del libro a proposito: la fila no calcula su propio costo.
+    private func cerrarFilaDePaso(
+        idTarea: UUID,
+        llamadaID: String,
+        estado: ElementoTareaVisible.EstadoPaso,
+        detalle: String
+    ) {
+        let indice = indiceDePaso(idTarea: idTarea, llamadaID: llamadaID)
+        let paso = pasoDelLibro(idTarea: idTarea, indice: indice)
+        emitirEventoTarea(
+            .pasoCerrado,
+            idTarea: idTarea,
+            paso: indice,
+            etiqueta: etiquetaHumanaDePaso(idTarea: idTarea, indice: indice),
+            estado: estado,
+            duracion: paso.flatMap { Self.duracionDePaso($0) },
+            costo: paso?.costoUSD.map { Decimal($0) },
+            detalle: detalle
+        )
+    }
+
+    private func pasoDelLibro(idTarea: UUID, indice: Int) -> Paso? {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              indice >= 1,
+              indice <= tarea.pasos.count
+        else { return nil }
+        return tarea.pasos[indice - 1]
     }
 
     /// COST dentro de la tarea: cada llamada al modelo se sella y se acumula.
@@ -3227,6 +3480,20 @@ final class EstadoApp: ObservableObject {
         modificarTarea(id: idTarea) { tarea in
             tarea.costoAcumuladoUSD = (tarea.costoAcumuladoUSD ?? 0) + costo
         }
+        // El sello recien emitido queda pendiente del paso que esta llamada
+        // produjo; se escribe UNA vez en el libro cuando ese paso nace, igual
+        // que /boost sella sus fases. Ninguna cifra se recalcula despues.
+        selloPendienteDePaso = costo
+        let activo = max(
+            tareas.first(where: { $0.id == idTarea })?.pasos.count ?? 1,
+            1
+        )
+        emitirEventoTarea(
+            .costoSellado,
+            idTarea: idTarea,
+            paso: activo,
+            estado: .enCurso
+        )
     }
 
     /// Aplica una accion de `proponer_memoria` YA aprobada en la hoja (TASK.4).
@@ -3294,10 +3561,15 @@ final class EstadoApp: ObservableObject {
                         llamadaID: llamada.id,
                         url: urlDeLlamada(llamada),
                         aprobacion: aprobacion,
+                        // El sello de la llamada al modelo que produjo este
+                        // paso se escribe UNA vez, aqui, con el importe ya
+                        // emitido: la fila nunca recalcula precios.
+                        costoUSD: selloPendienteDePaso,
                         fechaInicio: fechaInicio,
                         fechaFin: fechaFin
                     )
                 )
+                selloPendienteDePaso = nil
             }
         }
     }
@@ -3352,6 +3624,16 @@ final class EstadoApp: ObservableObject {
             )
         }
         errorTarea = mensaje
+        // El error va en linea, junto a la fila activa: la fila no se marca
+        // con error (no fue la herramienta la que fallo), el hilo muestra el
+        // `ErrorBubble` y la cabecera pasa a Error.
+        let pasos = tareas.first(where: { $0.id == id })?.pasos.count ?? 1
+        emitirEventoTarea(
+            .error,
+            idTarea: id,
+            paso: max(pasos - 1, 1),
+            detalle: mensaje
+        )
     }
 
     /// Guarda una tarea en el almacen y refresca la lista.
@@ -4564,6 +4846,11 @@ final class EstadoApp: ObservableObject {
             return .denegado
 
         case .fallido:
+            // Detener no es un fallo tecnico: el motor marca el paso en curso
+            // como fallido para congelarlo, pero el hilo lo declara Detenido.
+            if paso.resultado == "Detenida por el dueño." {
+                return .detenido
+            }
             return .error
         }
     }

@@ -1673,6 +1673,441 @@ final class TrazaVistaTest: XCTestCase {
         Self.publicar(ruta, contenido, en: self)
     }
 
+
+    // MARK: - (7) Traza de la partida B3-B (progreso vivo en el hilo de Tarea)
+
+    /// Espera real de la corrida viva, en segundos, y textos archivados.
+    ///
+    /// Los valores salen de `humos/b3b-corrida1-humo.json` (controlador vivo
+    /// `humos/humo_b3b.py`, modelo combo/deepseek-v4-1-flash). En CI no hay
+    /// directorio de humos: este fixture reproduce LOS MISMOS desplazamientos
+    /// de reloj de pared de la captura, y el replay los espera de verdad. La
+    /// traza se sigue produciendo el ViewModel, nunca a mano.
+    private static let contenidoArchivadoDelDominio = """
+    <!doctype html><html lang=en><head><meta charset=utf-8><title>Example \
+    Domain</title></head><body><p>This domain is for use in documentation \
+    examples without needing permission. This is not a service; avoid relying \
+    on it for testing and monitoring purposes.</p></body></html>
+    """
+
+    private static let respuestaFinalArchivada = """
+    He consultado https://example.com correctamente (título "Example Domain"; \
+    el propio sitio indica que es un dominio para ejemplos de documentación y \
+    que no es un servicio).\n\nPropuse guardar en Memoria la frase: «example.com \
+    es un dominio reservado para ejemplos de documentación» (9 palabras).\n\nEl \
+    dueño denegó la propuesta, así que no se escribió nada en Memoria.
+    """
+
+    /// Registro temporizado de la corrida 1: plan, tres piernas y sus esperas.
+    private static func registroB3B(piernas: Int = 3) throws -> RegistroB3B {
+        let plan = [
+            "Acceder a https://example.com mediante una consulta HTTP y registrar el código de estado y el contenido devuelto.",
+            "Verificar que la respuesta sea correcta (código 200) y anotar el título y el propósito visible del sitio.",
+            "Extraer los datos clave del dominio example.com (nombre, uso previsto y contenido principal).",
+            "Redactar una frase breve sobre el dominio, con un máximo de 10 palabras.",
+            "Comprobar que la frase cumpla el límite de extensión y describa lo observado.",
+            "Presentar la frase corta al usuario como propuesta de guardado en Memoria.",
+            "Guardar la frase en Memoria solo tras la confirmación explícita del usuario."
+        ]
+        let llamadaUrl = ToolCall(
+            id: "call_00_archivada_url",
+            nombre: "traer_url",
+            argumentos: #"{"url": "https://example.com"}"#
+        )
+        let llamadaMemoria = ToolCall(
+            id: "call_00_archivada_memoria",
+            nombre: Memoria.nombreHerramientaTarea,
+            argumentos: #"{"accion": "guardar", "texto": "example.com es un dominio reservado para ejemplos de documentación."}"#
+        )
+
+        let todas = [
+            RegistroB3B.Pierna(
+                http: 200,
+                primerEvento: 2.4553,
+                ultimoEvento: 2.7448,
+                texto: "I'll fetch the page first.",
+                llamadas: [llamadaUrl],
+                uso: UsoTokens(entrada: 770, salida: 48),
+                resultadosDeHerramienta: [:]
+            ),
+            RegistroB3B.Pierna(
+                http: 200,
+                primerEvento: 6.6347,
+                ultimoEvento: 6.6408,
+                texto: "",
+                llamadas: [llamadaMemoria],
+                uso: UsoTokens(entrada: 989, salida: 221),
+                resultadosDeHerramienta: [
+                    llamadaUrl.id: contenidoArchivadoDelDominio
+                ]
+            ),
+            RegistroB3B.Pierna(
+                http: 200,
+                primerEvento: 8.9301,
+                ultimoEvento: 8.9716,
+                texto: respuestaFinalArchivada,
+                llamadas: [],
+                uso: UsoTokens(entrada: 1229, salida: 119),
+                resultadosDeHerramienta: [:]
+            )
+        ]
+        return RegistroB3B(
+            modo: "replay-temporizado",
+            piernas: Array(todas.prefix(max(1, piernas))),
+            plan: plan
+        )
+    }
+
+    /// Carga el registro desde los humos vivos si la coordinacion los expone.
+    private static func registroVivoB3B() throws -> RegistroB3B {
+        if let ruta = rutaDelHumo("b3b-corrida1-humo.json") {
+            return try RegistroB3B.cargar(ruta)
+        }
+        return try registroB3B()
+    }
+
+    /// Guion del nivel 2 de B3-B: replay temporizado de la corrida viva.
+    ///
+    /// El motor (ToolLoop), el ViewModel del hilo y la traza son los de
+    /// produccion. Lo unico que cambia es el transporte: entrega las respuestas
+    /// archivadas despues de una espera REAL igual al desplazamiento de reloj
+    /// de pared que midio el controlador vivo. Por eso la traza prueba el
+    /// latido (renovacion cada <=1,5 s durante una espera >=2,0 s) y la primera
+    /// senal (<=300 ms desde el toque), y no una reproduccion en frio.
+    func testElGuionVivoB3BProduceLaTrazaDeProgresoVivo() async throws {
+        let registro = try Self.registroVivoB3B()
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        // El plan aprobado que viaja en el mensaje de ejecucion archivado.
+        let textoDelPlan = registro.plan.enumerated()
+            .map { "\($0.offset + 1). \($0.element)" }
+            .joined(separator: "\n")
+        XCTAssertFalse(registro.plan.isEmpty, "El humo archivado no trae plan")
+        arnes.transporte.guionar(texto: textoDelPlan)
+
+        let tarea = arnes.estado.crearTarea(
+            instruccion: "Consulta https://example.com y proponé guardar en "
+                + "Memoria una frase sobre ese dominio"
+        )
+        await arnes.estado.generarPlan(id: tarea.id)
+
+        // Streaming 1 = plan. Los siguientes son las piernas archivadas, cada
+        // una precedida por su espera real.
+        for (indice, pierna) in registro.piernas.enumerated() {
+            let numeroDeStream = indice + 2
+            let espera = indice == 0
+                ? registro.esperaInicial
+                : registro.retraso(dePierna: indice)
+            arnes.transporte.retrasarStream(en: numeroDeStream, segundos: espera)
+            arnes.transporte.guionar(
+                texto: pierna.texto,
+                uso: pierna.uso,
+                toolCalls: pierna.llamadas
+            )
+            for resultado in pierna.resultadosDeHerramienta.values {
+                arnes.transporte.guionarUnaria(
+                    HTTPRespuesta(
+                        estado: 200,
+                        cabeceras: ["Content-Type": "text/html"],
+                        cuerpo: Data(resultado.utf8)
+                    )
+                )
+            }
+        }
+
+        let hilo = HiloTareaViewModel()
+        hilo.conectar(a: arnes.estado, tareaID: tarea.id)
+
+        hilo.marcarToqueEmpezar()
+        let toque = try XCTUnwrap(hilo.toqueEmpezar)
+        XCTAssertTrue(arnes.estado.empezarTarea(id: tarea.id))
+
+        // (b) Primera senal: se emite en el ciclo inmediato al toque.
+        let senal = try XCTUnwrap(hilo.primeraSenal, "No hubo primera señal")
+        let latencia = senal.timeIntervalSince(toque)
+        XCTAssertLessThanOrEqual(
+            latencia,
+            0.3,
+            "La primera señal tardó \(latencia) s (cota 300 ms)"
+        )
+
+        // La primera senal ya nombra el paso real y un estado dinamico real.
+        let trasElToque = hilo.traza.first { $0.contains("actividad:") }
+        let lineaSenal = try XCTUnwrap(trasElToque)
+        XCTAssertTrue(
+            lineaSenal.contains("Consultando modelo"),
+            "La primera señal no tiene estado dinámico real: \(lineaSenal)"
+        )
+        XCTAssertTrue(
+            lineaSenal.contains("Paso 1/"),
+            "La primera señal no nombra el paso: \(lineaSenal)"
+        )
+
+        // El paso 1 (traer_url) se completa ANTES de que el dueno decida nada:
+        // la aprobacion es del paso 2.
+        try await arnes.esperar(
+            { arnes.estado.solicitudAprobacion != nil },
+            timeout: 30,
+            mensaje: "La propuesta de Memoria no llegó a la hoja"
+        )
+        let filaUno = try Self.fila(hilo, paso: 1)
+        XCTAssertEqual(filaUno.estado, .completado)
+        XCTAssertNotNil(filaUno.duracion)
+        XCTAssertNotNil(filaUno.costo)
+        XCTAssertEqual(try Self.fila(hilo, paso: 2).estado, .esperandoAprobacion)
+        XCTAssertEqual(hilo.cabecera.estado, .esperandoAprobacion)
+
+        // La hoja se decidio EN EL HILO y se DENIEGA.
+        arnes.estado.denegarSolicitud()
+        try await arnes.esperarTarea(id: tarea.id, estado: .completada, timeout: 30)
+
+        let filaDenegada = try Self.fila(hilo, paso: 2)
+        XCTAssertEqual(filaDenegada.estado, .denegado)
+        XCTAssertTrue(
+            arnes.estado.config.memoria.isEmpty,
+            "Tras denegar, la entrada existe en Memoria"
+        )
+
+        // La cabecera cierra con el sello del libro, no con una cifra propia.
+        let enLibro = try XCTUnwrap(
+            arnes.estado.tareas.first { $0.id == tarea.id }
+        )
+        XCTAssertEqual(
+            hilo.cabecera.costoSellado,
+            Decimal(enLibro.costoAcumuladoUSD ?? 0)
+        )
+
+        let contenido = "modo: \(registro.modo)\n" + hilo.trazaTexto
+        let ruta = try Self.rutaDeTraza("ui_transcript_B3-B.txt")
+        try contenido.write(to: ruta, atomically: true, encoding: .utf8)
+
+        // (a) Ninguna fila llega a Completado/Denegado sin En curso previo.
+        let secuencia = Self.transicionesDePaso(hilo.traza)
+        var enCursoVistos: Set<Int> = []
+        for (paso, estado) in secuencia {
+            if estado == "En curso" { enCursoVistos.insert(paso) }
+            if estado == "Completado" || estado == "Denegado" {
+                XCTAssertTrue(
+                    enCursoVistos.contains(paso),
+                    "El paso \(paso) llegó a \(estado) sin En curso previo"
+                )
+            }
+        }
+        XCTAssertTrue(secuencia.contains { $0.0 == 1 && $0.1 == "Completado" })
+        XCTAssertTrue(secuencia.contains { $0.0 == 2 && $0.1 == "Denegado" })
+
+        // (d) Latido: ningun tramo de la ejecucion queda sin actividad visible
+        // mas de 1,5 s, y hay un tramo continuo >= 2,0 s de espera de red.
+        let tiempos = Self.tiemposDeTraza(hilo.traza)
+        XCTAssertGreaterThan(tiempos.count, 6)
+        var huecoMaximo: TimeInterval = 0
+        for (a, b) in zip(tiempos, tiempos.dropFirst()) {
+            huecoMaximo = max(huecoMaximo, b - a)
+        }
+        XCTAssertLessThanOrEqual(
+            huecoMaximo,
+            1.5,
+            "Hueco de \(huecoMaximo) s sin actividad visible (cota 1,5 s)"
+        )
+        XCTAssertGreaterThanOrEqual(
+            try XCTUnwrap(tiempos.last) - (tiempos.first ?? 0),
+            2.0,
+            "La traza no cubre un tramo de espera de red >= 2,0 s"
+        )
+
+        // (g) Cero cadenas demolidas y cero etiquetas fuera del catalogo.
+        for demolida in [
+            "La ejecución acaba de empezar",
+            "Los pasos aparecerán aquí"
+        ] {
+            XCTAssertFalse(contenido.contains(demolida), contenido)
+        }
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        Self.comprobarConteosDeLaPuertaC(contenido)
+        for linea in hilo.traza {
+            let etiqueta = try XCTUnwrap(Self.etiqueta(linea))
+            XCTAssertTrue(
+                Self.etiquetasValidas.contains(etiqueta),
+                "Etiqueta fuera del catálogo: \(etiqueta)"
+            )
+        }
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Corrida 2 archivada: el dueno detiene en el paso 2.
+    ///
+    /// El replay es el mismo regimen; lo que cambia es que el ViewModel recibe
+    /// [Detener] mientras el paso 2 esta en curso. Se afirma la preservacion:
+    /// paso 1 Completado con duracion y sello, paso 2 NO completado, sin paso 3.
+    func testLaDetencionEnB3BPreservaElPaso1YNoCreaElPaso3() async throws {
+        let registro = try Self.registroB3B(piernas: 2)
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        arnes.transporte.guionar(
+            texto: registro.plan.enumerated()
+                .map { "\($0.offset + 1). \($0.element)" }
+                .joined(separator: "\n")
+        )
+        let tarea = arnes.estado.crearTarea(
+            instruccion: "Consulta https://example.com y proponé guardar en "
+                + "Memoria una frase sobre ese dominio"
+        )
+        await arnes.estado.generarPlan(id: tarea.id)
+
+        for (indice, pierna) in registro.piernas.enumerated() {
+            let espera = indice == 0
+                ? registro.esperaInicial
+                : registro.retraso(dePierna: indice)
+            arnes.transporte.retrasarStream(en: indice + 2, segundos: espera)
+            arnes.transporte.guionar(
+                texto: pierna.texto,
+                uso: pierna.uso,
+                toolCalls: pierna.llamadas
+            )
+            for resultado in pierna.resultadosDeHerramienta.values {
+                arnes.transporte.guionarUnaria(
+                    HTTPRespuesta(
+                        estado: 200,
+                        cabeceras: ["Content-Type": "text/html"],
+                        cuerpo: Data(resultado.utf8)
+                    )
+                )
+            }
+        }
+
+        let hilo = HiloTareaViewModel()
+        hilo.conectar(a: arnes.estado, tareaID: tarea.id)
+        hilo.marcarToqueEmpezar()
+        XCTAssertTrue(arnes.estado.empezarTarea(id: tarea.id))
+
+        // Detener durante el paso 2.
+        try await arnes.esperar(
+            {
+                arnes.estado.solicitudAprobacion != nil
+                    || arnes.estado.tareas.first { $0.id == tarea.id }?
+                        .pasos.count == 2
+            },
+            timeout: 30,
+            mensaje: "El paso 2 no llegó a abrirse"
+        )
+        arnes.estado.detenerTarea(id: tarea.id)
+
+        try await arnes.esperar(
+            {
+                arnes.estado.tareas.first { $0.id == tarea.id }?.estado
+                    == .detenida
+            },
+            timeout: 10,
+            mensaje: "La tarea no quedó detenida"
+        )
+
+        let detenida = try XCTUnwrap(
+            arnes.estado.tareas.first { $0.id == tarea.id }
+        )
+        XCTAssertEqual(detenida.pasos.count, 2)
+        XCTAssertEqual(detenida.pasos[0].estado, .terminado)
+        XCTAssertNotNil(detenida.pasos[0].fechaFin)
+        XCTAssertNotNil(detenida.pasos[0].costoUSD)
+        XCTAssertNotEqual(detenida.pasos[1].estado, .terminado)
+        XCTAssertNil(detenida.pasos[1].costoUSD)
+
+        let filaUno = try Self.fila(hilo, paso: 1)
+        XCTAssertEqual(filaUno.estado, .completado)
+        XCTAssertNotNil(filaUno.duracion)
+        XCTAssertNotNil(filaUno.costo)
+        XCTAssertNotEqual(try Self.fila(hilo, paso: 2).estado, .completado)
+        XCTAssertNil(
+            hilo.filas.first { $0.paso == 3 },
+            "Detener creó un paso 3 que nunca ocurrió"
+        )
+        XCTAssertEqual(hilo.cabecera.estado, .detenida)
+
+        // El composer queda disponible y la redireccion no pierde lo preservado.
+        XCTAssertTrue(
+            arnes.estado.registrarMensajeTarea(
+                id: tarea.id,
+                texto: "Mejor hazlo así: usa solo el título del dominio"
+            )
+        )
+        let conRedireccion = try XCTUnwrap(
+            arnes.estado.tareas.first { $0.id == tarea.id }
+        )
+        XCTAssertEqual(conRedireccion.turnos.count, 2)
+        XCTAssertTrue(conRedireccion.turnos[1].despuesDeEjecutar)
+        XCTAssertEqual(conRedireccion.pasos.count, 2)
+
+        hilo.sincronizarDesdeEstado()
+        XCTAssertEqual(hilo.filas.count, 2)
+        XCTAssertEqual(try Self.fila(hilo, paso: 1).estado, .completado)
+    }
+
+    /// Fila viva del paso K, sin indice que pueda salirse del arreglo.
+    private static func fila(
+        _ hilo: HiloTareaViewModel,
+        paso: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> HiloTareaViewModel.FilaViva {
+        try XCTUnwrap(
+            hilo.filas.first { $0.paso == paso },
+            "No hay fila para el paso \(paso)",
+            file: file,
+            line: line
+        )
+    }
+
+    /// Transiciones `(paso, estado)` en el orden en que se emitieron.
+    private static func transicionesDePaso(
+        _ traza: [String]
+    ) -> [(Int, String)] {
+        var salida: [(Int, String)] = []
+        for linea in traza where linea.contains("] StepRow(paso: ") {
+            guard let rangoPaso = linea.range(of: "StepRow(paso: ") else {
+                continue
+            }
+            let resto = linea[rangoPaso.upperBound...]
+            guard let coma = resto.firstIndex(of: ","),
+                  let paso = Int(resto[..<coma])
+            else { continue }
+            guard let rangoEstado = linea.range(of: "estado: \"") else {
+                continue
+            }
+            let trasEstado = linea[rangoEstado.upperBound...]
+            guard let cierre = trasEstado.firstIndex(of: "\"") else { continue }
+            salida.append((paso, String(trasEstado[..<cierre])))
+        }
+        return salida
+    }
+
+    /// Tiempos `t` de la traza, en orden.
+    private static func tiemposDeTraza(_ traza: [String]) -> [TimeInterval] {
+        traza.compactMap { linea in
+            guard let rango = linea.range(of: "[t=") else { return nil }
+            let resto = linea[rango.upperBound...]
+            guard let fin = resto.range(of: "s]") else { return nil }
+            return TimeInterval(resto[..<fin.lowerBound])
+        }
+    }
+
+    /// Etiquetas del catalogo cerrado (14), para el test negativo de B3-B.
+    private static let etiquetasValidas: Set<String> = [
+        "UserBubble", "AssistantBubble", "TextSegment", "CodeBlock",
+        "MemoryLineNotice", "Divider", "StreamingBubble", "ErrorBubble",
+        "MemoryApprovalSheet", "TaskHeader", "PlanCard", "StepRow",
+        "SearchResultRow", "SearchEmptyState"
+    ]
+
     // MARK: - Utilidades
 
     /// Ruta de archivo de humo si la coordinacion definio `NODO_HUMOS_DIR`.

@@ -86,6 +86,11 @@ HUMOS_EXIGIDOS = [
     # sin herramientas y el ajuste produce la tarjeta v2, tambien sin tools.
     "b3a-turno1.json",
     "b3a-turno2.json",
+    # B3-B: progreso vivo del hilo de Tarea. La corrida 1 ejecuta traer_url de
+    # verdad y DENIEGA la propuesta de Memoria; la corrida 2 se detiene en el
+    # paso 2. Ambas llevan los desplazamientos de reloj de pared por evento.
+    "b3b-corrida1-humo.json",
+    "b3b-corrida2-humo.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -153,6 +158,10 @@ GUARDADOS_ESPERADOS = {
     # B3-A archiva 2 turnos del hilo de Tarea: el plan se genera en modo
     # solo-texto, sin herramientas de memoria, asi que ningun turno deja linea.
     "B3-A": 0,
+    # B3-B archiva una traza de PROGRESO VIVO del hilo de Tarea: su unica
+    # escritura de memoria es la propuesta DENEGADA del paso 2, que no deja
+    # linea de aviso (el conteo de guardados se refiere a escrituras reales).
+    "B3-B": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).

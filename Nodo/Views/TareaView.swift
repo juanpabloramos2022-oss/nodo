@@ -3,7 +3,7 @@ import SwiftUI
 
 import NodoCore
 
-/// Hilo conversacional de una Tarea (B3-A).
+/// Hilo conversacional de una Tarea (B3-A) con progreso vivo (B3-B).
 ///
 /// Demuele el formulario de la v0.3.1: el encargo ya no vive en una caja de
 /// texto con su propio boton de guardado, ni en secciones estaticas de plan y
@@ -11,6 +11,12 @@ import NodoCore
 /// plan es una tarjeta del hilo con [Empezar] y [Ajustar / Regenerar], y el
 /// estado y el costo sellado viven en una cabecera fija que no se va con el
 /// scroll.
+///
+/// B3-B: cada fila de paso es un elemento VIVO alimentado por los eventos del
+/// libro en el instante en que ocurren. La fila en curso lleva animacion y
+/// estado dinamico real; al cerrar lleva su marca, su duracion y su costo
+/// sellado. La aprobacion se despliega EN EL HILO, junto a su fila. No hay
+/// ningun texto de relleno ni indicador que no nombre un paso real.
 ///
 /// Invariantes: `UI_INVARIANTS.md` (raiz del repo). La vista pinta solo lo que
 /// el ViewModel del hilo entrega; no hay UUIDs, JSON crudo ni rótulos técnicos.
@@ -50,9 +56,23 @@ struct TareaView: View {
         // pestanas y se sale con el boton nativo de volver a Tareas.
         .toolbar(.hidden, for: .tabBar)
         .conBarraTecladoListo()
-        .task(id: tareaID) { sincronizar() }
-        .onChange(of: estado.tareas) { _, _ in sincronizar() }
-        .onChange(of: estado.idTareaPlanificando) { _, _ in sincronizar() }
+        .task(id: tareaID) {
+            // El hilo se suscribe a los eventos del libro: la aprobacion de
+            // esta tarea se decide aqui, en contexto, y la hoja modal de la
+            // raiz no la duplica mientras esta pantalla esta abierta.
+            estado.tareaEnPantalla = tareaID
+            hilo.conectar(a: estado, tareaID: tareaID)
+        }
+        .onDisappear {
+            hilo.desconectar()
+            if estado.tareaEnPantalla == tareaID {
+                estado.tareaEnPantalla = nil
+            }
+        }
+        .onChange(of: estado.tareas) { _, _ in hilo.sincronizarDesdeEstado() }
+        .onChange(of: estado.idTareaPlanificando) { _, _ in
+            hilo.sincronizarDesdeEstado()
+        }
     }
 
     @ViewBuilder
@@ -120,7 +140,8 @@ struct TareaView: View {
 
     // MARK: - Cabecera fija (R20)
 
-    /// Estado, costo sellado y [Detener] siempre visibles, sin scroll.
+    /// Estado, actividad del paso en curso, costo sellado y [Detener] siempre
+    /// visibles, sin scroll.
     ///
     /// Colapsable por el dueno: al colapsar se oculta el detalle de progreso,
     /// nunca la cabecera entera ni el costo ni el boton de detener.
@@ -191,6 +212,20 @@ struct TareaView: View {
                     .accessibilityIdentifier("detener-tarea")
                 }
             }
+
+            if !hilo.colapsada, !cab.actividad.isEmpty {
+                HStack(spacing: 8) {
+                    IndicadorActivo()
+                    Text(cab.actividad)
+                        .font(.caption)
+                        .foregroundStyle(Tema.acento)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("actividad-tarea")
+                    Spacer(minLength: 0)
+                }
+                .transition(.opacity)
+            }
         }
         .padding(.horizontal, Tema.margen)
         .padding(.vertical, 8)
@@ -228,13 +263,24 @@ struct TareaView: View {
             let duracion,
             let costo
         ):
-            filaDePaso(
-                paso: paso,
-                estado: estado,
-                etiqueta: etiqueta,
-                duracion: duracion,
-                costo: costo
-            )
+            VStack(alignment: .leading, spacing: 8) {
+                filaDePaso(
+                    paso: paso,
+                    estado: estado,
+                    etiqueta: etiqueta,
+                    duracion: duracion,
+                    costo: costo
+                )
+
+                // La hoja de aprobacion se despliega EN EL HILO, pegada a la
+                // fila que la pide: la decision no se toma fuera de contexto.
+                if estado == .esperandoAprobacion,
+                   let solicitud = estado.solicitudAprobacion,
+                   solicitud.tareaID == tarea.id {
+                    FilaAprobacionEnHilo(solicitud: solicitud)
+                        .padding(.leading, 28)
+                }
+            }
 
         case .errorEnLinea(let texto):
             errorEnLinea(texto)
@@ -310,6 +356,9 @@ struct TareaView: View {
                 HStack(spacing: 12) {
                     if acciones.contains(.empezar) {
                         Button {
+                            // El toque marca el `t=0` de la traza: la primera
+                            // senal se mide contra este instante.
+                            hilo.marcarToqueEmpezar()
                             estado.empezarTarea(id: tarea.id)
                         } label: {
                             Label("Empezar", systemImage: "play.fill")
@@ -352,10 +401,16 @@ struct TareaView: View {
         costo: Decimal?
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: iconoDePaso(visible))
-                .font(.caption)
-                .foregroundStyle(colorDePaso(visible))
-                .frame(width: 18)
+            if visible == .enCurso {
+                // Actividad animada atada a ESTE paso: nunca un spinner suelto.
+                IndicadorActivo()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: iconoDePaso(visible))
+                    .font(.caption)
+                    .foregroundStyle(colorDePaso(visible))
+                    .frame(width: 18, height: 18)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -363,6 +418,7 @@ struct TareaView: View {
                         .font(.subheadline)
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.opacity)
 
                     Spacer(minLength: 4)
 
@@ -388,6 +444,7 @@ struct TareaView: View {
             }
         }
         .padding(.vertical, 2)
+        .animation(.easeInOut(duration: 0.2), value: visible)
         .accessibilityIdentifier("fila-paso-tarea")
     }
 
@@ -448,8 +505,9 @@ struct TareaView: View {
         .accessibilityIdentifier("resultado-final-tarea")
     }
 
-    /// Indicador de E1: el plan se esta generando. Es estado transitorio y no
-    /// un elemento del catalogo; no entra en la traza.
+    /// Indicador de E1: el plan se esta generando. Es estado transitorio de la
+    /// PLANIFICACION (no de la ejecucion), tiene nombre y estado real y no
+    /// entra en la traza de pasos.
     private var filaPlanificando: some View {
         HStack(spacing: 8) {
             ProgressView()
@@ -473,14 +531,6 @@ struct TareaView: View {
         Task {
             await estado.enviarMensajeTarea(id: tarea.id, texto: texto)
         }
-    }
-
-    private func sincronizar() {
-        guard let tarea else { return }
-        hilo.reconstruir(
-            con: tarea,
-            proyeccion: estado.elementosVisiblesDeTarea(tarea)
-        )
     }
 
     // MARK: - Presentacion
@@ -531,5 +581,29 @@ struct TareaView: View {
         case .detenido: return .yellow
         case .error: return .red
         }
+    }
+}
+
+/// Indicador animado de un paso en curso (B3-B).
+///
+/// POR QUE un pulso propio y no un `ProgressView` suelto: la regla B-DEM.3
+/// prohibe el spinner sin paso, sin nombre y sin estado dinamico. Este
+/// indicador solo aparece DENTRO de una fila de paso con su nombre y su
+/// actividad, y su animacion continua es lo que mantiene viva la sensacion de
+/// trabajo durante la espera de red.
+struct IndicadorActivo: View {
+    @State private var pulso = false
+
+    var body: some View {
+        Circle()
+            .fill(Tema.acento)
+            .frame(width: 8, height: 8)
+            .scaleEffect(pulso ? 1.4 : 0.7)
+            .opacity(pulso ? 1 : 0.45)
+            .animation(
+                .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                value: pulso
+            )
+            .onAppear { pulso = true }
     }
 }

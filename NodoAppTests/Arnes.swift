@@ -175,6 +175,11 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     /// la libere. Sirve para mirar el disco a mitad de una tarea.
     private var retenerStreamEn: Int?
     private var retenerUnariaEn: Int?
+    /// Retraso real (segundos) que se espera antes de servir el stream N.
+    ///
+    /// Lo usa el replay temporizado de B3-B: la espera de red archivada se
+    /// reproduce con una espera REAL, no con un volcado instantaneo (P0.3).
+    private var retrasosDeStream: [Int: TimeInterval] = [:]
     private var continuacionStream: CheckedContinuation<Void, Never>?
     private var continuacionUnaria: CheckedContinuation<Void, Never>?
     private var streamYaLiberado = false
@@ -267,6 +272,13 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     /// Retiene la respuesta de streaming numero `numero` (1-based).
+    /// Fija una espera real antes de servir el stream numero `numero`.
+    func retrasarStream(en numero: Int, segundos: TimeInterval) {
+        candado.lock()
+        defer { candado.unlock() }
+        retrasosDeStream[numero] = segundos
+    }
+
     func retenerStream(en numero: Int) {
         candado.lock()
         defer { candado.unlock() }
@@ -324,6 +336,14 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
             await esperarLiberacionDeStream()
         }
 
+        // Replay temporizado (B3-B): la espera de red archivada se reproduce
+        // como espera real antes de entregar el cuerpo.
+        if let retraso = retrasoDeStream(numero), retraso > 0 {
+            try await Task.sleep(
+                nanoseconds: UInt64(retraso * 1_000_000_000)
+            )
+        }
+
         let datos = Self.cuerpoSSE(guion)
         return AsyncThrowingStream { continuacion in
             continuacion.yield(datos)
@@ -354,6 +374,12 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
         defer { candado.unlock() }
         unariasContadas += 1
         return unariasContadas
+    }
+
+    private func retrasoDeStream(_ numero: Int) -> TimeInterval? {
+        candado.lock()
+        defer { candado.unlock() }
+        return retrasosDeStream.get(numero)
     }
 
     private func debeRetenerStream(_ numero: Int) -> Bool {

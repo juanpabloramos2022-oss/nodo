@@ -48,10 +48,19 @@ struct RaizView: View {
                 .tabItem { Label("Conexiones", systemImage: "network") }
                 .tag(PestanaRaiz.conexiones)
         }
-        // La aprobacion vive en la raiz: si el dueno cambia de pestana con una
-        // tarea ejecutando, la hoja sigue apareciendo y el bucle no se queda
-        // esperando una decision invisible.
-        .sheet(item: $estado.solicitudAprobacion) { solicitud in
+        // La aprobacion vive en la raiz como RED DE SEGURIDAD: si el dueno
+        // cambia de pestana con una tarea ejecutando, la hoja sigue apareciendo
+        // y el bucle no se queda esperando una decision invisible.
+        //
+        // B3-B: cuando el hilo de esa tarea esta en pantalla, la hoja no se
+        // presenta —la decision se toma EN CONTEXTO, junto a su fila— y el
+        // binding devuelve nil para no tapar la fila que la pide.
+        .sheet(
+            item: Binding(
+                get: { estado.solicitudAprobacionModal },
+                set: { _ in }
+            )
+        ) { solicitud in
             HojaAprobacionView(solicitud: solicitud)
         }
     }

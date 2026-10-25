@@ -428,6 +428,92 @@ class TrazaValidaTest(unittest.TestCase):
             fallos = verificador.verificar_traza(ruta, "B3-A")
             self.assertTrue(any("desconocida" in f for f in fallos), fallos)
 
+    # --- B3-B: progreso vivo del hilo de Tarea ----------------------------
+
+    def test_b3b_exige_cero_lineas_y_sus_dos_corridas(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-B"), 0)
+        self.assertIn("b3b-corrida1-humo.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("b3b-corrida2-humo.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B3-B", verificador.PARTIDAS_CON_PUERTA_B)
+        # No debilita ninguna expectativa vigente, incluidas B3-A y las B2.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-A"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.5"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+
+    def test_b3b_traza_de_progreso_vivo_cierra(self) -> None:
+        # Guion archivado de la corrida 1: primera senal con paso y actividad,
+        # paso 1 completado con duracion y sello, paso 2 denegado y latido
+        # durante la espera de red (renovacion cada <=1,5 s sobre un tramo de
+        # mas de 2,0 s).
+        lineas = [
+            "modo: replay-temporizado",
+            '[t=0.00s] TaskHeader(estado: "En curso", pasoActual: 1, '
+            'pasosTotales: 7, costoSellado: "0", actividad: '
+            '"Paso 1/7 · Consultando modelo…")',
+            '[t=0.00s] StepRow(paso: 1, estado: "En curso", etiqueta: '
+            '"Acceder a https://example.com…", duracion: nil, costo: nil)',
+            '[t=0.50s] TaskHeader(estado: "En curso", pasoActual: 1, '
+            'pasosTotales: 7, costoSellado: "0", actividad: '
+            '"Paso 1/7 · Consultando modelo… (0.5 s)")',
+            '[t=1.00s] TaskHeader(estado: "En curso", pasoActual: 1, '
+            'pasosTotales: 7, costoSellado: "0", actividad: '
+            '"Paso 1/7 · Consultando modelo… (1.0 s)")',
+            '[t=1.50s] TaskHeader(estado: "En curso", pasoActual: 1, '
+            'pasosTotales: 7, costoSellado: "0", actividad: '
+            '"Paso 1/7 · Consultando modelo… (1.5 s)")',
+            '[t=2.00s] TaskHeader(estado: "En curso", pasoActual: 1, '
+            'pasosTotales: 7, costoSellado: "0", actividad: '
+            '"Paso 1/7 · Consultando modelo… (2.0 s)")',
+            '[t=2.46s] StepRow(paso: 1, estado: "En curso", etiqueta: '
+            '"Acceder a https://example.com…", duracion: nil, costo: nil)',
+            '[t=2.75s] StepRow(paso: 1, estado: "Completado", etiqueta: '
+            '"Acceder a https://example.com…", duracion: 0.3, costo: '
+            '"0.00000234")',
+            '[t=6.64s] StepRow(paso: 2, estado: "Esperando aprobación", '
+            'etiqueta: "Guardar en Memoria", duracion: nil, costo: '
+            '"0.00000412")',
+            '[t=8.97s] StepRow(paso: 2, estado: "Denegado", etiqueta: '
+            '"Guardar en Memoria · Denegada por ti", duracion: 2.3, '
+            'costo: "0.00000412")',
+            '[t=8.98s] TaskHeader(estado: "Completada", pasoActual: 2, '
+            'pasosTotales: 7, costoSellado: "0.00000646")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B3-B"), [])
+
+    def test_b3b_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        # La propuesta DENEGADA no deja linea: si aparece una, algo se guardo.
+        lineas = [
+            "modo: vivo",
+            '[t=0.0s] StepRow(paso: 1, estado: "En curso", etiqueta: '
+            '"Acceder al dominio", duracion: nil, costo: nil)',
+            '[t=2.4s] MemoryLineNotice(text: "Guarde en Memoria: x", '
+            "hasUndo: true)",
+            '[t=2.5s] StepRow(paso: 1, estado: "Completado", etiqueta: '
+            '"Acceder al dominio", duracion: 2.4, costo: "0.00000234")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B3-B")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b3b_rechaza_una_etiqueta_fuera_del_catalogo(self) -> None:
+        # Un «panel de trabajo» post-hoc o un spinner suelto no son elementos
+        # del catalogo cerrado: la traza los rechaza.
+        lineas = [
+            "modo: vivo",
+            '[t=0.0s] PanelDeTrabajo(paso: 1, estado: "En curso")',
+            '[t=2.1s] StepRow(paso: 1, estado: "Completado", etiqueta: '
+            '"Acceder al dominio", duracion: 2.1, costo: "0.00000234")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-B.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B3-B")
+            self.assertTrue(any("desconocida" in f for f in fallos), fallos)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
