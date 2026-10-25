@@ -22,27 +22,22 @@ struct ChatsRaizView: View {
 
     var body: some View {
         NavigationStack(path: $ruta) {
-            ConversationsView(alNuevo: nueva)
+            ConversationsView(
+                alNuevo: nueva,
+                alTemporal: { nuevaTemporal() }
+            )
             .navigationDestination(for: UUID.self) { id in
-                // El destino se resuelve contra la LISTA, no contra la
-                // conversacion abierta: la ruta solo guarda ids y la
-                // conversacion abierta puede ser otra (o ninguna). Un chat
-                // recien creado por /nuevo aun no esta guardado en la lista,
-                // asi que se acepta la conversacion abierta si su id coincide.
-                let conversacion = estado.conversaciones.first(where: { $0.id == id })
-                    ?? (estado.conversacion.id == id ? estado.conversacion : nuevas[id])
-
-                if let conversacion {
+                // El destino se resuelve con la misma regla que usa el estado
+                // (lista persistida, conversacion abierta o chat recien creado
+                // aun sin guardar). Un resultado de busqueda abre ESA
+                // conversacion; la ruta solo guarda ids.
+                if let conversacion = estado.conversacionParaAbrir(id, nuevas: nuevas) {
                     ChatView(
                         alGestionarModelos: {
                             bajarTeclado()
                             seleccion = .conexiones
                         },
-                        alVolverALista: { ruta.removeAll() },
-                        alVerMemoria: {
-                            bajarTeclado()
-                            seleccion = .contexto
-                        }
+                        alVolverALista: { ruta.removeAll() }
                     )
                     // La sincronizacion del estado abierto se hace al aparecer
                     // el destino, que es el punto fiable del empuje.
@@ -86,11 +81,31 @@ struct ChatsRaizView: View {
         // La barra Listo se declara UNA sola vez en la raiz de esta jerarquia
         // (contrato §4): cubre el buscador de la lista y la caja del chat.
         .conBarraTecladoListo()
+        // B2.2: la salida del Chat Temporal. El boton de volver y el gesto de
+        // borde sacan su id de la ruta; cuando el hilo temporal deja de estar
+        // en pantalla se cierra y no queda rastro (ni borrador ni copia en
+        // `nuevas`). Un chat normal no pasa por aqui: se guarda como siempre.
+        .onChange(of: ruta) { _, nuevaRuta in
+            guard estado.conversacion.esTemporal,
+                  !nuevaRuta.contains(estado.conversacion.id)
+            else { return }
+            nuevas.removeValue(forKey: estado.conversacion.id)
+            estado.cerrarHiloTemporal()
+        }
     }
 
     private func nueva(sinMemoria: Bool) {
         bajarTeclado()
         estado.nuevaConversacion(sinMemoria: sinMemoria)
+        let id = estado.conversacion.id
+        nuevas[id] = estado.conversacion
+        ruta.append(id)
+    }
+
+    /// Abre el hilo temporal: un toque desde la lista (R41).
+    private func nuevaTemporal() {
+        bajarTeclado()
+        estado.nuevaConversacionTemporal()
         let id = estado.conversacion.id
         nuevas[id] = estado.conversacion
         ruta.append(id)

@@ -168,6 +168,12 @@ final class EstadoApp: ObservableObject {
     @Published private(set) var tareas: [Tarea] = []
     /// True mientras se pide el plan de una tarea al modelo.
     @Published private(set) var generandoPlan = false
+    /// Tarea cuyo plan se esta generando ahora mismo (B3-A).
+    ///
+    /// `generandoPlan` dice si hay una peticion en vuelo; este id dice DE QUE
+    /// tarea es, para que la cabecera fija del hilo muestre «Planificando» solo
+    /// en la tarea correcta y el composer sepa que el envio esta en pausa.
+    @Published private(set) var idTareaPlanificando: UUID?
     /// True mientras /plan pide el plan dentro de un chat.
     @Published private(set) var generandoPlanChat = false
     /// Error propio de la pantalla de Tareas, separado del error del chat.
@@ -178,6 +184,27 @@ final class EstadoApp: ObservableObject {
     /// `aprobarSolicitud()` o `denegarSolicitud()`.
     @Published var solicitudAprobacion: SolicitudAprobacion?
 
+    /// Tarea cuyo hilo esta en pantalla (B3-B).
+    ///
+    /// La aprobacion de Tarea se despliega EN EL HILO, junto a su fila. La
+    /// hoja modal de la raiz queda como red de seguridad para cuando el dueno
+    /// esta en otra pantalla; si el hilo de esa tarea ya la muestra en
+    /// contexto, la hoja no la duplica.
+    @Published var tareaEnPantalla: UUID?
+
+    /// Ultimo evento de ejecucion emitido (B3-B, B.1).
+    ///
+    /// Es el canal publico para SwiftUI; la tuberia real hacia el ViewModel
+    /// son los observadores registrados con `observarEventosDeTarea`.
+    @Published private(set) var ultimoEventoTarea: EventoTareaEjecucion?
+
+    /// Propuesta de escritura sensible pendiente de aprobacion (B2.4).
+    ///
+    /// P0.2 solo la proyecta como `.hojaAprobacionMemoria`: el flujo que la
+    /// crea y la resuelve llega en B2.4. Mientras esta pendiente, la hoja es el
+    /// unico artefacto visible del turno.
+    @Published var propuestaMemoriaSensible: PropuestaMemoriaSensible?
+
     @Published private(set) var enviando = false
     @Published private(set) var textoEnCurso = ""
     /// Texto de la caja de la conversacion abierta.
@@ -185,7 +212,29 @@ final class EstadoApp: ObservableObject {
     /// Vive aqui y no en ChatView para que los comandos, el selector flotante
     /// y el dictado trabajen sobre un unico borrador: enviar, completar una
     /// skill o limpiar tras un comando son operaciones de la misma ruta.
-    @Published var borrador = ""
+    ///
+    /// IDEA6: cada cambio se guarda en local ASOCIADO AL HILO ABIERTO, para
+    /// que salir y volver no pierda lo escrito. Los cambios programaticos
+    /// (abrir otro hilo, restaurar su borrador, limpiar tras un comando) van
+    /// por `fijarBorrador`, que silencia este guardado: el borrador de OTRO
+    /// hilo no se puede pisar con una limpieza de pantalla.
+    @Published var borrador = "" {
+        didSet {
+            guard puedeGuardarBorradores, !suprimirGuardadoDeBorrador else {
+                return
+            }
+            // El composer de Tarea es el MISMO componente pero no es un hilo
+            // de chat: su texto no se guarda bajo la conversacion abierta.
+            guard tareaEnPantalla == nil else { return }
+            // B2.2: un Chat Temporal no deja rastro; ni siquiera un borrador.
+            guard !conversacion.esTemporal else { return }
+            guard borradores.texto(para: conversacion.id) != borrador else {
+                return
+            }
+            borradores.guardar(borrador, para: conversacion.id)
+            persistirBorradores()
+        }
+    }
     /// Aviso pequeno sobre la caja (comando desconocido, skill sin mensaje,
     /// permisos de dictado o compactacion corta). No es la franja de tope.
     @Published var avisoComando: String?
@@ -198,6 +247,17 @@ final class EstadoApp: ObservableObject {
     /// SwiftUI: el boton no puede quedarse pegado en "grabando" si el
     /// reconocimiento falla o se cancela.
     @Published private(set) var dictando = false
+    /// Burbuja cuya lectura en voz alta esta en curso o en pausa (IDEA1).
+    ///
+    /// Se guarda el ID y no el mensaje: la proyeccion se puede reconstruir en
+    /// cualquier momento y el pie de cada burbuja pregunta por SU id. nil
+    /// significa que no hay ninguna lectura viva.
+    @Published private(set) var mensajeLeyendo: UUID?
+    /// Estado visible del control de lectura de la burbuja en curso (IDEA1).
+    ///
+    /// Las demas burbujas se pintan siempre como `.inactivo` ([Escuchar]); este
+    /// valor solo describe la lectura activa.
+    @Published private(set) var estadoLectura: EstadoLectura = .inactivo
     /// La hoja de /modelos la abre un comando desde EstadoApp; ChatView la
     /// presenta observando esta bandera.
     @Published var mostrarHojaModelos = false
@@ -268,6 +328,10 @@ final class EstadoApp: ObservableObject {
     private let estadoDePrueba: EstadoPrueba?
     /// Servicio de dictado: el real en produccion y el doble de CI en capturas.
     let dictado: SpeechRecognizing
+    /// Lector en voz alta: el real en produccion y el doble de CI en tests
+    /// (IDEA1). Es la costura que permite probar estados y cortes sin audio ni
+    /// hardware, y la razon por la que la vista no conoce AVSpeechSynthesizer.
+    let lector: LectorEnVozAlta
     /// Punto UNICO de construccion del puerto de skills. Se rellena con
     /// `config.skills` en cada cambio de configuracion, asi el parser y el
     /// selector flotante leen el almacen real sin conocer la interfaz.
@@ -298,6 +362,24 @@ final class EstadoApp: ObservableObject {
     /// Continuacion que espera la hoja de aprobacion. Se resuelve una sola vez.
     private var continuacionAprobacion: CheckedContinuation<Bool, Never>?
     private var idSolicitudAprobacion: UUID?
+
+    // Tuberia de eventos del hilo de Tarea (B3-B, B.1).
+    //
+    // POR QUE un registro de observadores y no una lectura del estado: la fila
+    // de paso tiene que reaccionar en el instante en que el motor la mueve, con
+    // su marca de tiempo de pared. El emisor y los observadores viven bajo
+    // `@MainActor`, asi que cada evento se aplica en el orden de emision sin
+    // colas de fondo (§0.1).
+    private var secuenciaEventoTarea = 0
+    private var observadoresEventoTarea: [UUID: (EventoTareaEjecucion) -> Void] = [:]
+    /// Sello de la ultima llamada al modelo, pendiente de atribuirse al paso
+    /// que esa llamada produjo. Se escribe UNA vez en el paso que nace, igual
+    /// que /boost sella sus fases: no se recalcula nunca.
+    private var selloPendienteDePaso: Double?
+    /// Continuacion que espera la decision de una propuesta sensible de Chat
+    /// (B2.4). Es independiente de la de Tarea: el turno de Chat queda detenido
+    /// mientras la hoja del hilo esta pendiente.
+    private var continuacionPropuestaSensible: CheckedContinuation<Bool, Never>?
     /// Tarea de resumen de /compact, para poder cancelarla al cambiar de chat.
     private var tareaCompactado: Task<Void, Never>?
     /// Tarea de /plan en el chat, para cancelarla al cambiar de conversacion.
@@ -326,11 +408,19 @@ final class EstadoApp: ObservableObject {
     private var puedeGuardarVentanas = false
     private var puedeGuardarUsosResumidos = false
     private var puedeGuardarResumenesCompactados = false
+    /// Borradores del composer por hilo (IDEA6), ya cargados de `defaults`.
+    private var borradores = BorradoresDeHilo()
+    private var puedeGuardarBorradores = false
+    /// Silencia el guardado automatico mientras el estado mueve el borrador
+    /// por su cuenta (cambio de hilo, restauracion, comando ejecutado).
+    private var suprimirGuardadoDeBorrador = false
 
     private static let claveConfig = "nodo.config.v1"
     private static let claveVentanas = "nodo.ventanas.v1"
     private static let claveUsosResumidos = "nodo.usos-resumidos.v1"
     private static let claveResumenesCompactados = "nodo.resumenes-compactados.v1"
+    /// Borradores del composer por hilo (IDEA6).
+    private static let claveBorradores = "nodo.borradores.v1"
 
     /// Instrucciones del resumen de /compact (§4.2). Es una llamada aparte,
     /// sin herramientas y sin streaming.
@@ -355,13 +445,18 @@ final class EstadoApp: ObservableObject {
         defaults: UserDefaults = .standard,
         directorioStore: URL? = nil,
         directorioTareas: URL? = nil,
-        dictado: SpeechRecognizing? = nil
+        dictado: SpeechRecognizing? = nil,
+        lector: LectorEnVozAlta? = nil
     ) {
         self.llavero = llavero
         self.estadoDePrueba = estadoDePrueba
         self.persistir = estadoDePrueba == nil
         self.transporte = transporte
         self.defaults = defaults
+        // Se asigna ANTES de cualquier return temprano: en capturas el init
+        // sale antes de construir el almacen y el lector tiene que existir
+        // igual, aunque nadie vaya a escuchar nada.
+        self.lector = lector ?? LectorAVSpeech()
         // En capturas el dictado es un doble que inyecta una transcripcion fija
         // sin pedir permisos ni tocar el microfono. El resto del flujo es el
         // mismo que en el iPhone real. Un reconocedor inyectado (tests de la
@@ -385,9 +480,13 @@ final class EstadoApp: ObservableObject {
             // estado sembrado debe ser determinista y no ensuciar el telefono.
             self.ventanasPorModelo = [:]
             self.store = nil
-            // Las capturas no siembran tareas: la pestana Tareas es un espacio
-            // propio de TASK.1 y no forma parte del estado de prueba anterior.
-            self.tareas = []
+            // Solo el estado de la deuda M2 siembra tareas y una aprobacion
+            // viva; los demas estados dejan la pestana Tareas vacia.
+            self.tareas = prueba.tareas
+            self.solicitudAprobacion = prueba.solicitudAprobacion
+            // El hilo que el estado da por abierto evita que la red de
+            // seguridad de la raiz presente la hoja modal antes de navegar.
+            self.tareaEnPantalla = prueba.tareaEnPantalla
             sincronizarSkills()
             return
         }
@@ -404,6 +503,7 @@ final class EstadoApp: ObservableObject {
         self.usoResumidoPorConversacion = Self.usosResumidosGuardados(de: defaults)
         self.resumenesCompactadosPorConversacion =
             Self.resumenesCompactadosGuardados(de: defaults)
+        self.borradores = Self.borradoresGuardados(de: defaults)
 
         var almacen: ConversationStore?
         do {
@@ -455,6 +555,7 @@ final class EstadoApp: ObservableObject {
         self.puedeGuardarVentanas = true
         self.puedeGuardarUsosResumidos = true
         self.puedeGuardarResumenesCompactados = true
+        self.puedeGuardarBorradores = true
         sincronizarSkills()
 
         // PACK.1: siembra del pack de fabrica en el arranque. Es trabajo en
@@ -610,7 +711,10 @@ final class EstadoApp: ObservableObject {
         RespaldoConfiguracion.hacerRespaldo(
             config: config,
             ventanas: ventanasPorModelo,
-            conversaciones: conversaciones,
+            // B2.2: el respaldo tampoco puede llevarse un hilo temporal. La
+            // lista no lo contiene (nunca se persiste), pero el filtro lo deja
+            // escrito aqui para que ningun camino futuro lo cuele.
+            conversaciones: conversaciones.filter(\.sePersiste),
             tareas: tareas
         )
     }
@@ -817,6 +921,22 @@ final class EstadoApp: ObservableObject {
         return resumenes.filter {
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    /// Lee los borradores por hilo guardados en los ajustes locales (IDEA6).
+    ///
+    /// Un JSON corrupto deja el almacen vacio: perder un borrador es preferible
+    /// a no poder abrir la app. El propio almacen descarta los textos vacios al
+    /// guardar, asi que aqui no hay residuos que limpiar.
+    private static func borradoresGuardados(
+        de defaults: UserDefaults
+    ) -> BorradoresDeHilo {
+        guard let datos = defaults.data(forKey: claveBorradores),
+              let guardados = try? BorradoresDeHilo.desde(json: datos)
+        else {
+            return BorradoresDeHilo()
+        }
+        return guardados
     }
 
     // MARK: - Sellos de costo y libro de gasto (COST.1-3)
@@ -1148,15 +1268,35 @@ final class EstadoApp: ObservableObject {
         return (costo, nombre)
     }
 
+    /// Estado visible de la Memoria en Mi Contexto (B2.5).
+    ///
+    /// El contador, la banda y la agrupación viven en el nucleo para probarse
+    /// sin simulador; la vista solo pinta lo que este valor declara.
+    var estadoMemoria: EstadoMemoriaMiContexto {
+        EstadoMemoriaMiContexto(entradas: config.memoria)
+    }
+
+    /// True mientras la hoja de una propuesta sensible está pendiente y ya no
+    /// cabe ninguna entrada más (B2.5).
+    ///
+    /// La hoja lo muestra antes de decidir y, aun con [Aprobar], el ejecutor
+    /// rechaza la creación con «memoria en tope».
+    var avisoTopeEnPropuestaSensible: Bool {
+        propuestaMemoriaSensible != nil && estadoMemoria.enTope
+    }
+
     /// Anade una entrada escrita a mano desde Mi Contexto (MEM.4).
     ///
     /// Aqui no hay tarjeta ni Deshacer: el dueno esta en la pantalla de edicion
     /// y el cambio es directo. La tarjeta es para los cambios que ordena al
     /// modelo dentro de un chat.
+    ///
+    /// B2.5: el tope rige también la creación manual; la hoja ya deshabilita
+    /// Guardar con el tope lleno y esta guarda es la segunda barrera.
     @discardableResult
     func agregarEntradaMemoria(_ texto: String) -> EntradaMemoria? {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpio.isEmpty else { return nil }
+        guard !limpio.isEmpty, !estadoMemoria.enTope else { return nil }
 
         let entrada = EntradaMemoria(texto: limpio)
         config.memoria.append(entrada)
@@ -1179,34 +1319,46 @@ final class EstadoApp: ObservableObject {
         config.memoria.removeAll { $0.id == id }
     }
 
-    /// Aplica una accion de `memoria_chat` sobre la configuracion y deja la
-    /// tarjeta de evento en el hilo donde se dio la orden.
+    /// Aplica una operacion tipada de memoria sobre la configuracion y deja la
+    /// linea de evento en el hilo donde se dio la orden.
     ///
     /// Se llama desde la herramienta, ya en el MainActor. La lista se escribe
-    /// una sola vez y solo cuando la accion se aplico: un id desconocido no
+    /// una sola vez y solo cuando la operacion se aplico: un id desconocido no
     /// toca nada.
-    private func aplicarAccionDeMemoria(
-        _ accion: AccionMemoria,
+    ///
+    /// B2.4: `.proponerSensible` NO entra por `aplicarTipada` (que la rechaza
+    /// como segunda barrera). Se desvia a `proponerMemoriaSensible`, que
+    /// detiene el turno con la hoja y solo escribe tras [Aprobar].
+    private func aplicarOperacionDeMemoria(
+        _ operacion: OperacionMemoriaTipada,
         idConversacion: UUID
-    ) -> ResultadoAccionMemoria {
+    ) async -> ResultadoAccionMemoria {
+        if case .proponerSensible(let contenido, let categoria, _) = operacion {
+            return await proponerMemoriaSensible(
+                contenido: contenido,
+                categoria: categoria,
+                idConversacion: idConversacion
+            )
+        }
+
         var entradas = config.memoria
-        let resultado = Memoria.aplicar(accion, en: &entradas)
+        let resultado = Memoria.aplicarTipada(operacion, en: &entradas)
         guard case .aplicada(let cambio) = resultado else {
             return resultado
         }
 
         config.memoria = entradas
 
-        // La tarjeta se ancla al ultimo mensaje visible: la orden del dueno ya
+        // La linea se ancla al ultimo mensaje visible: la orden del dueno ya
         // esta en el hilo y la confirmacion del modelo aun no ha llegado.
         // Si el dueno cambio de chat mientras el modelo respondia, el cambio
-        // de Memoria sigue siendo real (es global), pero su tarjeta no debe
+        // de Memoria sigue siendo real (es global), pero su linea no debe
         // aparecer en otro hilo.
         if conversacion.id == idConversacion {
             eventosVisuales.append(
                 EventoVisual(
                     trasMensaje: conversacion.mensajes.last?.id,
-                    texto: cambio.textoDeTarjeta,
+                    texto: cambio.textoDeLinea,
                     cambioMemoria: cambio
                 )
             )
@@ -1215,9 +1367,77 @@ final class EstadoApp: ObservableObject {
         return .aplicada(cambio)
     }
 
-    /// Revierte exactamente el cambio de una tarjeta de Memoria (MEM.3).
+    /// Detiene el turno en la hoja y escribe SOLO si el dueno aprueba (B2.4).
     ///
-    /// Devuelve false si la tarjeta no existe, no es de Memoria o ya se habia
+    /// La hoja es el unico artefacto visible mientras esta pendiente: la
+    /// proyeccion la pinta al final del hilo y no anade burbuja en curso. Al
+    /// denegar, cerrar el hilo o cerrar la app sin decidir no se escribe nada:
+    /// el turno recibe un rechazo interno (rol `.herramienta`) que cierra ese
+    /// `tool_call_id`, de modo que el payload siguiente no lo reenvia como
+    /// pendiente.
+    private func proponerMemoriaSensible(
+        contenido: String,
+        categoria: CategoriaSensibleMemoria,
+        idConversacion: UUID
+    ) async -> ResultadoAccionMemoria {
+        // Si el dueno ya cambio de hilo, la hoja no puede aparecer en otro
+        // chat: la propuesta se cierra como denegada sin tocar el registro.
+        guard conversacion.id == idConversacion else {
+            return .rechazada("denegado por el dueno")
+        }
+        guard propuestaMemoriaSensible == nil else {
+            return .rechazada("ya hay una propuesta sensible pendiente en este turno.")
+        }
+
+        propuestaMemoriaSensible = PropuestaMemoriaSensible(
+            texto: contenido,
+            categoriaSensible: categoria
+        )
+
+        let aprobada = await withCheckedContinuation {
+            (continuacion: CheckedContinuation<Bool, Never>) in
+            self.continuacionPropuestaSensible = continuacion
+        }
+
+        propuestaMemoriaSensible = nil
+
+        guard !Task.isCancelled else {
+            return .rechazada("turno cancelado")
+        }
+        guard aprobada else {
+            return .rechazada("denegado por el dueno")
+        }
+
+        var entradas = config.memoria
+        let resultado = Memoria.aplicarSensibleAprobada(
+            contenido: contenido,
+            categoria: categoria,
+            en: &entradas
+        )
+        guard case .aplicada(let cambio) = resultado else {
+            return resultado
+        }
+
+        config.memoria = entradas
+
+        // La linea unica de aviso posterior se ancla al ultimo mensaje visible
+        // (la orden del dueno), igual que las escrituras no sensibles.
+        if conversacion.id == idConversacion {
+            eventosVisuales.append(
+                EventoVisual(
+                    trasMensaje: conversacion.mensajes.last?.id,
+                    texto: cambio.textoDeLinea,
+                    cambioMemoria: cambio
+                )
+            )
+        }
+
+        return .aplicada(cambio)
+    }
+
+    /// Revierte exactamente el cambio de una linea de Memoria (MEM.3).
+    ///
+    /// Devuelve false si la linea no existe, no es de Memoria o ya se habia
     /// deshecho: el segundo toque no puede volver a aplicar el inverso.
     @discardableResult
     func deshacerCambioDeMemoria(id eventoID: UUID) -> Bool {
@@ -1265,6 +1485,47 @@ final class EstadoApp: ObservableObject {
         config.topeAvisoCosto = valor
     }
 
+    /// Estado de la banda del tope MENSUAL personal (IDEA4).
+    ///
+    /// Es la unica fuente de verdad de la banda: la vista Gasto y la banda
+    /// sobre el composer pintan lo que devuelve este metodo y los tests
+    /// afirman sus estados sin presentar UI. Se calcula sobre el acumulado
+    /// SELLADO del mes (`config.usoApp`), no sobre el chat abierto: por eso
+    /// cambiar de modelo activo no mueve ni un centavo. `acumuladoDelMes` se
+    /// puede pasar cuando la vista ya armo el resumen, para no leerlo dos veces.
+    func estadoTopeMensual(
+        acumuladoDelMes: Double? = nil,
+        ahora: Date = Date()
+    ) -> TopeMensualGasto {
+        let acumulado = acumuladoDelMes ?? config.usoApp.mes(ahora).usd
+        return TopeMensualGasto.calcular(
+            tope: config.topeMensualGasto,
+            acumulado: acumulado
+        )
+    }
+
+    /// Fija (o quita, con nil) el tope mensual personal y lo persiste.
+    ///
+    /// Un valor no positivo o no finito se interpreta como "sin tope": la
+    /// banda desaparece. Este metodo no toca el envio ni el tope por chat.
+    func fijarTopeMensual(_ valor: Double?) {
+        guard let valor, valor.isFinite, valor > 0 else {
+            config.topeMensualGasto = nil
+            return
+        }
+        config.topeMensualGasto = valor
+    }
+
+    /// Enciende o apaga «Memoria inteligente» desde Mi Contexto (B2.3).
+    ///
+    /// Cambiar el interruptor NO crea, borra ni edita ninguna entrada: solo
+    /// elige la instruccion de disparo del siguiente payload. La lista de
+    /// entradas queda intacta y el valor se persiste con la configuracion.
+    func fijarMemoriaInteligente(_ activa: Bool) {
+        guard config.memoriaInteligente != activa else { return }
+        config.memoriaInteligente = activa
+    }
+
     /// "Seguir igual" de la franja: silencia el tope solo en este chat.
     func ignorarTopeEnEsteChat() {
         guard !conversacion.topeIgnorado else { return }
@@ -1293,6 +1554,25 @@ final class EstadoApp: ObservableObject {
     /// se puede pasar para que las pruebas sean deterministas.
     func resumenDeGasto(ahora: Date = Date()) -> ResumenGasto {
         ResumenGasto.desde(libro: config.usoApp, ahora: ahora)
+    }
+
+    /// Estadisticas locales de uso y gasto para la vista Gasto (IDEA5).
+    ///
+    /// Lee los sellos y los metadatos de las conversaciones PERSISTIDAS: los
+    /// hilos temporales quedan fuera por `Conversation.sePersiste`, asi que no
+    /// dejan ni un mensaje en el desglose. No se guarda ningun agregado: el
+    /// calculo ocurre al presentar la vista y nunca por token de streaming.
+    /// `conversaciones` y `ahora` se pueden pasar para que las pruebas sean
+    /// deterministas.
+    func estadisticasDeGasto(
+        en conversaciones: [Conversation]? = nil,
+        ahora: Date = Date()
+    ) -> EstadisticasGasto {
+        EstadisticasGasto.desde(
+            conversaciones: conversaciones ?? self.conversaciones,
+            proveedores: config.proveedores,
+            ahora: ahora
+        )
     }
 
     /// Suma a los contadores y al libro de gasto el costo de un uso recibido.
@@ -1480,12 +1760,103 @@ final class EstadoApp: ObservableObject {
         conversacion = Conversation(sinMemoria: sinMemoria)
     }
 
+    /// Crea un hilo de Chat Temporal (B2.2): el camino de creacion propio.
+    ///
+    /// POR QUE no es `nuevaConversacion(sinMemoria: true)`: un chat sin memoria
+    /// es un chat normal que se guarda; el temporal no llega nunca al almacen,
+    /// no ofrece herramientas de escritura de Memoria y su cabecera lo declara
+    /// durante todo el hilo. La conversacion se construye ya marcada
+    /// `esTemporal`, asi el resto del estado (payload, persistencia, respaldo)
+    /// la trata distinto desde el primer instante.
+    func nuevaConversacionTemporal() {
+        cancelar()
+        limpiarEventosVisuales()
+        limpiarErrorDeTurno()
+        limpiarEstadoDeCaja()
+        conversacion = Conversation(esTemporal: true)
+    }
+
+    /// True si el hilo abierto es un Chat Temporal.
+    var hiloTemporal: Bool {
+        conversacion.esTemporal
+    }
+
+    /// Alterna el hilo abierto entre normal y temporal: UN toque (R19).
+    ///
+    /// Solo se puede alternar ANTES del primer mensaje: con mensajes ya
+    /// enviados el modo queda fijado (un hilo temporal no se persiste y no
+    /// puede convertirse en normal sin guardar lo conversado). Devuelve `true`
+    /// si el toque cambio el modo, `false` si no habia nada que cambiar.
+    @discardableResult
+    func alternarChatTemporal() -> Bool {
+        guard conversacion.mensajes.isEmpty, !enviando else { return false }
+        conversacion.esTemporal.toggle()
+        if conversacion.esTemporal {
+            // IDEA6: al pasar a temporal se borra el borrador guardado de ese
+            // id. Lo que se escriba a partir de aqui tampoco se guarda (B2.2).
+            borradores.borrar(para: conversacion.id)
+            persistirBorradores()
+        } else {
+            // De vuelta a normal, lo que ya esta en la caja vuelve a contar:
+            // si el dueno sale ahora, el texto no se pierde.
+            guardarBorradorActual()
+        }
+        return true
+    }
+
+    /// Cierra el hilo temporal abierto: camino de SALIDA propio (B2.2).
+    ///
+    /// No guarda nada, no deja borrador y no toca la lista ni Mi Contexto: el
+    /// hilo se descarta y la app vuelve a un chat normal vacio. Si el hilo
+    /// abierto no es temporal no hace nada (un chat normal se guarda como
+    /// siempre).
+    func cerrarHiloTemporal() {
+        guard conversacion.esTemporal else { return }
+        let idCerrado = conversacion.id
+        cancelar()
+        limpiarEventosVisuales()
+        limpiarErrorDeTurno()
+        // El borrador de un hilo temporal se borra al cerrar el hilo.
+        limpiarEstadoDeCaja()
+        // IDEA6: borrado explicito por id, por si el hilo se volvio temporal
+        // despues de haber guardado un borrador como chat normal.
+        borradores.borrar(para: idCerrado)
+        persistirBorradores()
+        conversacion = Conversation()
+    }
+
     func abrir(_ otra: Conversation) {
         cancelar()
         limpiarEventosVisuales()
         limpiarErrorDeTurno()
         limpiarEstadoDeCaja()
         conversacion = otra
+        // IDEA6: el hilo recupera SU borrador, no el del hilo que se deja.
+        // Un hilo temporal no tiene borrador que recuperar (B2.2).
+        if otra.esTemporal {
+            borradores.borrar(para: otra.id)
+            persistirBorradores()
+            fijarBorrador("")
+        } else {
+            fijarBorrador(borradores.texto(para: otra.id) ?? "")
+        }
+    }
+
+    /// Conversacion que abre un toque sobre una fila de la lista (B4-BUS).
+    ///
+    /// POR QUE vive aqui y no en la vista: el destino de navegacion de la
+    /// pestana Chats se resuelve contra la LISTA persistida, no contra la
+    /// conversacion abierta, porque la ruta solo guarda ids. Se acepta tambien
+    /// la conversacion abierta y las recien creadas (aun sin guardar) para no
+    /// romper el camino de "+ Nuevo". Tocar un resultado de busqueda abre ESA
+    /// conversacion: es la diferencia deliberada 1 de §2.3 (no se salta al
+    /// mensaje exacto ni se resalta la palabra dentro del hilo).
+    func conversacionParaAbrir(
+        _ id: UUID,
+        nuevas: [UUID: Conversation] = [:]
+    ) -> Conversation? {
+        conversaciones.first(where: { $0.id == id })
+            ?? (conversacion.id == id ? conversacion : nuevas[id])
     }
 
     /// Crea una conversacion nueva con el historial clonado hasta `mensaje`
@@ -1495,6 +1866,11 @@ final class EstadoApp: ObservableObject {
     /// los usos de los mensajes clonados, asi que su costo sigue siendo honesto
     /// desde el primer mensaje. La conversacion original no se toca.
     func ramificar(desde mensaje: ChatMessage) {
+        // B2.2: un hilo temporal no se ramifica. La rama es un chat NUEVO que
+        // si se guarda; sacarla de un hilo que promete no dejar rastro seria
+        // justo el rastro que el modo evita. La vista no ofrece la accion en
+        // ese hilo; esta guarda cubre cualquier llamada futura.
+        guard conversacion.sePersiste else { return }
         guard let nueva = conversacion.ramificar(hastaElMensaje: mensaje.id) else {
             return
         }
@@ -1532,6 +1908,10 @@ final class EstadoApp: ObservableObject {
             cancelar()
         }
         try? store?.borrar(id: otra.id)
+        // IDEA6: un borrador no puede quedar huerfano de una conversacion que
+        // ya no existe.
+        borradores.borrar(para: otra.id)
+        persistirBorradores()
         usoResumidoPorConversacion.removeValue(forKey: otra.id.uuidString)
         // COMP.2: el resumen pertenece a esa conversacion; si se borra, no
         // puede quedar un respaldo huerfano que un id reutilizado pudiera leer.
@@ -1562,13 +1942,58 @@ final class EstadoApp: ObservableObject {
     }
 
     /// Deja limpio todo lo que pertenece a la caja de la conversacion abierta.
+    ///
+    /// IDEA6: vaciar la caja al cambiar de hilo NO borra el borrador guardado
+    /// de ese hilo; por eso el vaciado va por `fijarBorrador`.
     private func limpiarEstadoDeCaja() {
-        borrador = ""
+        fijarBorrador("")
         avisoComando = nil
         mostrarHojaModelos = false
         textoParaCompartirSolicitado = nil
         idParaAbrir = nil
         idParaAbrirReiniciandoRuta = nil
+    }
+
+    /// Mueve el borrador SIN disparar el guardado automatico por hilo.
+    ///
+    /// Lo usan los cambios de hilo, la restauracion del borrador del hilo que
+    /// entra y las limpiezas de pantalla: ninguno de esos movimientos es texto
+    /// nuevo del dueno y ninguno puede escribir en el borrador de otro hilo.
+    private func fijarBorrador(_ texto: String) {
+        suprimirGuardadoDeBorrador = true
+        borrador = texto
+        suprimirGuardadoDeBorrador = false
+    }
+
+    /// Guarda el texto que ya esta en la caja bajo el hilo abierto.
+    ///
+    /// Solo para transiciones que no pasan por un cambio de texto del dueno
+    /// (volver de temporal a normal). Un Chat Temporal nunca guarda.
+    private func guardarBorradorActual() {
+        guard tareaEnPantalla == nil, !conversacion.esTemporal else { return }
+        borradores.guardar(borrador, para: conversacion.id)
+        persistirBorradores()
+    }
+
+    /// Persiste el almacen de borradores en los ajustes locales de la app.
+    ///
+    /// Mismo camino que la configuracion y los usos resumidos: `UserDefaults`
+    /// con una clave propia. Nunca toca la conversacion ni el historial.
+    private func persistirBorradores() {
+        guard puedeGuardarBorradores,
+              let datos = try? borradores.json()
+        else {
+            return
+        }
+        defaults.set(datos, forKey: Self.claveBorradores)
+    }
+
+    /// Borrador guardado de un hilo (IDEA6).
+    ///
+    /// Costura de pruebas y de estado: el almacen se consulta por
+    /// `conversacion.id` sin presentar ninguna vista.
+    func borradorGuardado(para id: UUID) -> String? {
+        borradores.texto(para: id)
     }
 
     /// Cambia el proveedor activo y deja el divisor visual del cambio de modelo.
@@ -1628,6 +2053,10 @@ final class EstadoApp: ObservableObject {
     /// Al apagarla con mensajes ya enviados se deja el divisor del punto exacto
     /// del cambio; los turnos anteriores ya viajaron con la Memoria (§4.6).
     func alternarSinMemoria() {
+        // B2.2: en un hilo temporal el interruptor no tendria efecto
+        // observable (el temporal no usa la Memoria por definicion), asi que
+        // no se ofrece ni cambia nada. En un chat normal sigue como siempre.
+        guard !conversacion.esTemporal else { return }
         let teniaMensajes = !conversacion.mensajes.isEmpty
         conversacion.sinMemoria.toggle()
 
@@ -1684,6 +2113,8 @@ final class EstadoApp: ObservableObject {
     }
 
     func renombrar(_ otra: Conversation, titulo: String) {
+        // Un hilo temporal no tiene fila ni archivo que renombrar (B2.2).
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.titulo = titulo
         try? store?.guardar(copia)
@@ -1693,6 +2124,7 @@ final class EstadoApp: ObservableObject {
 
     /// Fija o desfija una conversacion sin tocar la que este abierta.
     func fijar(_ otra: Conversation, fijada: Bool = true) {
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.fijada = fijada
         try? store?.guardar(copia)
@@ -1709,6 +2141,8 @@ final class EstadoApp: ObservableObject {
 
     /// Archiva o desarchiva una conversacion sin tocar la que este abierta.
     func archivar(_ otra: Conversation, archivada: Bool = true) {
+        // Archivar es escribir: un hilo temporal no llega al almacen.
+        guard otra.sePersiste else { return }
         var copia = otra
         copia.archivada = archivada
         try? store?.guardar(copia)
@@ -1723,7 +2157,14 @@ final class EstadoApp: ObservableObject {
         archivar(otra, archivada: false)
     }
 
+    /// Punto UNICO de escritura de la conversacion abierta.
+    ///
+    /// B2.2: el camino de salida del Chat Temporal se decide aqui. Un hilo
+    /// temporal no pasa por el almacen ni refresca la lista, de modo que
+    /// enviar, regenerar, reintentar, fallar o compactar no dejan rastro por
+    /// mucho que llamen a `persistirActual`.
     private func guardarActual() {
+        guard conversacion.sePersiste else { return }
         try? store?.guardar(conversacion)
         recargarConversaciones()
     }
@@ -1751,11 +2192,18 @@ final class EstadoApp: ObservableObject {
     @discardableResult
     func crearTarea(instruccion: String = "", conversacionID: UUID? = nil) -> Tarea {
         let limpia = instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tarea = Tarea(
+        var tarea = Tarea(
             instruccion: limpia,
             conversacionID: conversacionID,
             proveedorID: config.proveedorSeleccionado?.id
         )
+        // El encargo es el primer turno del hilo (B3-A): una tarea creada con
+        // instruccion ya muestra su burbuja al abrir, sin un campo aparte.
+        if !limpia.isEmpty {
+            tarea.turnos = [
+                TurnoTarea(rol: .usuario, texto: limpia)
+            ]
+        }
         guardarTarea(tarea)
         return tarea
     }
@@ -1818,7 +2266,14 @@ final class EstadoApp: ObservableObject {
     /// - Parameters:
     ///   - id: tarea a planificar.
     ///   - instruccion: si viene, sustituye a la guardada antes de pedir el plan.
-    func generarPlan(id: UUID, instruccion: String? = nil) async {
+    ///   - instruccionVisible: texto que queda como `instruccion` de la tarea
+    ///     cuando el prompt del plan es una composicion de turnos (B3-A). nil
+    ///     conserva el comportamiento historico: se guarda `instruccion`.
+    func generarPlan(
+        id: UUID,
+        instruccion: String? = nil,
+        instruccionVisible: String? = nil
+    ) async {
         guard !generandoPlan else { return }
         guard let indice = tareas.firstIndex(where: { $0.id == id }) else { return }
 
@@ -1841,9 +2296,17 @@ final class EstadoApp: ObservableObject {
             return
         }
 
+        // La version del plan se captura ANTES de invalidarlo: cada plan nuevo
+        // es la version anterior + 1 (B3-A). El contador vive en la tarea para
+        // que una regeneracion fallida no lo reinicie a 1.
+        let versionAnterior = max(
+            tareas[indice].versionPlan,
+            tareas[indice].plan?.version ?? 0
+        )
+
         // La instruccion editada se guarda antes de salir a la red. Si la
         // llamada falla, el dueno no pierde lo que escribio.
-        tareas[indice].instruccion = cruda
+        tareas[indice].instruccion = instruccionVisible ?? cruda
         tareas[indice].plan = nil
         tareas[indice].estado = .borrador
         tareas[indice].fechaActualizacion = Date()
@@ -1854,12 +2317,21 @@ final class EstadoApp: ObservableObject {
         guard let tareaParaPlan = tareas.first(where: { $0.id == id }),
               let (proveedor, clave) = proveedorYClaveParaTarea(tareaParaPlan)
         else {
+            // Un proveedor ausente o sin clave tambien es un error visible del
+            // hilo (E7), no solo un aviso global que se pierde al reabrir.
+            if let mensaje = errorTarea {
+                anotarErrorDeTarea(id: id, mensaje: mensaje)
+            }
             return
         }
 
         generandoPlan = true
+        idTareaPlanificando = id
         errorTarea = nil
-        defer { generandoPlan = false }
+        defer {
+            generandoPlan = false
+            idTareaPlanificando = nil
+        }
 
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
@@ -1890,14 +2362,18 @@ final class EstadoApp: ObservableObject {
                 costoDeLaLlamada = mensaje.costoSelladoUSD
             }
 
-            let plan = PlanTarea.desde(
+            var plan = PlanTarea.desde(
                 texto: respuesta.texto,
                 proveedorID: proveedor.id
             )
             guard !plan.pasos.isEmpty else {
-                errorTarea = "El modelo devolvió un plan vacío. Inténtalo de nuevo."
+                anotarErrorDeTarea(
+                    id: id,
+                    mensaje: "El modelo devolvió un plan vacío. Inténtalo de nuevo."
+                )
                 return
             }
+            plan.version = versionAnterior + 1
 
             // La tarea pudo borrarse o empezar mientras llegaba la respuesta:
             // en ese caso el plan ya no se publica.
@@ -1906,10 +2382,12 @@ final class EstadoApp: ObservableObject {
             else {
                 return
             }
-            tareas[actual].instruccion = cruda
+            tareas[actual].instruccion = instruccionVisible ?? cruda
             tareas[actual].plan = plan
+            tareas[actual].versionPlan = plan.version
             tareas[actual].estado = .esperandoInicio
             tareas[actual].proveedorID = proveedor.id
+            tareas[actual].ultimoError = nil
             if let costoDeLaLlamada {
                 tareas[actual].costoAcumuladoUSD =
                     (tareas[actual].costoAcumuladoUSD ?? 0) + costoDeLaLlamada
@@ -1921,8 +2399,227 @@ final class EstadoApp: ObservableObject {
         } catch {
             let detalle = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription
-            errorTarea = "No se pudo generar el plan: \(detalle)"
+            anotarErrorDeTarea(
+                id: id,
+                mensaje: "No se pudo generar el plan: \(detalle)"
+            )
         }
+    }
+
+    // MARK: - Hilo conversacional de Tarea (B3-A)
+
+    /// Registra un mensaje del dueno como turno del hilo de la tarea.
+    ///
+    /// Es la mitad sincrona del envio: persiste el turno y deja la tarea lista
+    /// para pedir el plan. El primer mensaje de una tarea vacia ES el encargo y
+    /// alimenta `instruccion` (fuente del motor y del titulo); los siguientes
+    /// son ajustes. Un mensaje posterior a la ejecucion solo queda como turno:
+    /// no reabre pasos cerrados ni reescribe el plan aprobado.
+    @discardableResult
+    func registrarMensajeTarea(id: UUID, texto: String) -> Bool {
+        guard !generandoPlan else { return false }
+        guard let indice = tareas.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpio.isEmpty else { return false }
+        guard tareas[indice].estado != .enCurso else {
+            errorTarea = "La tarea está en curso: detenla antes de escribir."
+            return false
+        }
+
+        var tarea = tareas[indice]
+        let posterior = !tarea.pasos.isEmpty
+            || tarea.estado.esFinal
+            || tarea.estado == .detenida
+        tarea.turnos.append(
+            TurnoTarea(
+                rol: .usuario,
+                texto: limpio,
+                despuesDeEjecutar: posterior
+            )
+        )
+        if tarea.turnos.count == 1 {
+            tarea.instruccion = limpio
+        }
+        tarea.ultimoError = nil
+        tarea.fechaActualizacion = Date()
+        guardarTarea(tarea)
+
+        // La cabecera muestra «Planificando» desde el instante en que el
+        // encargo entra al hilo, no solo mientras la red esta abierta.
+        if tarea.admiteEdicion {
+            idTareaPlanificando = id
+        }
+        return true
+    }
+
+    /// Pide el plan de la tarea a partir de sus turnos de planificacion.
+    ///
+    /// El prompt es el encargo mas una linea «Ajuste: …» por cada mensaje
+    /// posterior. `instruccion` visible se queda en el encargo para que el
+    /// titulo de la tarea no cambie con cada ajuste.
+    func solicitarPlanTarea(id: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }) else { return }
+        guard tarea.admiteEdicion else {
+            idTareaPlanificando = nil
+            return
+        }
+        await generarPlan(
+            id: id,
+            instruccion: tarea.instruccionParaPlan,
+            instruccionVisible: tarea.instruccion
+        )
+        // Si generarPlan sale antes de su propio defer (falta de proveedor,
+        // plan vacio), la cabecera no puede quedarse en «Planificando».
+        if idTareaPlanificando == id {
+            idTareaPlanificando = nil
+        }
+    }
+
+    /// Envio completo del composer de Tarea: registra el turno y pide el plan.
+    func enviarMensajeTarea(id: UUID, texto: String) async {
+        guard registrarMensajeTarea(id: id, texto: texto) else { return }
+        await solicitarPlanTarea(id: id)
+    }
+
+    /// Accion [Ajustar / Regenerar] de la tarjeta: mismo efecto sin mensaje.
+    func regenerarPlanTarea(id: UUID) async {
+        guard let tarea = tareas.first(where: { $0.id == id }) else { return }
+        guard tarea.admiteEdicion else { return }
+        idTareaPlanificando = id
+        await generarPlan(
+            id: id,
+            instruccion: tarea.instruccionParaPlan,
+            instruccionVisible: tarea.instruccion
+        )
+        if idTareaPlanificando == id {
+            idTareaPlanificando = nil
+        }
+    }
+
+    /// Deja el error en la tarea para que el hilo lo muestre en su punto (E7)
+    /// y no como una alerta que tape la conversacion.
+    private func anotarErrorDeTarea(id: UUID, mensaje: String) {
+        errorTarea = mensaje
+        modificarTarea(id: id) { tarea in
+            tarea.ultimoError = mensaje
+        }
+    }
+
+    // MARK: - Tuberia de eventos del hilo de Tarea (B3-B, B.1)
+
+    /// Registra un consumidor de eventos de ejecucion y devuelve su llave.
+    ///
+    /// El consumidor se invoca de forma SINCRONA en el mismo `@MainActor` que
+    /// emitio el evento: no hay hilo intermedio donde se pierda el orden.
+    func observarEventosDeTarea(
+        _ observador: @escaping (EventoTareaEjecucion) -> Void
+    ) -> UUID {
+        let llave = UUID()
+        observadoresEventoTarea[llave] = observador
+        return llave
+    }
+
+    func dejarDeObservarEventosDeTarea(_ llave: UUID) {
+        observadoresEventoTarea.removeValue(forKey: llave)
+    }
+
+    /// Ultimo numero de secuencia emitido.
+    ///
+    /// Un hilo que se conecta a mitad de una ejecucion arranca su cola aqui:
+    /// asi no espera eventos que ya pasaron ni pierde los siguientes.
+    var secuenciaEventoTareaActual: Int { secuenciaEventoTarea }
+
+    /// Emite un evento del libro con su marca de tiempo de pared.
+    ///
+    /// `pasosTotales` NO se pasa nunca desde el plan (M1): el denominador de
+    /// la cabecera es la unidad del LIBRO y lo calcula `totalVisibleDeTarea`
+    /// sobre `tarea.pasos`. Ningun sitio de emision debe volver a derivarlo
+    /// del plan; si alguno lo hiciera, la cabecera prometeria pasos que el
+    /// modelo todavia no decidio y el denominador cambiaria al reabrir.
+    private func emitirEventoTarea(
+        _ tipo: EventoTareaEjecucion.Tipo,
+        idTarea: UUID,
+        paso: Int,
+        pasosTotales: Int? = nil,
+        etiqueta: String = "",
+        estadoDinamico: String = "",
+        estado: ElementoTareaVisible.EstadoPaso = .pendiente,
+        duracion: TimeInterval? = nil,
+        costo: Decimal? = nil,
+        detalle: String = ""
+    ) {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }) else {
+            return
+        }
+        secuenciaEventoTarea += 1
+        let evento = EventoTareaEjecucion(
+            secuencia: secuenciaEventoTarea,
+            tareaID: idTarea,
+            tipo: tipo,
+            paso: paso,
+            pasosTotales: pasosTotales ?? totalVisibleDeTarea(tarea),
+            etiqueta: etiqueta,
+            estadoDinamico: estadoDinamico,
+            estado: estado,
+            duracion: duracion,
+            costo: costo,
+            costoSelladoTarea: tarea.costoAcumuladoUSD.map { Decimal($0) },
+            detalle: detalle
+        )
+        ultimoEventoTarea = evento
+        for observador in Array(observadoresEventoTarea.values) {
+            observador(evento)
+        }
+    }
+
+    /// Pasos totales visibles: la unidad es el LIBRO, nunca el plan (M1).
+    ///
+    /// POR QUE el libro y no el plan: no hay mapeo 1:1 entre los pasos del
+    /// plan (texto que el modelo propone al planificar) y los pasos del libro
+    /// (llamadas de herramienta que el modelo decide turno a turno), asi que
+    /// un numerador en unidad plan es indefinible. El libro es estado real y
+    /// es exactamente lo que el hilo pinta como filas; con el plan como
+    /// denominador, «Completada 2/7» se leia incompleta y el total cambiaba
+    /// al reabrir la tarea. La tarjeta de plan sigue mostrando sus pasos: eso
+    /// es el plan, no el progreso.
+    private func totalVisibleDeTarea(_ tarea: Tarea) -> Int {
+        max(tarea.pasos.count, 1)
+    }
+
+    /// Indice visible (1-based) del paso de una llamada, o 0 si no esta.
+    private func indiceDePaso(idTarea: UUID, llamadaID: String) -> Int {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              let indice = tarea.pasos.firstIndex(where: {
+                  $0.llamadaID == llamadaID
+              })
+        else { return 0 }
+        return indice + 1
+    }
+
+    /// Rotulo humano del paso K (nunca el nombre tecnico ni un UUID).
+    private func etiquetaHumanaDePaso(idTarea: UUID, indice: Int) -> String {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              indice >= 1,
+              indice <= tarea.pasos.count
+        else { return "Paso \(max(indice, 1))" }
+        return Self.etiquetaDinamicaDePaso(
+            tarea.pasos[indice - 1],
+            indice: indice
+        )
+    }
+
+    /// Actividad real de una herramienta mientras corre.
+    ///
+    /// Es un rotulo humano: nunca el nombre tecnico de la funcion ni sus
+    /// argumentos crudos.
+    private func actividadDeHerramienta(_ llamada: ToolCall) -> String {
+        if llamada.nombre == "traer_url", let url = urlDeLlamada(llamada) {
+            let host = URL(string: url)?.host ?? url
+            return "Consultando \(host)…"
+        }
+        return "Ejecutando la herramienta…"
     }
 
     /// Autoriza la ejecucion y arranca el ToolLoop de la tarea.
@@ -1954,8 +2651,26 @@ final class EstadoApp: ObservableObject {
         // vieja marcada como verificada.
         tarea.resultado = nil
         tarea.verificadoPorCruce = false
+        tarea.ultimoError = nil
         guardarTarea(tarea)
         errorTarea = nil
+        // Primera senal (B.2): el evento sale en el MISMO ciclo del toque en
+        // [Empezar], antes de abrir la red. La fila 1 ya lleva el nombre real
+        // del paso y un estado dinamico atado a lo que el motor hace ahora.
+        //
+        // M1: el total lo calcula el emisor desde el libro, que acaba de
+        // quedar vacio, asi que la primera senal es «Paso 1/1». Antes se
+        // pasaba el plan aqui y la cabecera abria con «Paso 1/7» para una
+        // corrida que podia cerrar en 2 pasos.
+        selloPendienteDePaso = nil
+        emitirEventoTarea(
+            .turnoIniciado,
+            idTarea: id,
+            paso: 1,
+            etiqueta: tarea.plan?.pasos.first?.texto ?? "",
+            estadoDinamico: "Consultando modelo…",
+            estado: .enCurso
+        )
         lanzarEjecucionTarea(id: id)
         return true
     }
@@ -2016,6 +2731,15 @@ final class EstadoApp: ObservableObject {
         idTareaEjecutando = nil
         resolverAprobacion(false)
 
+        // El paso K se congela tal como estaba: ni Completado ni cobrado. Los
+        // pasos 1..K-1 ya resueltos quedan intactos en el libro.
+        selloPendienteDePaso = nil
+        let pasoDetenido = tareas.first(where: { $0.id == id })
+            .flatMap { tarea in
+                tarea.pasos.firstIndex(where: { $0.estado == .enCurso })
+                    .map { $0 + 1 }
+            }
+
         modificarTarea(id: id) { tarea in
             tarea.estado = .detenida
             for indice in tarea.pasos.indices {
@@ -2027,11 +2751,36 @@ final class EstadoApp: ObservableObject {
                 }
             }
         }
+
+        let detenido = pasoDetenido ?? max(
+            tareas.first(where: { $0.id == id })?.pasos.count ?? 1,
+            1
+        )
+        emitirEventoTarea(
+            .detenido,
+            idTarea: id,
+            paso: detenido,
+            etiqueta: etiquetaHumanaDePaso(idTarea: id, indice: detenido),
+            estado: .detenido,
+            detalle: "Detenida por ti"
+        )
+    }
+
+    /// Aprobacion que debe presentar la hoja modal de la raiz.
+    ///
+    /// nil cuando el hilo de esa tarea ya la muestra en contexto (B3-B): la
+    /// hoja no puede tapar la fila que espera la decision. Sigue existiendo
+    /// como red de seguridad si el dueno esta en otra pantalla, para que el
+    /// motor nunca espere una decision invisible.
+    var solicitudAprobacionModal: SolicitudAprobacion? {
+        guard let solicitudAprobacion else { return nil }
+        return solicitudAprobacion.tareaID == tareaEnPantalla
+            ? nil
+            : solicitudAprobacion
     }
 
     /// Resuelve la hoja a favor: la herramienta se ejecuta y el paso sigue.
-    func aprobarSolicitud() {
-        resolverAprobacion(true)
+    func aprobarSolicitud() {        resolverAprobacion(true)
     }
 
     /// Resuelve la hoja en contra: no se escribe nada y el paso queda Denegado.
@@ -2041,13 +2790,83 @@ final class EstadoApp: ObservableObject {
 
     private func resolverAprobacion(_ aprobada: Bool) {
         guard let continuacion = continuacionAprobacion else {
+            let solicitud = solicitudAprobacion
             solicitudAprobacion = nil
             idSolicitudAprobacion = nil
+            // Un estado sembrado no tiene ToolLoop que reanude. Se aplica al
+            // libro el efecto inmediato y determinista de la decision para que
+            // la fila del hilo refleje lo que el dueno acaba de elegir.
+            if estadoDePrueba != nil, let solicitud {
+                aplicarDecisionSembrada(aprobada, solicitud: solicitud)
+            }
             return
         }
         continuacionAprobacion = nil
         solicitudAprobacion = nil
         idSolicitudAprobacion = nil
+        continuacion.resume(returning: aprobada)
+    }
+
+    /// Cierra en el libro sembrado el paso que esperaba la aprobacion.
+    ///
+    /// Reproduce SOLO lo que el ToolLoop hace en el acto: al denegar marca el
+    /// paso Denegado; al aprobar lo deja En curso, listo para ejecutar la
+    /// herramienta. Lo que sigue despues (resultado de la herramienta, otra
+    /// vuelta del modelo) necesita el bucle vivo y no se simula aqui.
+    private func aplicarDecisionSembrada(
+        _ aprobada: Bool,
+        solicitud: SolicitudAprobacion
+    ) {
+        guard tareas.contains(where: { $0.id == solicitud.tareaID }) else { return }
+        modificarTarea(id: solicitud.tareaID) { tarea in
+            guard let indice = tarea.pasos.firstIndex(
+                where: { $0.aprobacion == .pendiente }
+            ) else { return }
+            tarea.pasos[indice].aprobacion = aprobada
+                ? EstadoAprobacion.aprobada
+                : EstadoAprobacion.denegada
+            tarea.pasos[indice].estado = aprobada
+                ? EstadoPaso.enCurso
+                : EstadoPaso.denegado
+            if aprobada {
+                tarea.pasos[indice].resultado = nil
+                tarea.pasos[indice].fechaFin = nil
+            } else {
+                tarea.pasos[indice].resultado = "denegado por el dueño"
+                tarea.pasos[indice].fechaFin = Date()
+            }
+        }
+    }
+
+    // MARK: - Hoja de propuesta sensible de Chat (B2.4)
+
+    /// Resuelve la hoja sensible a favor: recien entonces se escribe la
+    /// entrada en Mi Contexto.
+    func aprobarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: true)
+    }
+
+    /// Resuelve la hoja sensible en contra: no se escribe nada y el turno
+    /// recibe el rechazo interno.
+    func denegarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: false)
+    }
+
+    /// Cerrar la hoja (o el hilo) sin decidir es DENEGAR (B2.4).
+    ///
+    /// Mismo resultado interno de rechazo y cero persistencia. La hoja no se
+    /// puede arrastrar para cerrar, pero Detener, cambiar de chat o cerrar el
+    /// hilo pasan por `cancelar()`, que llama aqui antes de cortar el turno.
+    func cerrarPropuestaSensible() {
+        resolverPropuestaSensible(aprobada: false)
+    }
+
+    private func resolverPropuestaSensible(aprobada: Bool) {
+        // La hoja deja de proyectarse en el acto; el turno sigue (o se corta)
+        // con la decision tomada.
+        propuestaMemoriaSensible = nil
+        guard let continuacion = continuacionPropuestaSensible else { return }
+        continuacionPropuestaSensible = nil
         continuacion.resume(returning: aprobada)
     }
 
@@ -2195,7 +3014,20 @@ final class EstadoApp: ObservableObject {
             } else {
                 modificarTarea(id: id) { tarea in
                     tarea.estado = .completada
+                    // E8: el resultado final es el ultimo elemento del hilo.
+                    // Hasta B3-A la tarea normal lo descartaba y solo /boost lo
+                    // guardaba; la presentacion no puede inventarlo.
+                    tarea.resultado = resultado.texto
+                    tarea.ultimoError = nil
                 }
+                emitirEventoTarea(
+                    .finalizada,
+                    idTarea: id,
+                    paso: max(
+                        tareas.first(where: { $0.id == id })?.pasos.count ?? 1,
+                        1
+                    )
+                )
             }
         } catch is CancellationError {
             // Detener ya dejo el estado Detenida y los pasos previos intactos.
@@ -2759,6 +3591,25 @@ final class EstadoApp: ObservableObject {
 
         guard generacion == generacionEjecucionTarea else { return false }
 
+        // La fila pasa a «Esperando tu aprobacion» y la cabecera a
+        // «Esperando aprobación» en el mismo instante en que el motor se
+        // detiene a esperar la decision (§2.2).
+        let indicePendiente = indiceDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id
+        )
+        emitirEventoTarea(
+            .aprobacionPendiente,
+            idTarea: idTarea,
+            paso: indicePendiente,
+            etiqueta: etiquetaHumanaDePaso(
+                idTarea: idTarea,
+                indice: indicePendiente
+            ),
+            estadoDinamico: "Esperando tu aprobación",
+            estado: .esperandoAprobacion
+        )
+
         let solicitud = SolicitudAprobacion(
             tareaID: idTarea,
             herramienta: llamada.nombre,
@@ -2792,6 +3643,15 @@ final class EstadoApp: ObservableObject {
             estado: .enCurso,
             fechaInicio: Date()
         )
+        let indice = indiceDePaso(idTarea: idTarea, llamadaID: llamada.id)
+        emitirEventoTarea(
+            .pasoIniciado,
+            idTarea: idTarea,
+            paso: indice,
+            etiqueta: etiquetaHumanaDePaso(idTarea: idTarea, indice: indice),
+            estadoDinamico: actividadDeHerramienta(llamada),
+            estado: .enCurso
+        )
     }
 
     private func pasoTerminado(
@@ -2807,7 +3667,14 @@ final class EstadoApp: ObservableObject {
             generacion: generacion,
             estado: fallo ? .fallido : .terminado,
             resultado: resultado,
-            fechaFin: Date()
+            fechaFin: Date(),
+            sellarCosto: true
+        )
+        cerrarFilaDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id,
+            estado: fallo ? .error : .completado,
+            detalle: fallo ? "La herramienta devolvió un error" : ""
         )
     }
 
@@ -2826,6 +3693,45 @@ final class EstadoApp: ObservableObject {
             resultado: motivo,
             fechaFin: Date()
         )
+        // Un paso denegado no se cobra como ejecutado: el sello del modelo que
+        // lo propuso se descarta aqui para que no se atribuya a otro paso.
+        selloPendienteDePaso = nil
+        cerrarFilaDePaso(
+            idTarea: idTarea,
+            llamadaID: llamada.id,
+            estado: .denegado,
+            detalle: "Denegada por ti"
+        )
+    }
+
+    /// Cierra la fila del hilo con la duracion y el sello que quedaron en el
+    /// libro. Se lee del libro a proposito: la fila no calcula su propio costo.
+    private func cerrarFilaDePaso(
+        idTarea: UUID,
+        llamadaID: String,
+        estado: ElementoTareaVisible.EstadoPaso,
+        detalle: String
+    ) {
+        let indice = indiceDePaso(idTarea: idTarea, llamadaID: llamadaID)
+        let paso = pasoDelLibro(idTarea: idTarea, indice: indice)
+        emitirEventoTarea(
+            .pasoCerrado,
+            idTarea: idTarea,
+            paso: indice,
+            etiqueta: etiquetaHumanaDePaso(idTarea: idTarea, indice: indice),
+            estado: estado,
+            duracion: paso.flatMap { Self.duracionDePaso($0) },
+            costo: paso?.costoUSD.map { Decimal($0) },
+            detalle: detalle
+        )
+    }
+
+    private func pasoDelLibro(idTarea: UUID, indice: Int) -> Paso? {
+        guard let tarea = tareas.first(where: { $0.id == idTarea }),
+              indice >= 1,
+              indice <= tarea.pasos.count
+        else { return nil }
+        return tarea.pasos[indice - 1]
     }
 
     /// COST dentro de la tarea: cada llamada al modelo se sella y se acumula.
@@ -2847,13 +3753,37 @@ final class EstadoApp: ObservableObject {
         modificarTarea(id: idTarea) { tarea in
             tarea.costoAcumuladoUSD = (tarea.costoAcumuladoUSD ?? 0) + costo
         }
+        // El sello recien emitido queda pendiente del paso que esta llamada
+        // produjo; se escribe UNA vez en el libro cuando ese paso nace, igual
+        // que /boost sella sus fases. Ninguna cifra se recalcula despues.
+        selloPendienteDePaso = costo
+        let activo = max(
+            tareas.first(where: { $0.id == idTarea })?.pasos.count ?? 1,
+            1
+        )
+        emitirEventoTarea(
+            .costoSellado,
+            idTarea: idTarea,
+            paso: activo,
+            estado: .enCurso
+        )
     }
 
+    /// Aplica una accion de `proponer_memoria` YA aprobada en la hoja (TASK.4).
+    ///
+    /// B2.4: el regimen no cambia —toda escritura de Tarea sigue pasando por
+    /// propuesta y hoja—, pero la accion aprobada se expresa sobre el esquema
+    /// tipado y entra por `aplicarTipada`, el mismo camino que Chat. El mapeo
+    /// vive en `Memoria.operacionTipada`: `guardar` -> `save_memory`
+    /// (categoria `durable_fact`), `actualizar` -> `update_memory` conservando
+    /// la categoria base, `borrar` -> `delete_memory`. Una entrada sensible no
+    /// se reescribe por esta via: `aplicarTipada` la rechaza.
     private func aplicarAccionDeMemoriaTarea(
         _ accion: AccionMemoria
     ) -> ResultadoAccionMemoria {
         var entradas = config.memoria
-        let resultado = Memoria.aplicar(accion, en: &entradas)
+        let operacion = Memoria.operacionTipada(accion, en: entradas)
+        let resultado = Memoria.aplicarTipada(operacion, en: &entradas)
         if case .aplicada = resultado {
             config.memoria = entradas
         }
@@ -2869,7 +3799,8 @@ final class EstadoApp: ObservableObject {
         resultado: String? = nil,
         descripcion: String? = nil,
         fechaInicio: Date? = nil,
-        fechaFin: Date? = nil
+        fechaFin: Date? = nil,
+        sellarCosto: Bool = false
     ) {
         guard generacion == generacionEjecucionTarea else { return }
 
@@ -2892,7 +3823,14 @@ final class EstadoApp: ObservableObject {
                 if paso.herramienta == nil { paso.herramienta = llamada.nombre }
                 if paso.argumentos == nil { paso.argumentos = llamada.argumentos }
                 if paso.url == nil { paso.url = urlDeLlamada(llamada) }
+                // El sello de la llamada al modelo que produjo este paso se
+                // escribe UNA vez, al CERRARLO, con el importe ya emitido: la
+                // fila nunca recalcula precios ni cobra un paso que no corrio.
+                if sellarCosto, paso.costoUSD == nil {
+                    paso.costoUSD = selloPendienteDePaso
+                }
                 tarea.pasos[indice] = paso
+                if sellarCosto { selloPendienteDePaso = nil }
             } else {
                 tarea.pasos.append(
                     Paso(
@@ -2904,10 +3842,12 @@ final class EstadoApp: ObservableObject {
                         llamadaID: llamada.id,
                         url: urlDeLlamada(llamada),
                         aprobacion: aprobacion,
+                        costoUSD: sellarCosto ? selloPendienteDePaso : nil,
                         fechaInicio: fechaInicio,
                         fechaFin: fechaFin
                     )
                 )
+                if sellarCosto { selloPendienteDePaso = nil }
             }
         }
     }
@@ -2951,6 +3891,7 @@ final class EstadoApp: ObservableObject {
     private func finalizarTareaConError(id: UUID, mensaje: String) {
         modificarTarea(id: id) { tarea in
             tarea.estado = .fallida
+            tarea.ultimoError = mensaje
             tarea.pasos.append(
                 Paso(
                     descripcion: "Error: \(mensaje)",
@@ -2961,6 +3902,16 @@ final class EstadoApp: ObservableObject {
             )
         }
         errorTarea = mensaje
+        // El error va en linea, junto a la fila activa: la fila no se marca
+        // con error (no fue la herramienta la que fallo), el hilo muestra el
+        // `ErrorBubble` y la cabecera pasa a Error.
+        let pasos = tareas.first(where: { $0.id == id })?.pasos.count ?? 1
+        emitirEventoTarea(
+            .error,
+            idTarea: id,
+            paso: max(pasos - 1, 1),
+            detalle: mensaje
+        )
     }
 
     /// Guarda una tarea en el almacen y refresca la lista.
@@ -3036,9 +3987,11 @@ final class EstadoApp: ObservableObject {
 
         switch AnalizadorComandos.analizar(texto, resolvedor: resolvedorSkills) {
         case .mensajeNormal(let limpio):
+            // IDEA6: la caja NO se vacia aqui. Se vacia SOLO cuando el turno
+            // termina con exito; si la llamada falla, el texto sigue donde
+            // estaba para reintentar con un toque.
             borrador = limpio
             enviar(limpio)
-            borrador = ""
 
         case .comando(let comando):
             borrador = ""
@@ -3054,9 +4007,10 @@ final class EstadoApp: ObservableObject {
             avisarTextoDescartado(descartado, para: comando)
 
         case .conSkills(let skills, let mensaje):
+            // Mismo criterio que el mensaje normal: el texto se queda hasta
+            // que el turno confirma el exito.
             borrador = mensaje
             enviar(mensaje, skills: skills)
-            borrador = ""
 
         case .tokensDesconocidos(let slugs):
             let lista = slugs.map { "/\($0)" }.joined(separator: ", ")
@@ -3101,6 +4055,9 @@ final class EstadoApp: ObservableObject {
             idParaAbrir = conversacion.id
 
         case .exportar:
+            // IDEA3: mismo cierre que las acciones de compartir. El Chat
+            // Temporal no tiene ninguna forma de exportar, ni por comando.
+            guard puedeCompartir else { return }
             textoParaCompartirSolicitado = exportarConversacion()
 
         case .compact:
@@ -3261,6 +4218,14 @@ final class EstadoApp: ObservableObject {
     /// hilo queda intacto y se avisa sin guardar nada.
     func compactar() {
         guard !compactando, !enviando else { return }
+        // B2.2: compactar guarda el resumen por conversacion y persiste el
+        // hilo. En un hilo temporal eso seria un rastro, asi que no se ofrece
+        // (el menu ••• lo oculta) y, si se pide por comando, se avisa en vez
+        // de quedarse en silencio.
+        guard conversacion.sePersiste else {
+            avisoComando = "El chat temporal no se guarda: no hay nada que compactar."
+            return
+        }
 
         let total = conversacion.mensajes.count
         // Con 6 mensajes o menos no queda prefijo antiguo que resumir: llamar
@@ -3469,6 +4434,17 @@ final class EstadoApp: ObservableObject {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty, !enviando else { return }
 
+        // IDEA6: si el turno anterior fallo y el dueno vuelve a tocar Enviar
+        // con EL MISMO texto, se relanza sobre el mensaje que ya esta en el
+        // hilo. Sin esta guarda el mismo texto quedaria dos veces y el
+        // contrato pide que se envie UNA sola vez. No se mira `turnoFallido`:
+        // no se persiste, y tras reiniciar la app el ultimo mensaje del
+        // usuario sigue siendo la prueba de que ese envio ya se registro.
+        let reenvioDelFallo = skills.isEmpty
+            && errorDeTurno != nil
+            && conversacion.mensajes.last?.rol == .usuario
+            && conversacion.mensajes.last?.texto == limpio
+
         // Un mensaje nuevo retira la burbuja de error del turno anterior.
         limpiarErrorDeTurno()
 
@@ -3486,20 +4462,23 @@ final class EstadoApp: ObservableObject {
                 .isEmpty
         }
 
-        var mensaje = ChatMessage(rol: .usuario, texto: limpio)
-        mensaje.skillsAplicadas = aplicables.map(\.nombre)
-        conversacion.mensajes.append(mensaje)
-        if conversacion.titulo == "Conversacion" {
-            conversacion.titulo = conversacion.tituloSugerido
+        if !reenvioDelFallo {
+            var mensaje = ChatMessage(rol: .usuario, texto: limpio)
+            mensaje.skillsAplicadas = aplicables.map(\.nombre)
+            conversacion.mensajes.append(mensaje)
+            if conversacion.titulo == "Conversacion" {
+                conversacion.titulo = conversacion.tituloSugerido
+            }
+            persistirActual()
         }
-        persistirActual()
 
         lanzarTurno(
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
             instrucciones: aplicables.map(\.instrucciones),
-            alFracasar: {}
+            alFracasar: {},
+            textoEnviado: limpio
         )
     }
 
@@ -3596,11 +4575,15 @@ final class EstadoApp: ObservableObject {
 
     private func reintentarEnvio() {
         guard let (proveedor, clave) = proveedorYClaveParaEnviar() else { return }
+        // IDEA6: el reintento tambien cierra el borrador si sale bien; el
+        // texto que se reintenta es el del ultimo mensaje del usuario, que ya
+        // esta en el hilo.
         lanzarTurno(
             tipo: .envio,
             proveedor: proveedor,
             clave: clave,
-            alFracasar: {}
+            alFracasar: {},
+            textoEnviado: conversacion.mensajes.last(where: { $0.rol == .usuario })?.texto
         )
     }
 
@@ -3613,7 +4596,8 @@ final class EstadoApp: ObservableObject {
         proveedor: ProviderConfig,
         clave: String,
         instrucciones: [String] = [],
-        alFracasar: @escaping () -> Void
+        alFracasar: @escaping () -> Void,
+        textoEnviado: String? = nil
     ) {
         // Cubre tambien los reintentos: el proveedor del chat es el que se
         // esta usando ahora, no el activo global de otro momento.
@@ -3631,10 +4615,14 @@ final class EstadoApp: ObservableObject {
             )
         }
         // La misma foto manda en el historial y en las herramientas: si el chat
-        // usa Memoria, el payload lleva bloque y memoria_chat; si no, ni uno ni
-        // otro. Se captura antes de lanzar la tarea para que un cambio de chat
-        // a mitad de turno no mezcle dos contextos.
-        let usaMemoria = !conversacion.sinMemoria
+        // usa Memoria, el payload lleva bloque y herramientas tipadas; si no, ni
+        // uno ni otro. Se captura antes de lanzar la tarea para que un cambio de
+        // chat a mitad de turno no mezcle dos contextos.
+        //
+        // B2.2: la regla es `usaMemoriaEnPayload`, no `sinMemoria`. Asi un hilo
+        // temporal no ofrece NUNCA herramientas de escritura ni inyecta
+        // entradas, aunque su bandera de «sin memoria» no este puesta.
+        let usaMemoria = conversacion.usaMemoriaEnPayload
         let idConversacion = conversacion.id
         tareaActual = Task { [weak self] in
             guard let self else { return }
@@ -3646,7 +4634,8 @@ final class EstadoApp: ObservableObject {
                 usaMemoria: usaMemoria,
                 idConversacion: idConversacion,
                 tipo: tipo,
-                alFracasar: alFracasar
+                alFracasar: alFracasar,
+                textoEnviado: textoEnviado
             )
 
             self.enviando = false
@@ -3667,32 +4656,78 @@ final class EstadoApp: ObservableObject {
         usaMemoria: Bool,
         idConversacion: UUID,
         tipo: TipoTurnoFallido,
-        alFracasar: () -> Void
+        alFracasar: () -> Void,
+        textoEnviado: String? = nil
     ) async {
         do {
             let motor = motorPara(proveedor: proveedor, clave: clave)
             // Un chat normal sigue SIN las herramientas del modo Tarea. La unica
-            // excepcion es la Memoria: si el chat la usa, se ofrece memoria_chat
-            // y se ejecuta de verdad (MEM.3). En un chat sin memoria no se
-            // ofrece nada.
+            // excepcion es la Memoria: si el chat la usa, se ofrecen las cuatro
+            // herramientas tipadas de escritura y un ejecutor NUEVO por turno.
+            // B2.4: `propose_sensitive_memory` ya se ofrece porque su hoja de
+            // aprobacion esta cableada en este mismo turno; ofrecerla sin hoja
+            // habria sido forma sin fondo.
+            //
+            // B2.3: este conjunto NO depende del interruptor «Memoria
+            // inteligente». ON y OFF ofrecen exactamente las mismas
+            // herramientas tipadas con el mismo ejecutor; lo unico que cambia
+            // entre ramas es la instruccion de disparo del bloque de sistema
+            // (ver `historialParaEnviar`).
+            //
+            // B2.2: en un hilo temporal `usaMemoria` es false por construccion
+            // (`Conversation.usaMemoriaEnPayload`), asi que el array `tools` de
+            // la peticion sale vacio y el cliente ni siquiera manda la clave.
             var herramientas: [Herramienta] = []
             if usaMemoria {
+                // El snapshot de entradas se toma al inicio del turno: los
+                // `entry_id` de actualizacion y borrado se validan contra esta
+                // foto, no contra una lista que pudo cambiar a mitad.
+                let entradasDelTurno = config.memoria
+                let ejecutorMemoria = EjecutorMemoriaDelTurno(
+                    entradas: entradasDelTurno
+                ) { [weak self] operacion in
+                    guard let self else {
+                        return .rechazada(
+                            "la Memoria no esta disponible en este turno."
+                        )
+                    }
+                    return await self.aplicarOperacionDeMemoria(
+                        operacion,
+                        idConversacion: idConversacion
+                    )
+                }
                 herramientas = [
-                    HerramientaMemoriaChat { [weak self] accion in
-                        guard let self else {
-                            return .rechazada(
-                                "la Memoria no esta disponible en este turno."
-                            )
-                        }
-                        // La lista vive en el estado de la app: el salto al
-                        // MainActor se hace aqui, en la costura, y el nucleo
-                        // sigue sin conocer SwiftUI ni el hilo.
-                        return await MainActor.run {
-                            self.aplicarAccionDeMemoria(
-                                accion,
-                                idConversacion: idConversacion
-                            )
-                        }
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaGuardar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreGuardar,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaActualizar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreActualizar,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaProponerSensible
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreProponerSensible,
+                            argumentos: argumentos
+                        )
+                    },
+                    HerramientaMemoriaTipada(
+                        definicion: Memoria.herramientaBorrar
+                    ) { argumentos in
+                        try await ejecutorMemoria.ejecutar(
+                            herramienta: Memoria.nombreBorrar,
+                            argumentos: argumentos
+                        )
                     }
                 ]
             }
@@ -3717,6 +4752,11 @@ final class EstadoApp: ObservableObject {
             try Task.checkCancellation()
 
             textoEnCurso = ""
+            // B2.2: si el hilo abierto ya es otro (se cerro un hilo temporal o
+            // se cambio de chat mientras corria el turno), la respuesta no se
+            // escribe en el hilo nuevo ni se guarda: seria un rastro del
+            // temporal y, en el caso normal, un mensaje en el chat equivocado.
+            guard conversacion.id == idConversacion else { return }
             // Cada mensaje generado conserva su proveedor y, si trae consumo,
             // su sello de costo con los precios de ESE proveedor en este
             // momento (COST.1). Regenerar y reintentar pasan por aqui, asi que
@@ -3732,6 +4772,14 @@ final class EstadoApp: ObservableObject {
             conversacion.usoTrasCompactar = nil
             limpiarErrorDeTurno()
 
+            // IDEA6: el turno cerro con exito. El texto que se envio ya vive
+            // como mensaje del hilo, asi que su borrador se borra y la caja
+            // se vacia (solo si sigue mostrando ESE texto: lo que el dueno
+            // haya empezado a escribir despues no se toca).
+            if let textoEnviado {
+                finalizarEnvioExitoso(textoEnviado, idConversacion: idConversacion)
+            }
+
             if resultado.seAgotoElLimite {
                 error = "Se alcanzo el limite de \(bucle.maxIteraciones) vueltas de herramientas."
             }
@@ -3740,6 +4788,10 @@ final class EstadoApp: ObservableObject {
         } catch is CancellationError {
             textoEnCurso = ""
             alFracasar()
+            // Cerrar un hilo temporal cancela el turno y deja abierto un chat
+            // normal vacio: sin esta guarda, el turno cancelado guardaria ese
+            // chat vacio en la lista (B2.2).
+            guard conversacion.id == idConversacion else { return }
             persistirActual()
         } catch let fallo {
             textoEnCurso = ""
@@ -3749,17 +4801,50 @@ final class EstadoApp: ObservableObject {
             // El error se guarda CON la conversacion: tiene que seguir en el
             // hilo tras reabrir el chat o reiniciar la app. El mensaje del
             // usuario ya esta persistido, asi que reintentar no lo duplica.
+            guard conversacion.id == idConversacion else { return }
+            // IDEA6: ante el fallo, el texto integro vuelve a la caja. En el
+            // camino normal nunca se vacio; esta restauracion cubre cualquier
+            // limpieza intermedia y deja el borrador guardado para reabrir.
+            if let textoEnviado, borrador.isEmpty {
+                fijarBorrador(textoEnviado)
+                borradores.guardar(textoEnviado, para: idConversacion)
+                persistirBorradores()
+            }
             conversacion.errorDeTurno = detalle
             turnoFallido = tipo
             persistirActual()
         }
     }
 
+    /// Cierra el borrador de un envio que si llego (IDEA6).
+    ///
+    /// Borra el borrador guardado de ESE hilo y vacia la caja solo si sigue
+    /// mostrando el texto enviado. Un texto nuevo que el dueno haya empezado a
+    /// escribir mientras el turno estaba en vuelo no se pierde.
+    private func finalizarEnvioExitoso(_ texto: String, idConversacion: UUID) {
+        if borradores.texto(para: idConversacion) == texto {
+            borradores.borrar(para: idConversacion)
+            persistirBorradores()
+        }
+        guard conversacion.id == idConversacion, borrador == texto else { return }
+        fijarBorrador("")
+    }
+
     func cancelar() {
+        // Cambiar de hilo corta la lectura en voz alta (IDEA1): ninguna lectura
+        // sobrevive a nueva, temporal, cerrar, abrir, borrar ni importar. Todos
+        // esos caminos pasan por aqui, asi que este es el unico corte de hilo
+        // que hace falta.
+        detenerLectura()
         // Cambiar de chat o cortar el turno tambien corta el dictado: el
         // microfono no puede quedar escuchando en una conversacion que ya no
         // esta en pantalla.
         detenerDictado()
+        // B2.4: cortar el turno con la hoja sensible abierta es cerrarla sin
+        // aprobar. Se resuelve como denegacion para que el turno no quede
+        // colgado esperando una decision que ya no va a llegar; la tarea se
+        // cancela justo despues y no llega a escribir nada.
+        cerrarPropuestaSensible()
         tareaActual?.cancel()
         tareaActual = nil
         tareaCompactado?.cancel()
@@ -3771,6 +4856,439 @@ final class EstadoApp: ObservableObject {
         generandoPlanChat = false
         enviando = false
         textoEnCurso = ""
+    }
+
+    // MARK: - Proyeccion visible (P0.2)
+
+    /// Que se ve en el hilo abierto, en orden y sin efectos.
+    ///
+    /// Es la traduccion ejecutable de la tabla S0-S5 al catalogo cerrado de
+    /// `UI_INVARIANTS.md`. `ChatView` pinta esta lista y no vuelve a decidir
+    /// filas leyendo `conversacion.mensajes`.
+    ///
+    /// Reglas de mezcla (las mismas que tenia la vista, ahora en la capa de
+    /// aplicacion): eventos sin ancla al principio, cada mensaje seguido de sus
+    /// eventos anclados y los eventos huerfanos al final. La exclusion es por
+    /// tipo: los mensajes de rol herramienta y los `toolCalls` de un mensaje de
+    /// asistente no producen ningun elemento.
+    func elementosVisiblesDelHilo() -> [ElementoHiloVisible] {
+        let mensajes = conversacion.mensajes
+        let ids = Set(mensajes.map(\.id))
+        var resultado: [ElementoHiloVisible] = []
+
+        // Divisores y lineas de memoria que no cuelgan de ningun mensaje.
+        for evento in eventosVisuales where evento.trasMensaje == nil {
+            if let elemento = elementoVisible(de: evento) {
+                resultado.append(elemento)
+            }
+        }
+
+        for mensaje in mensajes {
+            switch mensaje.rol {
+            case .usuario:
+                resultado.append(.burbujaUsuario(texto: mensaje.texto))
+
+            case .asistente:
+                // Los toolCalls no son un artefacto visible. Si el mensaje no
+                // trae prosa (solo pidio herramientas), no deja burbuja vacia.
+                let segmentos = SegmentoRespuesta.segmentos(de: mensaje.texto)
+                if !segmentos.isEmpty {
+                    resultado.append(.burbujaAsistente(segmentos: segmentos))
+                }
+
+            case .herramienta, .sistema:
+                // Un resultado de herramienta jamas es un elemento del hilo.
+                // Los mensajes de sistema son contexto interno, no conversacion.
+                break
+            }
+
+            for evento in eventosVisuales where evento.trasMensaje == mensaje.id {
+                if let elemento = elementoVisible(de: evento) {
+                    resultado.append(elemento)
+                }
+            }
+        }
+
+        // Un evento cuyo ancla desaparecio (por ejemplo, al regenerar) no se
+        // pierde: se pinta al final para no ocultar informacion.
+        let huerfanos = eventosVisuales.filter { evento in
+            guard let ancla = evento.trasMensaje else { return false }
+            return !ids.contains(ancla)
+        }
+        for evento in huerfanos {
+            if let elemento = elementoVisible(de: evento) {
+                resultado.append(elemento)
+            }
+        }
+
+        if let propuesta = propuestaMemoriaSensible,
+           propuesta.estado == .pendiente {
+            // La hoja es el UNICO artefacto del turno mientras esta pendiente:
+            // no se anade burbuja en curso ni error de turno a su lado.
+            resultado.append(
+                .hojaAprobacionMemoria(
+                    texto: propuesta.texto,
+                    categoriaSensible: propuesta.categoriaSensible,
+                    estado: propuesta.estado
+                )
+            )
+        } else {
+            if enviando {
+                resultado.append(.burbujaEnCurso(texto: textoEnCurso))
+            }
+            if !enviando, let error = errorDeTurno,
+               !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                resultado.append(.errorTurno(texto: error))
+            }
+        }
+
+        return resultado
+    }
+
+    /// Traduce un evento visual a su elemento del catalogo.
+    ///
+    /// La traslacion es conservadora a proposito: un cambio de memoria sigue
+    /// produciendo `.lineaMemoria` con el texto visible del cambio.
+    private func elementoVisible(de evento: EventoVisual) -> ElementoHiloVisible? {
+        if let cambio = evento.cambioMemoria {
+            return .lineaMemoria(
+                texto: cambio.textoDeLinea,
+                puedeDeshacer: !evento.deshecho,
+                deshecho: evento.deshecho
+            )
+        }
+        return .divisor(texto: evento.texto)
+    }
+
+    /// Mensaje de origen de cada burbuja proyectada, por indice.
+    ///
+    /// La vista lo usa solo para metadatos que el catalogo no pinta (skills,
+    /// pie de consumo y accion de ramificar). Las filas siguen saliendo de
+    /// `elementosVisiblesDelHilo()`.
+    func fuentesDeBurbujaVisibles(
+        _ elementos: [ElementoHiloVisible]
+    ) -> [Int: ChatMessage] {
+        let visibles = conversacion.mensajes.filter { mensaje in
+            switch mensaje.rol {
+            case .usuario:
+                return true
+            case .asistente:
+                return !SegmentoRespuesta.segmentos(de: mensaje.texto).isEmpty
+            case .herramienta, .sistema:
+                return false
+            }
+        }
+
+        var fuentes: [Int: ChatMessage] = [:]
+        var cursor = 0
+        for (indice, elemento) in elementos.enumerated() {
+            switch elemento {
+            case .burbujaUsuario:
+                while cursor < visibles.count,
+                      visibles[cursor].rol != .usuario {
+                    cursor += 1
+                }
+                if cursor < visibles.count {
+                    fuentes[indice] = visibles[cursor]
+                    cursor += 1
+                }
+
+            case .burbujaAsistente:
+                while cursor < visibles.count,
+                      visibles[cursor].rol != .asistente {
+                    cursor += 1
+                }
+                if cursor < visibles.count {
+                    fuentes[indice] = visibles[cursor]
+                    cursor += 1
+                }
+
+            default:
+                break
+            }
+        }
+        return fuentes
+    }
+
+    /// Evento de memoria de cada linea proyectada, por indice.
+    ///
+    /// Permite que [Deshacer] actue sobre el cambio exacto sin que el UUID
+    /// entre en el catalogo de elementos visibles.
+    func eventosDeMemoriaVisibles(
+        _ elementos: [ElementoHiloVisible]
+    ) -> [Int: EventoVisual] {
+        let mensajes = conversacion.mensajes
+        let ids = Set(mensajes.map(\.id))
+        var eventos = eventosVisuales.filter {
+            $0.trasMensaje == nil && $0.cambioMemoria != nil
+        }
+        for mensaje in mensajes {
+            eventos += eventosVisuales.filter {
+                $0.trasMensaje == mensaje.id && $0.cambioMemoria != nil
+            }
+        }
+        eventos += eventosVisuales.filter { evento in
+            guard let ancla = evento.trasMensaje else { return false }
+            return !ids.contains(ancla) && evento.cambioMemoria != nil
+        }
+
+        var memorias: [Int: EventoVisual] = [:]
+        var cursor = 0
+        for (indice, elemento) in elementos.enumerated() {
+            if case .lineaMemoria = elemento, cursor < eventos.count {
+                memorias[indice] = eventos[cursor]
+                cursor += 1
+            }
+        }
+        return memorias
+    }
+
+    /// Que se ve en la pantalla de una Tarea, en orden y sin efectos.
+    ///
+    /// Cabecera, tarjeta de plan y filas del libro. La vista de Tarea pintara
+    /// esta lista igual que el Chat pinta la suya; el estado no cambia aqui.
+    func elementosVisiblesDeTarea(_ tarea: Tarea) -> [ElementoTareaVisible] {
+        var resultado: [ElementoTareaVisible] = []
+        let total = tarea.pasos.count
+
+        resultado.append(
+            .cabeceraTarea(
+                estado: estadoVisibleDeTarea(tarea),
+                pasoActual: Self.pasoActualDe(tarea),
+                pasosTotales: total,
+                costoSellado: Decimal(tarea.costoAcumuladoUSD ?? 0)
+            )
+        )
+
+        if let plan = tarea.plan {
+            // La version vive en el plan (B3-A): el plan inicial es 1 y cada
+            // ajuste o regeneracion la sube. Un plan viejo sin campo se lee
+            // como 1 por la decodificacion tolerante de NodoCore.
+            resultado.append(.tarjetaPlan(pasos: plan.pasos, version: plan.version))
+        }
+
+        for (indice, paso) in tarea.pasos.enumerated() {
+            resultado.append(
+                .filaPaso(
+                    paso: indice + 1,
+                    estado: Self.estadoVisibleDePaso(paso, tarea: tarea),
+                    etiquetaDinamica: Self.etiquetaDinamicaDePaso(
+                        paso,
+                        indice: indice + 1
+                    ),
+                    duracion: Self.duracionDePaso(paso),
+                    costo: paso.costoUSD.map { Decimal($0) }
+                )
+            )
+        }
+
+        return resultado
+    }
+
+    /// Filas de la pestana Chats para un termino de busqueda (B4-BUS).
+    ///
+    /// Es la proyeccion UNICA de la busqueda: cada fila trae el elemento
+    /// visible (titulo + vista previa, sin identificadores) y la conversacion
+    /// que abre el toque. La consulta la resuelve
+    /// `HistorialConversaciones.buscar`, la misma que usa la vista, asi que
+    /// orden, segmento y coincidencia tienen una sola fuente de verdad.
+    ///
+    /// Con el termino vacio devuelve la lista completa en su orden habitual
+    /// (fijadas primero y, dentro de cada grupo, actividad reciente): §2.2
+    /// exige que sin busqueda no falte ni se mueva ninguna conversacion.
+    func filasDeBusqueda(
+        _ termino: String,
+        en conversaciones: [Conversation]? = nil,
+        segmento: SegmentoChats? = nil
+    ) -> [FilaBusquedaVisible] {
+        let lista = conversaciones ?? self.conversaciones
+        let consulta = termino.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HistorialConversaciones.buscar(
+            lista,
+            termino: consulta,
+            segmento: segmento
+        ).map { conversacion in
+            FilaBusquedaVisible(
+                conversacion: conversacion,
+                elemento: .resultadoBusqueda(
+                    titulo: conversacion.titulo,
+                    vistaPrevia: Self.vistaPreviaDe(
+                        conversacion,
+                        termino: consulta
+                    )
+                )
+            )
+        }
+    }
+
+    /// Que se ve en la pestana Chats para un termino de busqueda.
+    ///
+    /// Una fila se identifica por titulo y vista previa de texto, nunca por un
+    /// identificador interno. Si no hay coincidencias se devuelve el estado
+    /// vacio explicito: la pestana no queda en blanco sin explicacion. Ese
+    /// estado vacio SOLO tiene sentido con un termino escrito: con el campo
+    /// vacio y ninguna conversacion la lista es la de siempre (vacia), no un
+    /// "sin resultados" de una busqueda que nadie hizo.
+    func elementosVisiblesDeBusqueda(
+        _ termino: String,
+        en conversaciones: [Conversation]? = nil,
+        segmento: SegmentoChats? = nil
+    ) -> [ElementoBusquedaVisible] {
+        let consulta = termino.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filas = filasDeBusqueda(
+            consulta,
+            en: conversaciones,
+            segmento: segmento
+        )
+
+        if filas.isEmpty {
+            return consulta.isEmpty ? [] : [.sinResultados(termino: consulta)]
+        }
+
+        return filas.map(\.elemento)
+    }
+
+    /// Estado visible de la cabecera de una tarea.
+    ///
+    /// `planificando` y `aprobacionPendiente` existen para que el test de los
+    /// 8 estados (B3-A) pueda fijar las dos condiciones que en produccion son
+    /// transitorias, sin tocar el estado real de la app.
+    func estadoVisibleDeTarea(
+        _ tarea: Tarea,
+        planificando: Bool? = nil,
+        aprobacionPendiente: Bool? = nil
+    ) -> ElementoTareaVisible.EstadoTarea {
+        let estaPlanificando = planificando ?? (idTareaPlanificando == tarea.id)
+        switch tarea.estado {
+        case .borrador:
+            return estaPlanificando ? .planificando : .nuevaTarea
+
+        case .esperandoInicio:
+            let tienePlan = !(tarea.plan?.pasos.isEmpty ?? true)
+            return tienePlan ? .planPropuesto : .nuevaTarea
+
+        case .enCurso:
+            let esperaAprobacion = aprobacionPendiente
+                ?? (solicitudAprobacion?.tareaID == tarea.id
+                    || tarea.pasos.contains { $0.aprobacion == .pendiente })
+            return esperaAprobacion ? .esperandoAprobacion : .enCurso
+
+        case .detenida, .interrumpida:
+            return .detenida
+
+        case .completada:
+            return .completada
+
+        case .fallida:
+            return .error
+        }
+    }
+
+    /// Numero visible del paso en curso, o del siguiente pendiente.
+    private static func pasoActualDe(_ tarea: Tarea) -> Int {
+        guard !tarea.pasos.isEmpty else { return 0 }
+
+        if let indice = tarea.pasos.firstIndex(where: { $0.estado == .enCurso }) {
+            return indice + 1
+        }
+
+        let resueltos = tarea.pasos.filter { $0.estado.estaResuelto }.count
+        return min(max(1, resueltos + 1), tarea.pasos.count)
+    }
+
+    /// Estado visible de una fila del libro.
+    private static func estadoVisibleDePaso(
+        _ paso: Paso,
+        tarea: Tarea
+    ) -> ElementoTareaVisible.EstadoPaso {
+        if paso.aprobacion == .pendiente {
+            return .esperandoAprobacion
+        }
+
+        switch paso.estado {
+        case .pendiente:
+            return .pendiente
+
+        case .enCurso:
+            if tarea.estado == .detenida || tarea.estado == .interrumpida {
+                return .detenido
+            }
+            return .enCurso
+
+        case .terminado:
+            return .completado
+
+        case .denegado:
+            return .denegado
+
+        case .fallido:
+            // Detener no es un fallo tecnico: el motor marca el paso en curso
+            // como fallido para congelarlo, pero el hilo lo declara Detenido.
+            if paso.resultado == "Detenida por el dueño." {
+                return .detenido
+            }
+            return .error
+        }
+    }
+
+    /// Rotulo humano de una fila. Nunca es el nombre tecnico de la herramienta
+    /// ni sus argumentos crudos (que pueden traer un UUID).
+    private static func etiquetaDinamicaDePaso(_ paso: Paso, indice: Int) -> String {
+        if let fase = paso.etiquetaDeFase {
+            return fase
+        }
+
+        if paso.herramienta == Memoria.nombreHerramientaTarea {
+            if let accion = try? Memoria.accion(
+                desdeArgumentos: paso.argumentos ?? ""
+            ) {
+                switch accion {
+                case .guardar: return "Guardar en Memoria"
+                case .actualizar: return "Actualizar en Memoria"
+                case .borrar: return "Borrar de Memoria"
+                }
+            }
+            return "Memoria"
+        }
+
+        if paso.herramienta == "traer_url" {
+            return "Leer enlace"
+        }
+
+        return "Paso \(indice)"
+    }
+
+    /// Duracion de un paso, solo cuando el sello de cierre existe.
+    private static func duracionDePaso(_ paso: Paso) -> TimeInterval? {
+        guard let inicio = paso.fechaInicio, let fin = paso.fechaFin else {
+            return nil
+        }
+        return max(0, fin.timeIntervalSince(inicio))
+    }
+
+    /// Vista previa de texto de una conversacion coincidente, sin ids.
+    private static func vistaPreviaDe(
+        _ conversacion: Conversation,
+        termino: String
+    ) -> String {
+        let coincidente = conversacion.mensajes.first { mensaje in
+            !termino.isEmpty
+                && mensaje.texto.range(
+                    of: termino,
+                    options: [.caseInsensitive, .diacriticInsensitive]
+                ) != nil
+        }
+        let primeroConTexto = conversacion.mensajes.first {
+            !$0.texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let crudo = (coincidente ?? primeroConTexto)?.texto ?? ""
+        let limpio = crudo
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !limpio.isEmpty else { return conversacion.titulo }
+        if limpio.count <= 120 { return limpio }
+        return String(limpio.prefix(120)) + "…"
     }
 
     // MARK: - Dictado (§4.5)
@@ -3786,6 +5304,11 @@ final class EstadoApp: ObservableObject {
             return
         }
         guard !compactando, !enviando, !generandoPlanChat else { return }
+
+        // La sintesis y el reconocimiento no pueden compartir la sesion de
+        // audio: toda lectura viva se corta ANTES de pedir permisos y abrir el
+        // microfono (IDEA1).
+        detenerLectura()
 
         avisoComando = nil
         // Se conserva lo que ya habia en la caja y solo se reemplaza la parte
@@ -3864,6 +5387,75 @@ final class EstadoApp: ObservableObject {
         }
     }
 
+    // MARK: - Lectura en voz alta (IDEA1)
+
+    /// Estado del control de lectura de UNA burbuja.
+    ///
+    /// Solo la burbuja en curso puede salir de `.inactivo`: las demas siguen
+    /// mostrando [Escuchar] aunque la lectura viva sea de otra burbuja.
+    func estadoDeLectura(de id: UUID) -> EstadoLectura {
+        mensajeLeyendo == id ? estadoLectura : .inactivo
+    }
+
+    /// Toque unico del pie: Escuchar → Pausar → Reanudar, y Detener aparte.
+    ///
+    /// Si el toque cae sobre OTRA burbuja, empieza esa y corta la anterior:
+    /// nunca suenan dos lecturas a la vez.
+    func alternarLectura(de mensaje: ChatMessage) {
+        guard mensaje.rol == .asistente else { return }
+
+        guard mensajeLeyendo == mensaje.id else {
+            empezarLectura(de: mensaje)
+            return
+        }
+
+        switch lector.estado {
+        case .leyendo:
+            lector.pausar()
+        case .pausado:
+            lector.reanudar()
+        case .inactivo:
+            empezarLectura(de: mensaje)
+            return
+        }
+        estadoLectura = lector.estado
+    }
+
+    /// Empieza a leer una burbuja del asistente desde el principio.
+    ///
+    /// Primero corta el dictado (el microfono y la sintesis no comparten la
+    /// sesion de audio) y despues la lectura anterior. Lee SOLO los segmentos
+    /// `.texto`: cada bloque de codigo se anuncia como «bloque de código
+    /// omitido» y su contenido y las cercas no llegan nunca al sintetizador.
+    func empezarLectura(de mensaje: ChatMessage) {
+        detenerDictado()
+
+        let locuciones = LecturaEnVozAlta.textoParaLeer(
+            segmentos: SegmentoRespuesta.segmentos(de: mensaje.texto)
+        )
+        // Una respuesta sin prosa (solo codigo vacio o vacia) no tiene nada
+        // que decir: no se enciende el pie ni se pisa la lectura anterior.
+        guard !locuciones.isEmpty else { return }
+
+        detenerLectura()
+        mensajeLeyendo = mensaje.id
+        lector.leer(locuciones) { [weak self] in
+            // Un aviso tardio de una lectura ya reemplazada no puede apagar el
+            // pie de la burbuja nueva.
+            guard let self, self.mensajeLeyendo == mensaje.id else { return }
+            self.mensajeLeyendo = nil
+            self.estadoLectura = self.lector.estado
+        }
+        estadoLectura = lector.estado
+    }
+
+    /// Corta la lectura y deja todos los pies en [Escuchar]. Idempotente.
+    func detenerLectura() {
+        lector.detener()
+        mensajeLeyendo = nil
+        estadoLectura = .inactivo
+    }
+
     /// Historial que se manda al modelo: el bloque de Memoria primero.
     ///
     /// La regla vive en NodoCore para poder probarla con `swift test`: en un
@@ -3878,7 +5470,13 @@ final class EstadoApp: ObservableObject {
             // conversacion no aporta el resumen por la via de la Memoria.
             resumenGuardado: resumenesCompactadosPorConversacion[
                 conversacion.id.uuidString
-            ]
+            ],
+            // B2.3: el interruptor decide SOLO la instruccion de disparo. El
+            // conjunto de herramientas se decide mas abajo, en ejecutarTurno,
+            // y es el mismo con ON y con OFF.
+            disparoMemoria: config.memoriaInteligente
+                ? .juicio
+                : .ordenExplicita
         )
     }
 
@@ -3920,6 +5518,113 @@ final class EstadoApp: ObservableObject {
             return (false, (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription)
         }
+    }
+
+    // MARK: - Compartir (IDEA3)
+
+    /// IDEA3: en un hilo temporal no existe ninguna forma de exportar.
+    ///
+    /// Es la UNICA puerta del pie y de la cabecera: la vista la consulta para
+    /// decidir si el boton [Compartir] existe y los metodos de abajo la repiten
+    /// como guarda, de modo que un camino que la vista no controle tampoco
+    /// exporta. La garantia de cero rastro del Chat Temporal (B2.2) queda
+    /// intacta.
+    var puedeCompartir: Bool {
+        !conversacion.esTemporal
+    }
+
+    /// Texto limpio de UNA respuesta del asistente, tomado de la proyeccion.
+    ///
+    /// Prohibido leer `conversacion.mensajes` para construir el texto: los
+    /// segmentos salen del elemento `.burbujaAsistente` que devuelve
+    /// `elementosVisiblesDelHilo()`. El bloque de codigo aporta su
+    /// `textoCrudo`, SIN cercas: el `CodeBlock` ya separo la cerca al parsear.
+    func textoDeRespuestaParaCompartir(_ mensaje: ChatMessage) -> String? {
+        let elementos = elementosVisiblesDelHilo()
+        let fuentes = fuentesDeBurbujaVisibles(elementos)
+        for (indice, fuente) in fuentes where fuente.id == mensaje.id {
+            if case .burbujaAsistente(let segmentos) = elementos[indice] {
+                return Self.textoPlanoDeSegmentos(segmentos)
+            }
+        }
+        return nil
+    }
+
+    /// Markdown UTF-8 del hilo completo, tambien desde la proyeccion.
+    ///
+    /// Encabezado breve (titulo, fecha y costo total sellado del hilo; el
+    /// costo sale del lector unico `costoAcumuladoDelChat`, no de una formula
+    /// nueva) y luego los turnos Usuario / Asistente en orden. Los elementos
+    /// que no son turnos (lineas de memoria, divisores, burbuja en curso,
+    /// errores y la hoja de aprobacion) no se exportan: son cromo de la app,
+    /// no conversacion.
+    func markdownDelHilo() -> String {
+        var lineas: [String] = ["# \(conversacion.titulo)", ""]
+        lineas.append(
+            "Fecha: \(Self.fechaParaCompartir(conversacion.actualizada))"
+        )
+        if let costo = costoAcumuladoDelChat {
+            lineas.append("Costo total: ≈$\(String(format: "%.4f", costo))")
+        }
+        lineas.append("")
+
+        for elemento in elementosVisiblesDelHilo() {
+            switch elemento {
+            case .burbujaUsuario(let texto):
+                lineas.append("## \(nombreDeRol(.usuario))")
+                lineas.append(texto)
+                lineas.append("")
+
+            case .burbujaAsistente(let segmentos):
+                lineas.append("## \(nombreDeRol(.asistente))")
+                lineas.append(Self.textoPlanoDeSegmentos(segmentos))
+                lineas.append("")
+
+            case .lineaMemoria, .divisor, .burbujaEnCurso, .errorTurno,
+                 .hojaAprobacionMemoria:
+                break
+            }
+        }
+
+        // Se recorta el ultimo separador para no cerrar con linea vacia.
+        while lineas.last?.isEmpty == true { lineas.removeLast() }
+        return lineas.joined(separator: "\n")
+    }
+
+    /// Deja el texto en la variable que ChatView observa para abrir la hoja
+    /// del sistema: el MISMO mecanismo de /exportar, con contenido nuevo.
+    func compartirRespuesta(de mensaje: ChatMessage) {
+        guard puedeCompartir,
+              let texto = textoDeRespuestaParaCompartir(mensaje),
+              !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        textoParaCompartirSolicitado = texto
+    }
+
+    func compartirHilo() {
+        guard puedeCompartir else { return }
+        textoParaCompartirSolicitado = markdownDelHilo()
+    }
+
+    /// Texto plano de una respuesta: prosa y codigo crudo, sin cercas.
+    static func textoPlanoDeSegmentos(_ segmentos: [SegmentoRespuesta]) -> String {
+        segmentos.map { segmento -> String in
+            switch segmento {
+            case .texto(let texto): return texto
+            case .codigo(_, let textoCrudo): return textoCrudo
+            }
+        }.joined(separator: "\n")
+    }
+
+    /// Fecha del encabezado con el MISMO formato que ya usa la app para
+    /// mostrar fechas (TareasRaizView.fechaDe: locale es_ES, dateStyle .short y
+    /// timeStyle .short). No se estrena un segundo formato de fecha.
+    static func fechaParaCompartir(_ fecha: Date) -> String {
+        let formateador = DateFormatter()
+        formateador.locale = Locale(identifier: "es_ES")
+        formateador.dateStyle = .short
+        formateador.timeStyle = .short
+        return formateador.string(from: fecha)
     }
 
     // MARK: - Exportar e importar

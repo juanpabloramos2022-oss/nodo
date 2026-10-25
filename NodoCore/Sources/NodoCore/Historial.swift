@@ -24,6 +24,10 @@ public enum Historial {
     /// sus ids; sustituye al viejo texto plano de la Memoria. En un chat sin
     /// memoria no viaja ningun bloque de Memoria.
     ///
+    /// B2.2: el Chat Temporal tambien queda fuera del bloque. No es lo mismo que
+    /// un chat «sin memoria»: el temporal ademas no ofrece las herramientas de
+    /// escritura (lo decide `EstadoApp.ejecutarTurno` con la misma regla).
+    ///
     /// COMP.2: en un chat SIN memoria la Memoria no viaja, pero el resumen de
     /// la ultima compactacion si debe viajar. Si no, /compact resume y poda
     /// para siempre: el modelo olvida justo lo que el resumen conservaba. Por
@@ -31,19 +35,30 @@ public enum Historial {
     /// usos resumidos. Cuando la conversacion ya aporta su resumen por la via
     /// de la Memoria (o el bloque ya lo trae), el respaldo no se anade: el
     /// mismo bloque nunca viaja dos veces.
+    /// B2.3: `disparoMemoria` decide SOLO la instruccion de disparo del bloque
+    /// de sistema. El conjunto de herramientas lo decide `usaMemoriaEnPayload`
+    /// en la capa app y no cambia con el interruptor: ON y OFF ofrecen las
+    /// mismas herramientas tipadas de B2.1.
     public static func paraEnviar(
         conversacion: Conversation,
         memoria: [EntradaMemoria],
-        resumenGuardado: String? = nil
+        resumenGuardado: String? = nil,
+        disparoMemoria: DisparoMemoria = .ordenExplicita
     ) -> [ChatMessage] {
         var historial: [ChatMessage] = []
 
-        // En un chat con Memoria el bloque viaja primero. En uno sin Memoria no
-        // viaja nada de la Memoria; solo el resumen de compactacion, que es
-        // contexto de la propia conversacion y no de la bandeja.
-        let bloqueMemoria = conversacion.sinMemoria
-            ? nil
-            : Memoria.bloqueSistema(entradas: memoria)
+        // B2.2: el camino de payload del Chat Temporal es propio. Un hilo
+        // temporal no inyecta NINGUNA entrada de Memoria, ni siquiera si su
+        // `sinMemoria` esta en false: la regla vive en
+        // `Conversation.usaMemoriaEnPayload` para que el constructor de payload
+        // y el ofrecimiento de herramientas no puedan divergir.
+        let usaMemoria = conversacion.usaMemoriaEnPayload
+        let bloqueMemoria = usaMemoria
+            ? Memoria.bloqueSistema(
+                entradas: memoria,
+                disparo: disparoMemoria
+            )
+            : nil
         if let bloqueMemoria {
             historial.append(ChatMessage(rol: .sistema, texto: bloqueMemoria))
         }
@@ -52,9 +67,9 @@ public enum Historial {
         // lleva encima y solo se inyecta cuando la Memoria esta activa. El
         // respaldo persistido cubre el hueco de los chats sin memoria (y de
         // cualquier archivo viejo que no traiga el resumen en la conversacion).
-        let deMemoria = conversacion.sinMemoria
-            ? nil
-            : normalizar(conversacion.resumenCompactado)
+        let deMemoria = usaMemoria
+            ? normalizar(conversacion.resumenCompactado)
+            : nil
         let respaldo = normalizar(resumenGuardado)
         let resumen = deMemoria ?? respaldo
 

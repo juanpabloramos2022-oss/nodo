@@ -8,6 +8,10 @@ import NodoCore
 ///
 /// Se definen aqui y no en cada pantalla para que el tono no se vaya
 /// desviando a medida que se anaden vistas.
+///
+/// Estos tokens son obligatorios: `UI_INVARIANTS.md` (raiz del repo, regla 6)
+/// prohibe que una vista nueva introduzca colores, radios o tamanos fuera de
+/// aqui.
 enum Tema {
     static let fondo = Color(red: 0.05, green: 0.055, blue: 0.075)
     static let superficie = Color(red: 0.11, green: 0.12, blue: 0.15)
@@ -20,12 +24,19 @@ enum Tema {
     static let margen: CGFloat = 16
 }
 
-/// Burbuja de un mensaje.
+/// Burbuja de un mensaje de usuario o de asistente.
+///
+/// B1.1 demolió de aquí todo lo que procedía de una herramienta: la rama del
+/// rol `.herramienta` (fondo atenuado y texto suave), el rótulo «herramienta»
+/// y la fila con el icono y el nombre técnico de cada `toolCall`. Un resultado
+/// de herramienta sigue existiendo como metadato del payload, pero no tiene
+/// ninguna representación posible en esta vista (`UI_INVARIANTS.md`, reglas 1-3).
 struct BurbujaMensaje: View {
     let mensaje: ChatMessage
-    /// Pie de la respuesta (tokens, costo, regenerar y copiar). Lo llevan
-    /// TODAS las respuestas del asistente que tienen consumo medido; el boton
-    /// de regenerar solo se muestra en la ultima (lo decide ChatView).
+    /// Pie de la respuesta (tokens, costo, lectura, regenerar y copiar). Lo
+    /// llevan TODAS las respuestas terminadas del asistente; sin consumo solo
+    /// desaparece el texto de consumo y el boton de regenerar sigue exigiendo
+    /// consumo (lo decide ChatView).
     var pie: PieRespuesta?
     /// Accion de "Ramificar chat desde aqui" (§5.4). Se ofrece sobre el
     /// contenedor de la burbuja, no sobre el texto: la seleccion de texto de
@@ -43,7 +54,6 @@ struct BurbujaMensaje: View {
     }
 
     var esDelUsuario: Bool { mensaje.rol == .usuario }
-    var esHerramienta: Bool { mensaje.rol == .herramienta }
 
     var body: some View {
         HStack {
@@ -74,10 +84,6 @@ struct BurbujaMensaje: View {
 
     private var burbuja: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if esHerramienta {
-                etiquetaHerramienta
-            }
-
             // Skills aplicadas en este envio: la etiqueta visual ⚡ nombre
             // (§4.4). Las instrucciones viajan solo en el payload del turno.
             if !mensaje.skillsAplicadas.isEmpty {
@@ -97,26 +103,14 @@ struct BurbujaMensaje: View {
             }
 
             if !mensaje.texto.isEmpty {
-                if esDelUsuario || esHerramienta {
+                if esDelUsuario {
                     Text(mensaje.texto)
                         .font(.body)
                         .textSelection(.enabled)
-                        .foregroundStyle(esHerramienta ? Tema.textoSuave : Color.white)
+                        .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     ContenidoAsistente(texto: mensaje.texto)
-                }
-            }
-
-            if !mensaje.toolCalls.isEmpty {
-                ForEach(mensaje.toolCalls, id: \.id) { llamada in
-                    HStack(spacing: 6) {
-                        Image(systemName: "wrench.and.screwdriver")
-                            .font(.caption2)
-                        Text(llamada.nombre)
-                            .font(.caption.monospaced())
-                    }
-                    .foregroundStyle(Tema.acento)
                 }
             }
 
@@ -130,16 +124,8 @@ struct BurbujaMensaje: View {
         .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
     }
 
-    private var etiquetaHerramienta: some View {
-        Text("herramienta")
-            .font(.caption2.weight(.semibold))
-            .textCase(.uppercase)
-            .foregroundStyle(Tema.acento.opacity(0.8))
-    }
-
     private var fondo: Color {
         if esDelUsuario { return Tema.acento.opacity(0.22) }
-        if esHerramienta { return Tema.superficie.opacity(0.7) }
         return Tema.superficie
     }
 }
@@ -174,63 +160,19 @@ private struct ContenidoAsistente: View {
                 .fixedSize(horizontal: false, vertical: true)
 
         case .codigo(let lenguaje, let contenido):
-            BloqueCodigo(lenguaje: lenguaje, contenido: contenido)
+            BloqueCodigo(lenguaje: lenguaje, textoCrudo: contenido)
         }
     }
 }
 
-/// Bloque monoespaciado con su boton "Copiar código" arriba a la derecha.
-private struct BloqueCodigo: View {
-    let lenguaje: String?
-    let contenido: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                if let lenguaje, !lenguaje.isEmpty {
-                    Text(lenguaje)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Tema.textoSuave)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    UIPasteboard.general.string = contenido
-                } label: {
-                    Label("Copiar código", systemImage: "doc.on.doc")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.acento)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Copiar código")
-                .accessibilityIdentifier("copiar-codigo")
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 7)
-            .padding(.bottom, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(contenido)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 9)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-/// Pie de una respuesta: consumo, costo, regenerar y copiar, en una sola fila
-/// pegada a su burbuja (SPEC §3.3). Se pinta en cada respuesta con consumo;
-/// `puedeRegenerar` solo es true en la ultima.
+/// Pie de una respuesta: consumo, costo, lectura en voz alta, regenerar y
+/// copiar, en una sola fila pegada a su burbuja (SPEC §3.3).
+///
+/// Se pinta en TODA respuesta terminada del asistente. Sin consumo medido solo
+/// se oculta el texto de consumo; copiar y [Escuchar] siguen disponibles, y
+/// regenerar sigue exigiendo `puedeRegenerar` (que ya requiere uso).
 struct PieRespuesta: View {
-    let uso: UsoTokens
+    let uso: UsoTokens?
     let costo: Double?
     let textoParaCopiar: String
     let puedeRegenerar: Bool
@@ -238,16 +180,27 @@ struct PieRespuesta: View {
     let nombreDeProveedor: (ProviderConfig) -> String
     let alRegenerar: () -> Void
     let alRegenerarCon: (ProviderConfig) -> Void
+    /// Estado del control de lectura de ESTA burbuja (IDEA1).
+    let estadoLectura: EstadoLectura
+    let alAlternarLectura: () -> Void
+    let alDetenerLectura: () -> Void
+    /// Compartir ESTA respuesta (IDEA3). nil = la accion no existe en este
+    /// hilo (Chat Temporal): el boton no se pinta.
+    let alCompartir: (() -> Void)?
 
     init(
-        uso: UsoTokens,
+        uso: UsoTokens?,
         costo: Double?,
         textoParaCopiar: String,
         puedeRegenerar: Bool,
         otrosProveedores: [ProviderConfig],
         nombreDeProveedor: @escaping (ProviderConfig) -> String,
         alRegenerar: @escaping () -> Void,
-        alRegenerarCon: @escaping (ProviderConfig) -> Void
+        alRegenerarCon: @escaping (ProviderConfig) -> Void,
+        estadoLectura: EstadoLectura = .inactivo,
+        alAlternarLectura: @escaping () -> Void = {},
+        alDetenerLectura: @escaping () -> Void = {},
+        alCompartir: (() -> Void)? = nil
     ) {
         self.uso = uso
         self.costo = costo
@@ -257,6 +210,10 @@ struct PieRespuesta: View {
         self.nombreDeProveedor = nombreDeProveedor
         self.alRegenerar = alRegenerar
         self.alRegenerarCon = alRegenerarCon
+        self.estadoLectura = estadoLectura
+        self.alAlternarLectura = alAlternarLectura
+        self.alDetenerLectura = alDetenerLectura
+        self.alCompartir = alCompartir
     }
 
     var body: some View {
@@ -266,17 +223,42 @@ struct PieRespuesta: View {
                 .frame(height: 1)
 
             HStack(spacing: 8) {
-                Text(textoConsumo)
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .layoutPriority(1)
+                if let uso {
+                    Text(textoConsumo(uso))
+                        .font(.caption2)
+                        .foregroundStyle(Tema.textoSuave)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
+                }
 
                 Spacer(minLength: 0)
 
                 if puedeRegenerar {
                     botonRegenerar
+                }
+
+                botonLectura
+
+                if estadoLectura.estaActivo {
+                    botonDetener
+                }
+
+                // IDEA3: compartir esta respuesta. No existe en un Chat
+                // Temporal: ChatView pasa nil y el boton no se pinta.
+                if let alCompartir {
+                    Button {
+                        alCompartir()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption)
+                            .foregroundStyle(Tema.textoSuave)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Compartir respuesta")
+                    .accessibilityIdentifier("compartir-respuesta")
                 }
 
                 Button {
@@ -297,12 +279,72 @@ struct PieRespuesta: View {
         .accessibilityIdentifier("pie-respuesta")
     }
 
-    private var textoConsumo: String {
+    private func textoConsumo(_ uso: UsoTokens) -> String {
         var texto = "\(uso.entrada) de entrada · \(uso.salida) de salida"
         if let costo {
             texto += " · ≈$\(String(format: "%.4f", costo)) estimado"
         }
         return texto
+    }
+
+    // MARK: - Lectura en voz alta (IDEA1)
+
+    /// Icono del boton principal segun el estado de la lectura.
+    private var iconoLectura: String {
+        switch estadoLectura {
+        case .inactivo: return "speaker.wave.2"
+        case .leyendo: return "pause.fill"
+        case .pausado: return "play.fill"
+        }
+    }
+
+    /// Boton principal: capsula con icono y rotulo (Escuchar/Pausar/Reanudar).
+    ///
+    /// El rotulo es el mismo `EstadoLectura.rotulo` que prueban los tests de
+    /// estado: no hay una segunda lista de textos que se pueda desincronizar.
+    private var botonLectura: some View {
+        Button {
+            alAlternarLectura()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: iconoLectura)
+                    .font(.caption)
+
+                Text(estadoLectura.rotulo)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(
+                estadoLectura.estaActivo ? Tema.acento : Tema.textoSuave
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Tema.acento.opacity(estadoLectura.estaActivo ? 0.22 : 0.12)
+            )
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(estadoLectura.rotulo)
+        .accessibilityIdentifier("escuchar-respuesta")
+    }
+
+    /// Solo existe mientras hay lectura viva: corta de inmediato y vuelve a
+    /// [Escuchar].
+    private var botonDetener: some View {
+        Button {
+            alDetenerLectura()
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.caption)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Detener lectura")
+        .accessibilityIdentifier("detener-lectura")
     }
 
     /// Toque corto = regenerar; pulsacion larga = elegir otro modelo.

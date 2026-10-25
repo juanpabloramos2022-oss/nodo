@@ -1,23 +1,27 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 import NodoCore
 
 /// La pantalla de conversacion, empujada dentro de la pila de Chats.
+///
+/// Invariantes de presentacion: `UI_INVARIANTS.md` (raiz del repo) manda
+/// sobre todo lo que se pinta aqui; esta vista no muestra nada fuera de su
+/// catalogo (nada de UUIDs, roles de herramienta ni rotulos tecnicos).
 ///
 /// La cabecera se construye con el `.toolbar` nativo de NavigationStack: el
 /// boton de volver lo pone el sistema y por eso el gesto de borde izquierdo
 /// sigue funcionando (ley n. 1). Solo hay tres elementos: volver, pildora y •••.
 struct ChatView: View {
     @EnvironmentObject private var estado: EstadoApp
+    /// Fase de la escena: al salir de primer plano se corta la lectura (IDEA1).
+    @Environment(\.scenePhase) private var faseEscena
 
     /// Lleva a la pestana Conexiones para gestionar modelos.
     let alGestionarModelos: () -> Void
     /// Vuelve a la lista cuando se borra el chat abierto.
     let alVolverALista: () -> Void
-    /// Lleva a Mi Contexto para revisar la Memoria (accion [Ver] de la tarjeta
-    /// de evento de MEM.3).
-    let alVerMemoria: () -> Void
 
     @State private var textoParaCompartir: String?
     @FocusState private var escribiendo: Bool
@@ -39,6 +43,10 @@ struct ChatView: View {
             filaCompactando
             franjaAvisoComando
             selectorSugerencias
+            // IDEA4: banda del tope mensual SOBRE el composer y fuera del
+            // hilo. No envuelve ni deshabilita el envio.
+            BandaTopeMensual(estado: estado.estadoTopeMensual())
+                .padding(.bottom, 6)
             barraDeEntrada
         }
         .background(Tema.fondo.ignoresSafeArea())
@@ -47,6 +55,16 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 pildora
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                botonTemporal
+            }
+            // IDEA3: compartir el hilo completo. En un Chat Temporal el item
+            // no existe (ni el boton ni la accion).
+            if estado.puedeCompartir {
+                ToolbarItem(placement: .topBarTrailing) {
+                    botonCompartirHilo
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 menuAcciones
@@ -58,10 +76,19 @@ struct ChatView: View {
         // La barra Listo no se hereda de la raiz de la pila: cada pantalla
         // activa declara la suya. Aqui cubre la caja de texto del chat.
         .conBarraTecladoListo()
-        // Volver (boton o gesto) cierra el teclado y corta el dictado.
+        // Volver (boton o gesto) cierra el teclado, corta el dictado y corta la
+        // lectura en voz alta: nada sigue sonando fuera de la vista (IDEA1).
         .onDisappear {
             estado.detenerDictado()
+            estado.detenerLectura()
             bajarTeclado()
+        }
+        // Solo primer plano (IDEA1): al pasar a segundo plano la lectura se
+        // corta de inmediato, sin dejar audio ni procesos vivos.
+        .onChange(of: faseEscena) { _, nueva in
+            if nueva != .active {
+                estado.detenerLectura()
+            }
         }
         .onChange(of: estado.textoParaCompartirSolicitado) { _, nuevo in
             guard let nuevo else { return }
@@ -187,6 +214,7 @@ struct ChatView: View {
 
     private var memoriaActiva: Bool {
         !estado.conversacion.sinMemoria
+            && !estado.conversacion.esTemporal
             && !estado.textoMemoria
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
@@ -209,9 +237,89 @@ struct ChatView: View {
         estado.config.proveedorSeleccionado?.id == proveedor.id
     }
 
+    // MARK: - Cabecera: Chat Temporal (B2.2)
+
+    /// Indicador y alternancia del Chat Temporal, en la cabecera nativa.
+    ///
+    /// Antes del primer mensaje es UN Button directo: un toque lo enciende y
+    /// otro lo apaga (R19), sin pasar por el menu ••• (que costaria dos
+    /// gestos). Con mensajes ya enviados el modo queda fijado y el mismo chip
+    /// pasa a ser el INDICADOR que acompana todo el hilo: no hay control muerto
+    /// porque ya no es un boton.
+    @ViewBuilder
+    private var botonTemporal: some View {
+        if estado.conversacion.esTemporal {
+            if estado.conversacion.mensajes.isEmpty {
+                Button {
+                    estado.alternarChatTemporal()
+                } label: {
+                    chipTemporal(activo: true)
+                }
+                .accessibilityIdentifier("chat-temporal")
+                .accessibilityLabel("Chat temporal activo")
+                .accessibilityHint("Toca para volver a un chat normal")
+            } else {
+                chipTemporal(activo: true)
+                    .accessibilityIdentifier("indicador-temporal")
+                    .accessibilityLabel("Chat temporal: no se guarda ni usa memoria")
+            }
+        } else if estado.conversacion.mensajes.isEmpty {
+            Button {
+                estado.alternarChatTemporal()
+            } label: {
+                chipTemporal(activo: false)
+            }
+            .accessibilityIdentifier("chat-temporal")
+            .accessibilityLabel("Activar chat temporal")
+            .accessibilityHint(
+                "Este chat no se guarda en la lista ni usa tu memoria"
+            )
+        }
+    }
+
+    /// Chip de la cabecera. Solo usa tokens de `Tema` (UI_INVARIANTS §6).
+    private func chipTemporal(activo: Bool) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "timer")
+                .font(.system(size: 9, weight: .bold))
+            Text("Temporal")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(activo ? Tema.acento : Tema.textoSuave)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            activo
+                ? Tema.acento.opacity(0.15)
+                : Tema.superficieAlta
+        )
+        .clipShape(Capsule())
+    }
+
     // MARK: - Cabecera: menu •••
 
+    /// IDEA3: [Compartir] del hilo completo en la cabecera nativa.
+    ///
+    /// El texto lo compone `EstadoApp` desde la proyeccion limpia; aqui solo
+    /// se dispara la hoja del sistema reutilizando el mecanismo de /exportar
+    /// (`textoParaCompartirSolicitado`). El boton lo pinta el toolbar solo
+    /// cuando `estado.puedeCompartir` es true; un Chat Temporal no lo tiene.
+    private var botonCompartirHilo: some View {
+        Button {
+            estado.compartirHilo()
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+        }
+        .accessibilityLabel("Compartir el hilo")
+        .accessibilityIdentifier("compartir-hilo")
+    }
+
     /// Menu de acciones con solo lo que existe en esta fase.
+    ///
+    /// En un hilo temporal solo queda «Estado del chat»: fijar, archivar,
+    /// compactar, apagar la memoria y borrar son controles de persistencia que
+    /// en ese modo no tendrian efecto observable (forma sin fondo, regla 11).
     private var menuAcciones: some View {
         Menu {
             Button {
@@ -220,50 +328,54 @@ struct ChatView: View {
                 Label("Estado del chat", systemImage: "chart.bar.xaxis")
             }
 
-            Button {
-                alternarFijado()
-            } label: {
-                Label(
-                    estado.conversacion.fijada ? "Desfijar" : "Fijar",
-                    systemImage: estado.conversacion.fijada ? "pin.slash" : "pin"
-                )
-            }
-
-            Button {
-                estado.archivar(estado.conversacion)
-            } label: {
-                Label("Archivar", systemImage: "archivebox")
-            }
-
-            Button {
-                estado.alternarSinMemoria()
-            } label: {
-                if estado.conversacion.sinMemoria {
-                    Label("Chat sin memoria", systemImage: "checkmark")
-                } else {
-                    Text("Chat sin memoria")
+            if !estado.conversacion.esTemporal {
+                Button {
+                    alternarFijado()
+                } label: {
+                    Label(
+                        estado.conversacion.fijada ? "Desfijar" : "Fijar",
+                        systemImage: estado.conversacion.fijada ? "pin.slash" : "pin"
+                    )
                 }
-            }
 
-            Button {
-                estado.compactar()
-            } label: {
-                Label("Compactar", systemImage: "rectangle.compress.vertical")
-            }
-            // Compactar entra al menu en esta fase, pero solo cuando el hilo
-            // ya tiene suficiente historial (§4.2).
-            .disabled(
-                estado.conversacion.mensajes.count < 6
-                    || estado.compactando
-                    || estado.enviando
-            )
+                Button {
+                    estado.archivar(estado.conversacion)
+                } label: {
+                    Label("Archivar", systemImage: "archivebox")
+                }
 
-            Divider()
+                Button {
+                    estado.alternarSinMemoria()
+                } label: {
+                    if estado.conversacion.sinMemoria {
+                        Label("Chat sin memoria", systemImage: "checkmark")
+                    } else {
+                        Text("Chat sin memoria")
+                    }
+                }
 
-            Button(role: .destructive) {
-                confirmarBorrado = true
-            } label: {
-                Label("Borrar", systemImage: "trash")
+                Button {
+                    estado.compactar()
+                } label: {
+                    Label("Compactar", systemImage: "rectangle.compress.vertical")
+                }
+                // Compactar entra al menu en esta fase, pero solo cuando el hilo
+                // ya tiene suficiente historial (§4.2). Es la unica lectura directa
+                // de `mensajes` que queda en la vista: decide si el comando esta
+                // disponible, no que filas se pintan (eso lo decide la proyeccion).
+                .disabled(
+                    estado.conversacion.mensajes.count < 6
+                        || estado.compactando
+                        || estado.enviando
+                )
+
+                Divider()
+
+                Button(role: .destructive) {
+                    confirmarBorrado = true
+                } label: {
+                    Label("Borrar", systemImage: "trash")
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -291,61 +403,21 @@ struct ChatView: View {
 
     // MARK: - Hilo
 
-    /// Una fila del hilo: un mensaje real o un evento puramente visual.
-    private enum FilaHilo: Identifiable {
-        case mensaje(ChatMessage)
-        case evento(EventoVisual)
-
-        var id: String {
-            switch self {
-            case .mensaje(let mensaje):
-                return "mensaje-\(mensaje.id.uuidString)"
-            case .evento(let evento):
-                return "evento-\(evento.id.uuidString)"
-            }
-        }
-    }
-
-    /// Mensajes con los divisores intercalados en su punto exacto.
+    /// Lo que se pinta en el hilo lo decide la proyeccion de `EstadoApp`.
     ///
-    /// Los eventos se guardan aparte de `mensajes`, asi que esta mezcla es solo
-    /// de pintado: el payload sigue construyendose con `Historial` (SPEC §2.6).
-    private var filas: [FilaHilo] {
-        let mensajes = estado.conversacion.mensajes
-        let ids = Set(mensajes.map(\.id))
-        var resultado: [FilaHilo] = []
-
-        resultado.append(
-            contentsOf: estado.eventosVisuales
-                .filter { $0.trasMensaje == nil }
-                .map(FilaHilo.evento)
-        )
-
-        for mensaje in mensajes {
-            resultado.append(.mensaje(mensaje))
-            resultado.append(
-                contentsOf: estado.eventosVisuales
-                    .filter { $0.trasMensaje == mensaje.id }
-                    .map(FilaHilo.evento)
-            )
-        }
-
-        // Un evento cuyo ancla desaparecio (por ejemplo, al regenerar) no se
-        // pierde: se pinta al final para no ocultar informacion.
-        let huerfanos = estado.eventosVisuales.filter { evento in
-            guard let ancla = evento.trasMensaje else { return false }
-            return !ids.contains(ancla)
-        }
-        resultado.append(contentsOf: huerfanos.map(FilaHilo.evento))
-
-        return resultado
+    /// La vista no mezcla `mensajes` con `eventosVisuales` ni filtra roles: solo
+    /// recorre `[ElementoHiloVisible]`. Las busquedas de abajo recuperan
+    /// metadatos que el catalogo no pinta (pie de consumo, skills y el id del
+    /// evento para [Deshacer]); no deciden que filas existen.
+    private var contenido: some View {
+        cuerpoPrincipal(estado.elementosVisiblesDelHilo())
     }
 
     @ViewBuilder
-    private var contenido: some View {
-        if estado.conversacion.mensajes.isEmpty
-            && estado.eventosVisuales.isEmpty
-            && !estado.enviando {
+    private func cuerpoPrincipal(
+        _ elementos: [ElementoHiloVisible]
+    ) -> some View {
+        if elementos.isEmpty && !estado.enviando {
             // La Tarjeta de Bienvenida sustituye al estado vacio generico y se
             // alimenta solo de la configuracion real (§3.2).
             TarjetaBienvenidaView(
@@ -354,140 +426,169 @@ struct ChatView: View {
                 alGestionarModelos: alGestionarModelos
             )
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(filas) { fila in
-                            filaDeHilo(fila)
-                                .id(fila.id)
-                        }
+            cuerpoDelHilo(elementos)
+        }
+    }
 
-                        if estado.enviando {
-                            BurbujaEnCurso(texto: estado.textoEnCurso)
-                                .id(Self.marcaEnCurso)
-                        }
+    /// Cuerpo desplazable del hilo, ya con la proyeccion resuelta.
+    private func cuerpoDelHilo(
+        _ elementos: [ElementoHiloVisible]
+    ) -> some View {
+        let fuentes = estado.fuentesDeBurbujaVisibles(elementos)
+        let memorias = estado.eventosDeMemoriaVisibles(elementos)
 
-                        if !estado.enviando, let error = estado.errorDeTurno {
-                            BurbujaErrorTurno(
-                                texto: error,
-                                otrosProveedores: otrosProveedores,
-                                nombreDeProveedor: { nombreDeModelo($0) },
-                                alReintentar: { estado.reintentar() },
-                                alCambiarModelo: { proveedor in
-                                    estado.cambiarProveedor(proveedor)
-                                    estado.reintentar()
-                                }
-                            )
-                            .id(Self.marcaError)
-                        }
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(elementos.indices, id: \.self) { indice in
+                        vistaDeElemento(
+                            elementos[indice],
+                            indice: indice,
+                            fuentes: fuentes,
+                            memorias: memorias
+                        )
+                        .id(Self.idDeElemento(indice))
                     }
-                    .padding(.horizontal, Tema.margen)
-                    .padding(.vertical, 12)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: estado.conversacion.mensajes.count) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.eventosVisuales.count) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.textoEnCurso) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.enviando) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onChange(of: estado.errorDeTurno) { _, _ in
-                    desplazarAlFinal(proxy)
-                }
-                .onAppear { desplazarAlFinal(proxy) }
+                .padding(.horizontal, Tema.margen)
+                .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
+            // El desplazamiento sigue a la PROYECCION, no a los arreglos
+            // internos: cualquier cambio visible (mensaje, evento, texto en
+            // curso, error o fin de turno) llega por la misma via.
+            .onChange(of: estado.elementosVisiblesDelHilo()) { _, _ in
+                desplazarAlFinal(proxy)
+            }
+            .onAppear { desplazarAlFinal(proxy) }
         }
     }
 
     @ViewBuilder
-    private func filaDeHilo(_ fila: FilaHilo) -> some View {
-        switch fila {
-        case .mensaje(let mensaje):
-            filaDeMensajeNormal(mensaje)
+    private func vistaDeElemento(
+        _ elemento: ElementoHiloVisible,
+        indice: Int,
+        fuentes: [Int: ChatMessage],
+        memorias: [Int: EventoVisual]
+    ) -> some View {
+        switch elemento {
+        case .burbujaUsuario(let texto):
+            BurbujaUsuarioProyectada(
+                texto: texto,
+                skills: fuentes[indice]?.skillsAplicadas ?? [],
+                alRamificar: fuentes[indice].flatMap { accionRamificar($0) }
+            )
 
-        case .evento(let evento):
-            if evento.cambioMemoria != nil {
-                TarjetaMemoria(
-                    evento: evento,
-                    alVer: alVerMemoria,
-                    alDeshacer: {
-                        _ = estado.deshacerCambioDeMemoria(id: evento.id)
-                    }
-                )
-            } else {
-                Text(evento.texto)
-                    .font(.caption2)
-                    .foregroundStyle(Tema.textoSuave)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 2)
-                    .accessibilityLabel(evento.texto)
-            }
+        case .burbujaAsistente(let segmentos):
+            BurbujaAsistenteProyectada(
+                segmentos: segmentos,
+                pie: fuentes[indice].flatMap { pieDe($0) },
+                alRamificar: fuentes[indice].flatMap { accionRamificar($0) }
+            )
+
+        case .lineaMemoria(let texto, let puedeDeshacer, let deshecho):
+            LineaMemoria(
+                texto: texto,
+                puedeDeshacer: puedeDeshacer,
+                deshecho: deshecho,
+                alDeshacer: {
+                    guard let evento = memorias[indice] else { return }
+                    _ = estado.deshacerCambioDeMemoria(id: evento.id)
+                }
+            )
+
+        case .divisor(let texto):
+            Text(texto)
+                .font(.caption2)
+                .foregroundStyle(Tema.textoSuave)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 2)
+                .accessibilityLabel(texto)
+
+        case .burbujaEnCurso(let texto):
+            BurbujaEnCurso(texto: texto)
+
+        case .errorTurno(let texto):
+            BurbujaErrorTurno(
+                texto: texto,
+                otrosProveedores: otrosProveedores,
+                nombreDeProveedor: { nombreDeModelo($0) },
+                alReintentar: { estado.reintentar() },
+                alCambiarModelo: { proveedor in
+                    estado.cambiarProveedor(proveedor)
+                    estado.reintentar()
+                }
+            )
+
+        case .hojaAprobacionMemoria(let texto, let categoria, let estadoAprobacion):
+            HojaAprobacionMemoriaProyectada(
+                texto: texto,
+                categoriaSensible: categoria,
+                estado: estadoAprobacion,
+                enTope: estado.avisoTopeEnPropuestaSensible,
+                alAprobar: { estado.aprobarPropuestaSensible() },
+                alDenegar: { estado.denegarPropuestaSensible() }
+            )
         }
-    }
-
-    @ViewBuilder
-    private func filaDeMensajeNormal(_ mensaje: ChatMessage) -> some View {
-        BurbujaMensaje(
-            mensaje: mensaje,
-            pie: pieDe(mensaje),
-            alRamificar: accionRamificar(mensaje)
-        )
     }
 
     /// La pulsacion larga de una burbuja de usuario o asistente ofrece
     /// "Ramificar chat desde aqui" (§5.4). Las burbujas internas de
     /// herramienta no son un punto de corte util.
     private func accionRamificar(_ mensaje: ChatMessage) -> (() -> Void)? {
+        // B2.2: de un hilo temporal no se ramifica; la rama es un chat nuevo
+        // que si se guarda. La accion no se ofrece en ese hilo.
+        guard estado.conversacion.sePersiste else { return nil }
         guard mensaje.rol == .usuario || mensaje.rol == .asistente else {
             return nil
         }
         return { estado.ramificar(desde: mensaje) }
     }
 
-    private static let marcaEnCurso = "nodo-en-curso"
-    private static let marcaError = "nodo-error-turno"
+    private static func idDeElemento(_ indice: Int) -> String {
+        "elemento-\(indice)"
+    }
 
     private func desplazarAlFinal(_ proxy: ScrollViewProxy) {
-        let destino: String?
-        if estado.enviando {
-            destino = Self.marcaEnCurso
-        } else if estado.errorDeTurno != nil {
-            destino = Self.marcaError
-        } else {
-            destino = filas.last?.id
-        }
-
-        guard let destino else { return }
+        let elementos = estado.elementosVisiblesDelHilo()
+        guard let ultimo = elementos.indices.last else { return }
         withAnimation(.easeOut(duration: 0.18)) {
-            proxy.scrollTo(destino, anchor: .bottom)
+            proxy.scrollTo(Self.idDeElemento(ultimo), anchor: .bottom)
         }
     }
 
     // MARK: - Consumo y pie de respuesta
 
-    /// Pie de la respuesta: se pinta bajo TODAS las respuestas del asistente
-    /// con consumo. La parte informativa y Copiar van en todas; el boton de
-    /// regenerar solo en la ultima, porque regenerar actua sobre ella.
+    /// Pie de la respuesta: se pinta bajo TODA respuesta terminada del
+    /// asistente. Sin consumo medido solo desaparece el texto de consumo;
+    /// Copiar y [Escuchar] siguen disponibles (IDEA1). El boton de regenerar
+    /// solo aparece en la ultima, porque regenerar actua sobre ella.
     private func pieDe(_ mensaje: ChatMessage) -> PieRespuesta? {
-        guard mensaje.rol == .asistente, let uso = mensaje.uso else { return nil }
+        guard mensaje.rol == .asistente else { return nil }
+
+        // IDEA3: nil en un Chat Temporal; ahi el boton no existe.
+        let alCompartir: (() -> Void)?
+        if estado.puedeCompartir {
+            alCompartir = { estado.compartirRespuesta(de: mensaje) }
+        } else {
+            alCompartir = nil
+        }
 
         return PieRespuesta(
-            uso: uso,
-            costo: costoDe(mensaje),
+            uso: mensaje.uso,
+            costo: mensaje.uso == nil ? nil : costoDe(mensaje),
             textoParaCopiar: mensaje.texto,
             // D2=B: la regla de "solo la ultima respuesta" vive en EstadoApp,
-            // para poder probarla sin SwiftUI.
+            // para poder probarla sin SwiftUI. Esa regla ya exige uso.
             puedeRegenerar: estado.puedeRegenerar(mensaje),
             otrosProveedores: otrosProveedores,
             nombreDeProveedor: { nombreDeModelo($0) },
             alRegenerar: { estado.regenerar() },
-            alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) }
+            alRegenerarCon: { estado.regenerarCon(proveedorID: $0.id) },
+            estadoLectura: estado.estadoDeLectura(de: mensaje.id),
+            alAlternarLectura: { estado.alternarLectura(de: mensaje) },
+            alDetenerLectura: { estado.detenerLectura() },
+            alCompartir: alCompartir
         )
     }
 
@@ -818,79 +919,296 @@ struct ChatView: View {
     }
 
     private var barraDeEntrada: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField(
-                placeholderCaja,
-                text: enlaceBorrador,
-                axis: .vertical
-            )
-            .lineLimit(1...5)
-            .focused($escribiendo)
-            .disabled(estado.compactando || estado.generandoPlanChat)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Tema.superficie)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .foregroundStyle(.white)
-            .accessibilityIdentifier("caja-mensaje")
-
-            // Micrófono a la izquierda del botón Enviar. Rojo mientras dicta.
-            Button {
-                Task { await estado.alternarDictado() }
-            } label: {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(estado.dictando ? Color.red : Tema.superficieAlta)
-                    .clipShape(Circle())
-            }
-            .disabled(estado.compactando || estado.enviando || estado.generandoPlanChat)
-            .accessibilityLabel(estado.dictando ? "Detener dictado" : "Dictar")
-            .accessibilityIdentifier("boton-dictado")
-
-            Button(action: accion) {
-                Image(systemName: estado.enviando ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(botonActivo ? Tema.acento : Tema.superficieAlta)
-                    .clipShape(Circle())
-            }
-            .disabled(!botonActivo)
-            .accessibilityLabel(estado.enviando ? "Detener" : "Enviar")
-            .accessibilityIdentifier("enviar-mensaje")
-        }
-        .padding(.horizontal, Tema.margen)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-        .background(Tema.fondo)
-    }
-
-    private var botonActivo: Bool {
-        guard !estado.compactando, !estado.generandoPlanChat else { return false }
-        return estado.enviando
-            || !estado.borrador.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func accion() {
-        if estado.enviando {
-            estado.cancelar()
-            return
-        }
-
-        // Tocar Enviar tambien termina el dictado: el texto parcial ya esta en
-        // la caja y se envia tal cual.
-        if estado.dictando {
-            estado.detenerDictado()
-        }
-        estado.enviarTextoActual()
+        ComposerMensaje(
+            texto: enlaceBorrador,
+            placeholder: placeholderCaja,
+            deshabilitado: estado.compactando || estado.generandoPlanChat,
+            enviando: estado.enviando,
+            dictando: estado.dictando,
+            alEnviar: {
+                // Tocar Enviar tambien termina el dictado: el texto parcial ya
+                // esta en la caja y se envia tal cual.
+                if estado.dictando {
+                    estado.detenerDictado()
+                }
+                estado.enviarTextoActual()
+            },
+            alDetener: { estado.cancelar() },
+            alDictar: { Task { await estado.alternarDictado() } },
+            enfocado: $escribiendo
+        )
     }
 
     // MARK: - Dictado
 
     // El estado del dictado (grabando, parciales y fallos) vive en EstadoApp
     // para poder probarlo sin SwiftUI ni hardware.
+}
+
+/// Burbuja de usuario construida desde la proyeccion.
+///
+/// Pinta solo el texto que entrega `.burbujaUsuario`. Las skills y la accion
+/// de ramificar son metadatos de la fuente y no cambian que fila se pinta.
+private struct BurbujaUsuarioProyectada: View {
+    let texto: String
+    let skills: [String]
+    let alRamificar: (() -> Void)?
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            burbuja
+        }
+    }
+
+    @ViewBuilder
+    private var burbuja: some View {
+        if let alRamificar {
+            contenido.contextMenu {
+                Button(action: alRamificar) {
+                    Label(
+                        "🔀 Ramificar chat desde aquí",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                }
+            }
+        } else {
+            contenido
+        }
+    }
+
+    private var contenido: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !skills.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(skills, id: \.self) { nombre in
+                        Text("⚡ \(nombre)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Tema.acento)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Tema.acento.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
+                .accessibilityIdentifier("skills-aplicadas")
+            }
+
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Tema.acento.opacity(0.22))
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+}
+
+/// Burbuja del asistente construida desde los segmentos de la proyeccion.
+///
+/// El contenido se pinta tal como lo entrega `.burbujaAsistente`: prosa y
+/// bloques de codigo ya separados. El pie de consumo sigue pegado a la burbuja.
+private struct BurbujaAsistenteProyectada: View {
+    let segmentos: [SegmentoRespuesta]
+    let pie: PieRespuesta?
+    let alRamificar: (() -> Void)?
+
+    var body: some View {
+        HStack {
+            burbuja
+            Spacer(minLength: 48)
+        }
+    }
+
+    @ViewBuilder
+    private var burbuja: some View {
+        if let alRamificar {
+            contenido.contextMenu {
+                Button(action: alRamificar) {
+                    Label(
+                        "🔀 Ramificar chat desde aquí",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                }
+            }
+        } else {
+            contenido
+        }
+    }
+
+    private var contenido: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(segmentos.indices, id: \.self) { indice in
+                    vistaDeSegmento(segmentos[indice])
+                }
+            }
+
+            if let pie {
+                pie
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func vistaDeSegmento(_ segmento: SegmentoRespuesta) -> some View {
+        switch segmento {
+        case .texto(let texto):
+            Text(texto)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .codigo(let lenguaje, let textoCrudo):
+            BloqueCodigo(
+                lenguaje: lenguaje,
+                textoCrudo: textoCrudo
+            )
+        }
+    }
+}
+
+/// Linea unica de memoria construida desde la proyeccion (B1.2).
+///
+/// Una sola linea en `.caption` con `Tema.textoSuave`: sin fondo, sin borde y
+/// sin icono. El texto es el hecho (nunca el id de la entrada) y `Deshacer`
+/// es texto accionable al final de la MISMA linea, separado por `·`. Si el
+/// contenido no cabe, se trunca con elipsis: la linea no crece a dos filas ni
+/// vuelve a ser tarjeta. El control total (ver, editar, borrar) vive en Mi
+/// Contexto y en la hoja rapida de Memoria, no aqui.
+private struct LineaMemoria: View {
+    let texto: String
+    let puedeDeshacer: Bool
+    let deshecho: Bool
+    let alDeshacer: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(texto)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            if deshecho {
+                Text("·")
+                Text("Deshecho")
+                    .accessibilityIdentifier("memoria-evento-deshecho")
+            } else if puedeDeshacer {
+                Text("·")
+                Button(action: alDeshacer) {
+                    Text("Deshacer")
+                        .underline()
+                        .foregroundStyle(Tema.textoSuave)
+                }
+                .buttonStyle(.plain)
+                .layoutPriority(1)
+                .accessibilityIdentifier("memoria-evento-deshacer")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+        .foregroundStyle(Tema.textoSuave)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memoria-evento")
+    }
+}
+
+/// Hoja de aprobacion de una escritura sensible, tal como la proyecta P0.2.
+///
+/// Muestra el texto exacto que se guardaria y la categoria tipada. No hay
+/// campo para el nombre de la herramienta ni para un id.
+///
+/// B2.4: las dos salidas son botones reales del hilo. [Aprobar] es la UNICA
+/// puerta que escribe; [Denegar] (y cerrar el hilo sin decidir) deja el
+/// registro intacto. Con la hoja resuelta deja de proyectarse y las acciones
+/// desaparecen.
+private struct HojaAprobacionMemoriaProyectada: View {
+    let texto: String
+    let categoriaSensible: CategoriaSensible
+    let estado: EstadoAprobacion
+    /// B2.5: la hoja avisa antes de decidir que la Memoria está en el tope.
+    /// Aun con [Aprobar] no se creará la entrada.
+    let enTope: Bool
+    let alAprobar: () -> Void
+    let alDenegar: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Aprobación necesaria", systemImage: "hand.raised.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.orange)
+
+            Text(texto)
+                .font(.body)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("aprobacion-memoria-texto")
+
+            HStack(spacing: 8) {
+                Text(categoriaSensible.etiquetaVisible)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Tema.acento)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Tema.acento.opacity(0.15))
+                    .clipShape(Capsule())
+
+                Text(estado.titulo)
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+            }
+
+            if enTope {
+                Text("La Memoria está en el tope de 50 entradas: aunque apruebes, no se guardará nada nuevo. Borra una entrada en Mi Contexto para liberar espacio.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("aprobacion-memoria-tope")
+            }
+
+            if estado == .pendiente {
+                HStack(spacing: 12) {
+                    Button(role: .destructive) {
+                        alDenegar()
+                    } label: {
+                        Text("Denegar")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("denegar-propuesta-memoria")
+
+                    Button {
+                        alAprobar()
+                    } label: {
+                        Text("Aprobar")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("aprobar-propuesta-memoria")
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Tema.radio, style: .continuous)
+                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("aprobacion-memoria")
+    }
 }
 
 /// Burbuja de error en linea al final del hilo (§3.7).
@@ -967,77 +1285,5 @@ private struct BurbujaErrorTurno: View {
             Spacer(minLength: 48)
         }
         .accessibilityIdentifier("error-turno")
-    }
-}
-
-/// Tarjeta de evento de Memoria (MEM.3).
-///
-/// No es un mensaje: vive en `eventosVisuales` y nunca viaja en el payload.
-/// [Ver] lleva a Mi Contexto para revisar la lista y [Deshacer] revierte
-/// EXACTAMENTE el cambio que esta tarjeta representa. Una vez deshecha, la
-/// tarjeta queda como constancia y ya no ofrece deshacer otra vez.
-private struct TarjetaMemoria: View {
-    let evento: EventoVisual
-    let alVer: () -> Void
-    let alDeshacer: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "brain")
-                    .font(.caption2)
-                    .foregroundStyle(Tema.acento)
-
-                Text(evento.texto)
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 8) {
-                Button(action: alVer) {
-                    Text("Ver")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Tema.superficieAlta)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("memoria-evento-ver")
-
-                if evento.deshecho {
-                    Text("Deshecho")
-                        .font(.caption2)
-                        .foregroundStyle(Tema.textoSuave)
-                        .accessibilityIdentifier("memoria-evento-deshecho")
-                } else {
-                    Button(action: alDeshacer) {
-                        Text("Deshacer")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Tema.acento.opacity(0.22))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("memoria-evento-deshacer")
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Tema.superficieAlta.opacity(0.8))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Tema.acento.opacity(0.25), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("memoria-evento")
     }
 }

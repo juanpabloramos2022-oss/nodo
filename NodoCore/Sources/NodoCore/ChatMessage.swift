@@ -161,6 +161,18 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// Si el chat no recibe la Memoria como contexto (§4.6). Se guarda por chat
     /// para que el ajuste sobreviva al cerrar la app.
     public var sinMemoria: Bool
+    /// Si el hilo es un Chat Temporal (B2.2) y no un chat normal sin memoria.
+    ///
+    /// POR QUE un campo propio y no reutilizar `sinMemoria`: son dos modos
+    /// distintos. `sinMemoria` es un ajuste del chat que SI se guarda; el Chat
+    /// Temporal no llega nunca al almacen, no ofrece herramientas de escritura
+    /// al modelo y su cabecera lo declara. Con una sola bandera, apagar la
+    /// memoria en un chat normal lo volveria «temporal» sin querer.
+    ///
+    /// Nunca viaja a disco: `ConversationStore.guardar` rechaza un hilo
+    /// temporal y `EstadoApp` no lo persiste. El valor por defecto en la
+    /// decodificacion es `false`, asi los archivos viejos siguen abriendo.
+    public var esTemporal: Bool
     /// Bandera heredada del antiguo modo Tarea.
     ///
     /// Se conserva en el modelo Codable para no romper conversaciones ya
@@ -206,7 +218,8 @@ public struct Conversation: Codable, Identifiable, Equatable {
         resumenCompactado: String? = nil,
         usoTrasCompactar: UsoTokens? = nil,
         proveedorID: UUID? = nil,
-        errorDeTurno: String? = nil
+        errorDeTurno: String? = nil,
+        esTemporal: Bool = false
     ) {
         self.id = id
         self.titulo = titulo
@@ -217,6 +230,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         self.archivada = archivada
         self.avisoCostoMostrado = avisoCostoMostrado
         self.sinMemoria = sinMemoria
+        self.esTemporal = esTemporal
         self.modoTarea = modoTarea
         self.proveedorID = proveedorID
         self.topeIgnorado = topeIgnorado
@@ -235,6 +249,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         case archivada
         case avisoCostoMostrado
         case sinMemoria
+        case esTemporal
         case modoTarea
         case proveedorID
         case topeIgnorado
@@ -261,6 +276,7 @@ public struct Conversation: Codable, Identifiable, Equatable {
         archivada = try contenedor.decodeIfPresent(Bool.self, forKey: .archivada) ?? false
         avisoCostoMostrado = try contenedor.decodeIfPresent(Bool.self, forKey: .avisoCostoMostrado) ?? false
         sinMemoria = try contenedor.decodeIfPresent(Bool.self, forKey: .sinMemoria) ?? false
+        esTemporal = try contenedor.decodeIfPresent(Bool.self, forKey: .esTemporal) ?? false
         modoTarea = try contenedor.decodeIfPresent(Bool.self, forKey: .modoTarea) ?? false
         proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
         topeIgnorado = try contenedor.decodeIfPresent(Bool.self, forKey: .topeIgnorado) ?? false
@@ -293,6 +309,26 @@ public struct Conversation: Codable, Identifiable, Equatable {
     /// la regla unica que comparten la vista y el estado.
     public var idUltimaRespuestaAsistente: UUID? {
         mensajes.last(where: { $0.rol == .asistente })?.id
+    }
+
+    /// True si este hilo puede ofrecer herramientas de escritura de Memoria y
+    /// llevar el bloque de Memoria al payload (B2.2).
+    ///
+    /// Es la UNICA regla del camino de payload: un chat temporal no usa la
+    /// Memoria ni aunque su `sinMemoria` diga lo contrario, y un chat normal
+    /// sin memoria sigue igual que en la v0.3.1. `Historial.paraEnviar` y
+    /// `EstadoApp.ejecutarTurno` leen esta propiedad, no las banderas sueltas.
+    public var usaMemoriaEnPayload: Bool {
+        !sinMemoria && !esTemporal
+    }
+
+    /// True si el hilo se escribe en el almacen de conversaciones.
+    ///
+    /// Camino de SALIDA del Chat Temporal (B2.2): un hilo temporal vive solo en
+    /// memoria volatil. `ConversationStore.guardar` y `EstadoApp` consultan esta
+    /// regla antes de tocar disco, el respaldo o la lista.
+    public var sePersiste: Bool {
+        !esTemporal
     }
 
     /// Descarta lo que haya despues del ultimo mensaje del usuario y devuelve

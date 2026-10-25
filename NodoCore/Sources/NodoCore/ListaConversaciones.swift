@@ -92,6 +92,34 @@ extension HistorialConversaciones {
         }
     }
 
+    /// Conversaciones que la busqueda muestra, ya en el orden de la lista.
+    ///
+    /// B4-BUS (BUS.1): es la UNICA consulta de la busqueda sobre el historial.
+    /// Recibe la lista que la app ya tiene cargada del almacen y no toca disco:
+    /// filtrar es una operacion de solo lectura sobre valores en memoria. La
+    /// vista de Chats y la proyeccion visible (`ElementoBusquedaVisible`)
+    /// llaman a esta misma funcion, de modo que no existen dos filtros que
+    /// puedan separarse con el tiempo.
+    ///
+    /// - `termino` vacio devuelve la lista completa de siempre: el mismo
+    ///   segmento y el mismo orden (fijadas primero y, dentro de cada grupo,
+    ///   actividad reciente). Es la invariante de §2.2: con el campo vacio no
+    ///   falta ninguna conversacion ni cambia su orden habitual.
+    /// - `segmento` nil significa "los dos segmentos"; la vista pasa el que
+    ///   tiene seleccionado.
+    /// - La coincidencia es literal sobre el titulo y el texto de los
+    ///   mensajes, sin expresiones regulares: ver `coincide(_:con:)`.
+    public static func buscar(
+        _ conversaciones: [Conversation],
+        termino: String,
+        segmento: SegmentoChats? = nil
+    ) -> [Conversation] {
+        let coincidentes = conversaciones.filter { coincide($0, con: termino) }
+        let delSegmento = segmento.map { enSegmento($0, de: coincidentes) }
+            ?? coincidentes
+        return ordenar(delSegmento)
+    }
+
     /// Datos de la fila de dos lineas: pastilla de costo, etiqueta del ultimo
     /// modelo de la conversacion y vista previa del ultimo mensaje.
     ///

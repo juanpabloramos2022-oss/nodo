@@ -21,6 +21,12 @@ final class ArnesApp {
     let directorioStore: URL
     /// Almacen propio de tareas, junto al de conversaciones pero sin mezclarse.
     let directorioTareas: URL
+    /// Lector en voz alta guionizado (IDEA1).
+    ///
+    /// Se expone para que los tests comprueben llamadas, estados y locuciones
+    /// exactas. Por defecto NUNCA se construye `LectorAVSpeech`: en CI no se
+    /// toca el audio del simulador.
+    let lector: LectorGuionizado
     private let nombreSuite: String
 
     /// Proveedor activo de la configuracion sembrada.
@@ -36,7 +42,8 @@ final class ArnesApp {
 
     init(
         config: AppConfig = .inicial(),
-        dictado: SpeechRecognizing? = nil
+        dictado: SpeechRecognizing? = nil,
+        lector: LectorGuionizado? = nil
     ) throws {
         let sufijo = UUID().uuidString
         let nombreSuite = "com.nodo.ios.apptests.\(sufijo)"
@@ -63,6 +70,11 @@ final class ArnesApp {
         let llavero = LlaveroFalso()
         self.llavero = llavero
 
+        // Sin lector inyectado se usa el doble: un test jamas debe hacer sonar
+        // el sintetizador del simulador.
+        let lectorGuionizado = lector ?? LectorGuionizado()
+        self.lector = lectorGuionizado
+
         self.estado = EstadoApp(
             llavero: llavero,
             transporte: transporte,
@@ -72,7 +84,9 @@ final class ArnesApp {
             // El dictado inyectado entra de verdad al estado: sin este paso el
             // parametro se ignoraba y los tests de dictado no podian sustituir
             // el reconocedor real (hardware) por el doble.
-            dictado: dictado
+            dictado: dictado,
+            // Misma costura para la lectura en voz alta (IDEA1).
+            lector: lectorGuionizado
         )
         // El init normal arranca con `.inicial()` cuando la suite esta vacia;
         // se aplica la configuracion pedida por el test por la ruta publica,
@@ -146,6 +160,8 @@ final class ArnesApp {
 
 enum ErrorArnes: Error {
     case sinSuiteDePreferencias
+    /// El archivo de humo no trae la forma `{http, peticion, respuesta}`.
+    case archivoDeHumoInvalido
 }
 
 /// Respuesta que el transporte falso devolvera al siguiente turno.
@@ -154,6 +170,16 @@ struct GuionRespuesta {
     var uso: UsoTokens?
     /// Llamadas a herramienta que pedira el modelo en este turno (MEM.3).
     var toolCalls: [ToolCall]
+}
+
+/// Fallo de red deterministico para el guion de IDEA6.
+///
+/// Un `URLError` real trae un texto localizado que cambia con el idioma del
+/// simulador; la traza exige un texto fijo y reproducible byte a byte. El
+/// camino que se prueba es el mismo: la llamada lanza y el turno publica el
+/// `ErrorBubble` con este mensaje.
+struct ErrorRedDePrueba: LocalizedError {
+    var errorDescription: String? { "Sin conexión a internet." }
 }
 
 /// Transporte falso que graba peticiones y sirve respuestas SSE guionizadas.
@@ -173,15 +199,42 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     /// la libere. Sirve para mirar el disco a mitad de una tarea.
     private var retenerStreamEn: Int?
     private var retenerUnariaEn: Int?
+    /// Retraso real (segundos) que se espera antes de servir el stream N.
+    ///
+    /// Lo usa el replay temporizado de B3-B: la espera de red archivada se
+    /// reproduce con una espera REAL, no con un volcado instantaneo (P0.3).
+    private var retrasosDeStream: [Int: TimeInterval] = [:]
     private var continuacionStream: CheckedContinuation<Void, Never>?
     private var continuacionUnaria: CheckedContinuation<Void, Never>?
     private var streamYaLiberado = false
     private var unariaYaLiberada = false
+    /// Fallo de red que se lanza en el proximo intento de streaming (IDEA6).
+    private var errorDeStreamPendiente: Error?
+
+    /// Hace que el proximo intento de streaming falle como una red caida.
+    ///
+    /// POR QUE: el contrato de IDEA6 exige que un envio sin conexion muestre
+    /// el `ErrorBubble` y conserve el texto. El guion NO se consume al fallar:
+    /// el mismo turno puede reintentarse despues y cerrar con exito, que es la
+    /// secuencia completa del contrato.
+    func fallarProximoStream(_ error: Error = ErrorRedDePrueba()) {
+        candado.lock()
+        defer { candado.unlock() }
+        errorDeStreamPendiente = error
+    }
+
+    private func tomarErrorDeStream() -> Error? {
+        candado.lock()
+        defer { candado.unlock() }
+        let error = errorDeStreamPendiente
+        errorDeStreamPendiente = nil
+        return error
+    }
 
     /// Encola una respuesta de chat completions con su consumo.
     ///
     /// `toolCalls` permite guionizar un turno que pide herramientas, que es lo
-    /// que necesita MEM.3 para probar `memoria_chat` sin red.
+    /// que necesitan las pruebas de Memoria para ejecutar sin red.
     func guionar(
         texto: String,
         uso: UsoTokens? = nil,
@@ -201,7 +254,79 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
         respuestasUnarias.append(respuesta)
     }
 
+    /// Encola la respuesta viva archivada de una Puerta B.
+    ///
+    /// El archivo es el registro crudo `{http, peticion, respuesta}` que deja
+    /// el humo. No inventa nada: traduce el mensaje archivado (prosa,
+    /// `tool_calls` y `usage`) al mismo guion SSE que usa el transporte falso.
+    /// Es el doble permitido: reproduce la corrida real, no la sustituye.
+    func guionarDesdeArchivo(_ ruta: URL) throws {
+        let guion = try Self.leerGuionDesdeArchivo(ruta)
+        guionar(texto: guion.texto, uso: guion.uso, toolCalls: guion.toolCalls)
+    }
+
+    /// Lee el guion exacto de un archivo de humo, sin encolarlo.
+    ///
+    /// Lo usan el arnes y los tests que necesitan afirmar sobre el contenido
+    /// archivado (por ejemplo, qué prosa y qué llamadas trae el archivo). La
+    /// traza no es copia de esa prosa: la presentación puede añadir texto,
+    /// como la declaración de pasos del plan no ejecutados.
+    static func leerGuionDesdeArchivo(_ ruta: URL) throws -> GuionRespuesta {
+        let datos = try Data(contentsOf: ruta)
+        guard
+            let raiz = try JSONSerialization.jsonObject(with: datos) as? [String: Any],
+            let respuesta = raiz["respuesta"] as? [String: Any],
+            let choices = respuesta["choices"] as? [[String: Any]],
+            let mensaje = choices.first?["message"] as? [String: Any]
+        else {
+            throw ErrorArnes.archivoDeHumoInvalido
+        }
+
+        let texto = mensaje["content"] as? String ?? ""
+        let uso: UsoTokens? = {
+            guard let crudo = respuesta["usage"] as? [String: Any],
+                  let entrada = crudo["prompt_tokens"] as? Int,
+                  let salida = crudo["completion_tokens"] as? Int
+            else { return nil }
+            return UsoTokens(entrada: entrada, salida: salida)
+        }()
+
+        var llamadas: [ToolCall] = []
+        if let crudas = mensaje["tool_calls"] as? [[String: Any]] {
+            for cruda in crudas {
+                guard let id = cruda["id"] as? String,
+                      let funcion = cruda["function"] as? [String: Any],
+                      let nombre = funcion["name"] as? String
+                else { continue }
+                llamadas.append(
+                    ToolCall(
+                        id: id,
+                        nombre: nombre,
+                        argumentos: funcion["arguments"] as? String ?? "{}"
+                    )
+                )
+            }
+        }
+
+        return GuionRespuesta(texto: texto, uso: uso, toolCalls: llamadas)
+    }
+
+    /// Guiones que aun no consumio el turno. Si el arnes solo reproduce la
+    /// corrida archivada, al cerrar el turno debe ser 0.
+    var guionesPendientes: Int {
+        candado.lock()
+        defer { candado.unlock() }
+        return guiones.count
+    }
+
     /// Retiene la respuesta de streaming numero `numero` (1-based).
+    /// Fija una espera real antes de servir el stream numero `numero`.
+    func retrasarStream(en numero: Int, segundos: TimeInterval) {
+        candado.lock()
+        defer { candado.unlock() }
+        retrasosDeStream[numero] = segundos
+    }
+
     func retenerStream(en numero: Int) {
         candado.lock()
         defer { candado.unlock() }
@@ -248,6 +373,11 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
     }
 
     func abrirStream(_ peticion: HTTPRequest) async throws -> AsyncThrowingStream<Data, Error> {
+        // IDEA6: fallo de red guionizado. Se comprueba ANTES de consumir el
+        // guion para que el reintento posterior reciba la respuesta intacta.
+        if let error = tomarErrorDeStream() {
+            throw error
+        }
         let numero = siguienteNumeroDeStream()
         guard let guion = registrarStream(peticion) else {
             throw ErrorAPI.respuestaInvalida(
@@ -257,6 +387,14 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
 
         if debeRetenerStream(numero) {
             await esperarLiberacionDeStream()
+        }
+
+        // Replay temporizado (B3-B): la espera de red archivada se reproduce
+        // como espera real antes de entregar el cuerpo.
+        if let retraso = retrasoDeStream(numero), retraso > 0 {
+            try await Task.sleep(
+                nanoseconds: UInt64(retraso * 1_000_000_000)
+            )
         }
 
         let datos = Self.cuerpoSSE(guion)
@@ -289,6 +427,12 @@ final class TransporteGuionizado: HTTPStreaming, HTTPUnary {
         defer { candado.unlock() }
         unariasContadas += 1
         return unariasContadas
+    }
+
+    private func retrasoDeStream(_ numero: Int) -> TimeInterval? {
+        candado.lock()
+        defer { candado.unlock() }
+        return retrasosDeStream[numero]
     }
 
     private func debeRetenerStream(_ numero: Int) -> Bool {
@@ -519,5 +663,59 @@ final class DictadoGuionizado: SpeechRecognizing {
     /// Simula un fallo del reconocimiento; `nil` representa una cancelacion.
     func fallar(_ error: Error?) {
         onFallo?(error)
+    }
+}
+
+/// Lector en voz alta guionizado (IDEA1).
+///
+/// POR QUE: `EstadoApp` habla con el protocolo `LectorEnVozAlta`, nunca con
+/// `AVSpeechSynthesizer`. Este doble registra cada llamada y las locuciones que
+/// recibio, y deja que el test cierre la lectura con `terminar()` cuando
+/// quiera. En CI no se reproduce ni un milisegundo de audio.
+@MainActor
+final class LectorGuionizado: LectorEnVozAlta {
+    private(set) var estado: EstadoLectura = .inactivo
+    private(set) var vecesLeido = 0
+    private(set) var vecesPausado = 0
+    private(set) var vecesReanudado = 0
+    private(set) var vecesDetenido = 0
+    /// Ultimas locuciones entregadas a `leer`, en orden.
+    private(set) var locuciones: [LocucionLectura] = []
+
+    private var alTerminar: (() -> Void)?
+
+    func leer(
+        _ locuciones: [LocucionLectura],
+        alTerminar: @escaping () -> Void
+    ) {
+        vecesLeido += 1
+        self.locuciones = locuciones
+        self.alTerminar = alTerminar
+        estado = .leyendo
+    }
+
+    func pausar() {
+        vecesPausado += 1
+        if estado == .leyendo { estado = .pausado }
+    }
+
+    func reanudar() {
+        vecesReanudado += 1
+        if estado == .pausado { estado = .leyendo }
+    }
+
+    func detener() {
+        vecesDetenido += 1
+        alTerminar = nil
+        estado = .inactivo
+    }
+
+    /// Simula que la ultima locucion acabo de forma natural: invoca la
+    /// completion igual que el delegado real.
+    func terminar() {
+        let aviso = alTerminar
+        alTerminar = nil
+        estado = .inactivo
+        aviso?()
     }
 }

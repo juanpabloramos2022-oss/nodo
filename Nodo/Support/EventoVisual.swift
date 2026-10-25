@@ -12,14 +12,14 @@ struct EventoVisual: Identifiable, Equatable {
     /// El evento se pinta DESPUES de este mensaje. nil = al principio del hilo.
     let trasMensaje: UUID?
     let texto: String
-    /// Cambio de Memoria que esta tarjeta puede deshacer (MEM.3).
+    /// Cambio de Memoria que esta linea puede deshacer (MEM.3).
     ///
     /// nil en los divisores de siempre (cambio de modelo, memoria desactivada,
     /// compactacion): esos no tienen nada que revertir.
     let cambioMemoria: CambioMemoria?
     /// True cuando el cambio ya se revirtio.
     ///
-    /// La tarjeta se queda como constancia de lo que paso, pero deja de ofrecer
+    /// La linea se queda como constancia de lo que paso, pero deja de ofrecer
     /// [Deshacer]: un mismo cambio no puede revertirse dos veces.
     let deshecho: Bool
 
@@ -37,7 +37,7 @@ struct EventoVisual: Identifiable, Equatable {
         self.deshecho = deshecho
     }
 
-    /// Copia la tarjeta marcandola como ya deshecha.
+    /// Copia la linea marcandola como ya deshecha.
     func comoDeshecho() -> EventoVisual {
         EventoVisual(
             id: id,

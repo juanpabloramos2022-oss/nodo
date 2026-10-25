@@ -13,7 +13,6 @@ struct TareasRaizView: View {
 
     /// La ruta guarda ids, no tareas: la lista se refresca desde `EstadoApp`.
     @State private var ruta: [UUID] = []
-    @State private var mostrarNueva = false
     @State private var aBorrar: Tarea?
 
     var body: some View {
@@ -35,7 +34,11 @@ struct TareasRaizView: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            mostrarNueva = true
+                            // B3-A: + Nueva tarea abre el hilo vacio. El
+                            // encargo se escribe en el composer inferior, no
+                            // en una hoja de formulario.
+                            let tarea = estado.crearTarea()
+                            ruta.append(tarea.id)
                         } label: {
                             Image(systemName: "plus")
                         }
@@ -43,14 +46,6 @@ struct TareasRaizView: View {
                         .accessibilityIdentifier("nueva-tarea")
                     }
                 }
-        }
-        .sheet(isPresented: $mostrarNueva) {
-            HojaNuevaTarea { instruccion in
-                let tarea = estado.crearTarea(instruccion: instruccion)
-                // Abrir la tarea recien creada: su vista pide el plan al
-                // aparecer, que es el flujo plan-primero de TASK.2.
-                ruta.append(tarea.id)
-            }
         }
         .confirmationDialog(
             "¿Borrar esta tarea?",
@@ -185,56 +180,5 @@ struct TareasRaizView: View {
         case .fallida:
             return .red
         }
-    }
-}
-
-/// Hoja para crear una tarea con su instruccion inicial.
-///
-/// La instruccion es obligatoria: sin ella no hay nada que planificar y el
-/// flujo plan-primero no podria arrancar. Se mantiene la regla de salida de las
-/// hojas: Cancelar descarta, Crear confirma y arrastrar no pierde texto.
-private struct HojaNuevaTarea: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var instruccion = ""
-    let alCrear: (String) -> Void
-
-    private var limpia: String {
-        instruccion.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextEditor(text: $instruccion)
-                        .frame(minHeight: 140)
-                        .accessibilityIdentifier("nueva-tarea-instruccion")
-                } header: {
-                    Text("Instrucción")
-                } footer: {
-                    Text("La app pedirá al modelo un plan por pasos antes de ejecutar nada. El plan no ejecuta herramientas.")
-                }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Nueva tarea")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear") {
-                        guard !limpia.isEmpty else { return }
-                        alCrear(limpia)
-                        dismiss()
-                    }
-                    .disabled(limpia.isEmpty)
-                }
-            }
-        }
-        .interactiveDismissDisabled(!limpia.isEmpty)
-        .conBarraTecladoListo()
     }
 }

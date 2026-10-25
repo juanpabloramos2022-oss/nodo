@@ -7,7 +7,7 @@ name: ios
 
 on:
   push:
-    branches: [main, feat/gran-avance, feat/v031-correccion, feat/v031-paralela]
+    branches: [main, feat/gran-avance, feat/v031-correccion, feat/v031-paralela, feat/v032]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -25,6 +25,11 @@ jobs:
   tests:
     if: ${{ contains(github.event.head_commit.message, '[solo-tests]') }}
     runs-on: macos-15
+    # Necesario para dejar el log de las pruebas en la rama `capturas` cuando
+    # fallan: es la unica evidencia de diagnostico si el runner no publica el
+    # xcresult.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -45,6 +50,9 @@ jobs:
           fi
           xcrun simctl boot "iPhone 16" 2>/dev/null || true
           xcrun simctl bootstatus booted -b || true
+          # El log se guarda con tee para poder diagnosticar un fallo desde la
+          # rama capturas; pipefail mantiene el fallo de los tests como fallo.
+          set -o pipefail
           xcodebuild test \
             -project Nodo.xcodeproj \
             -scheme Nodo \
@@ -53,11 +61,45 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" 2>&1 | tee xcodebuild-tests.log
+
+      # Diagnostico: si las pruebas de la app fallan, el log completo queda en
+      # la rama `capturas` bajo tests-<sha7>/, revisable sin permisos de
+      # artefactos. No cambia el resultado del job.
+      - name: Publicar el log de pruebas si fallan
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf pub
+          if git clone --depth 1 --branch capturas \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+            echo "Rama capturas existente."
+          else
+            mkdir pub && (cd pub && git init -q -b capturas .)
+          fi
+          DEST="pub/tests-${GITHUB_SHA::7}"
+          mkdir -p "$DEST"
+          cp xcodebuild-tests.log "$DEST/" 2>/dev/null || true
+          cd pub
+          git config user.name "nodo-ci"
+          git config user.email "ci@localhost"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nada nuevo que publicar."
+            exit 0
+          fi
+          git commit -q -m "tests ${GITHUB_SHA::7}"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
 
   compilar:
     if: ${{ !contains(github.event.head_commit.message, '[solo-tests]') }}
     runs-on: macos-15
+    # Necesario para publicar las trazas de vista en la rama `capturas` (mismo
+    # motivo que el job `capturas`): la evidencia debe estar en git para
+    # revisarla sin permisos de artefactos.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -83,6 +125,10 @@ jobs:
           fi
           xcrun simctl boot "iPhone 16" 2>/dev/null || true
           xcrun simctl bootstatus booted -b || true
+          # El log se guarda con tee para poder extraer las trazas de vista
+          # (las imprime TrazaVistaTest a stdout); pipefail mantiene el fallo
+          # de los tests como fallo del paso.
+          set -o pipefail
           xcodebuild test \
             -project Nodo.xcodeproj \
             -scheme Nodo \
@@ -91,7 +137,60 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" 2>&1 | tee xcodebuild-tests.log
+
+      # Puerta B de P0: las trazas de vista que imprimen los tests se extraen
+      # del log y se publican como artefacto y en la rama `capturas`, para que
+      # la revision no dependa de abrir el .xcresult.
+      - name: Extraer trazas de vista
+        if: always()
+        run: python3 herramientas/extraer-trazas.py xcodebuild-tests.log trazas
+
+      - name: Publicar las trazas
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: trazas-${{ github.sha }}
+          path: trazas/
+          if-no-files-found: error
+
+      - name: Publicar trazas en la rama capturas
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Misma publicacion que el job `capturas`: cada corrida deja una
+          # carpeta trazas-<sha corto>/ en la rama `capturas`. Diferencia
+          # exigida: si los 3 intentos fallan, el paso FALLA (la evidencia
+          # tiene que estar en git para revisarla sin permisos de artefactos).
+          publicar() {
+            rm -rf pub
+            if git clone --depth 1 --branch capturas \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+              echo "Rama capturas existente."
+            else
+              mkdir pub && (cd pub && git init -q -b capturas .)
+              echo "Rama capturas creada como huerfana."
+            fi
+            DEST="pub/trazas-${GITHUB_SHA::7}"
+            mkdir -p "$DEST"
+            cp trazas/*.txt "$DEST/" 2>/dev/null || echo "Sin trazas en esta corrida."
+            cd pub
+            git config user.name "nodo-ci"
+            git config user.email "ci@localhost"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Nada nuevo que publicar."
+              cd ..
+              return 0
+            fi
+            git commit -q -m "trazas ${GITHUB_SHA::7}"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
+          }
+          publicar || { sleep 10; publicar; } || { sleep 20; publicar; } || {
+            echo "No se pudo publicar las trazas en la rama capturas tras 3 intentos."
+            exit 1
+          }
 
       - name: Compilar sin firma
         run: |
@@ -123,6 +222,46 @@ jobs:
           name: Nodo-ipa
           path: Nodo.ipa
           retention-days: 30
+
+      # Publica la IPA de la version en la rama `capturas`, bajo ipa/. Solo
+      # corre en main (nunca en una rama de trabajo) y no puede enrojecer la
+      # rama: un fallo de publicacion se queda como aviso del paso.
+      - name: Publicar la IPA en la rama capturas
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Mismo patron que la publicacion de trazas: clonar `capturas` o
+          # crearla huerfana, copiar el binario, commit y push con reintentos.
+          publicar() {
+            rm -rf pub
+            if git clone --depth 1 --branch capturas \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null; then
+              echo "Rama capturas existente."
+            else
+              mkdir pub && (cd pub && git init -q -b capturas .)
+              echo "Rama capturas creada como huerfana."
+            fi
+            DEST="pub/ipa"
+            mkdir -p "$DEST"
+            cp Nodo.ipa "$DEST/Nodo-v0.3.2.ipa"
+            cd pub
+            git config user.name "nodo-ci"
+            git config user.email "ci@localhost"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Nada nuevo que publicar."
+              cd ..
+              return 0
+            fi
+            git commit -q -m "ipa v0.3.2 ${GITHUB_SHA::7}"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" capturas
+          }
+          publicar || { sleep 10; publicar; } || { sleep 20; publicar; } || {
+            echo "No se pudo publicar la IPA en la rama capturas tras 3 intentos."
+            exit 1
+          }
 
   # Job independiente: si falla una captura, `compilar` sigue publicando el
   # .ipa igual que antes. Solo corre el target NodoCapturas, no `swift test`.

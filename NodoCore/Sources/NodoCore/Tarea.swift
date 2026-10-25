@@ -249,6 +249,67 @@ public struct Paso: Codable, Identifiable, Equatable {
     }
 }
 
+/// Quien habla en un turno del hilo de una Tarea.
+public enum RolTurnoTarea: String, Codable, Equatable {
+    case usuario
+    case asistente
+}
+
+/// Un turno del hilo conversacional de una Tarea (B3-A).
+///
+/// El hilo de Tarea guarda los mensajes del dueno (el encargo y cada ajuste o
+/// redireccion) para que reabrir la tarea reproduzca la misma conversacion. La
+/// `instruccion` de la Tarea sigue siendo la fuente del motor y del titulo: el
+/// primer turno la alimenta, y los turnos siguientes son ajustes del plan.
+///
+/// `despuesDeEjecutar` marca los mensajes que llegaron cuando la tarea ya
+/// tenia libro o ya estaba cerrada. La vista los pinta al final del hilo, no
+/// entre el encargo y la tarjeta del plan, y la rehidratacion queda identica.
+public struct TurnoTarea: Codable, Identifiable, Equatable {
+    public var id: UUID
+    public var rol: RolTurnoTarea
+    public var texto: String
+    public var fecha: Date
+    public var despuesDeEjecutar: Bool
+
+    public init(
+        id: UUID = UUID(),
+        rol: RolTurnoTarea,
+        texto: String,
+        fecha: Date = Date(),
+        despuesDeEjecutar: Bool = false
+    ) {
+        self.id = id
+        self.rol = rol
+        self.texto = texto
+        self.fecha = fecha
+        self.despuesDeEjecutar = despuesDeEjecutar
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case rol
+        case texto
+        case fecha
+        case despuesDeEjecutar
+    }
+
+    /// Decodificacion tolerante: un turno sin fecha o sin marca se lee como un
+    /// turno normal de planificacion, nunca impide abrir la tarea.
+    public init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: CodingKeys.self)
+        id = try contenedor.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        rol = try contenedor.decodeIfPresent(RolTurnoTarea.self, forKey: .rol)
+            ?? .usuario
+        texto = try contenedor.decodeIfPresent(String.self, forKey: .texto) ?? ""
+        fecha = try contenedor.decodeIfPresent(Date.self, forKey: .fecha) ?? Date()
+        despuesDeEjecutar = try contenedor.decodeIfPresent(
+            Bool.self,
+            forKey: .despuesDeEjecutar
+        ) ?? false
+    }
+}
+
 /// Un paso del PLAN que el modelo propone antes de ejecutar nada.
 ///
 /// Es distinto de `Paso` a proposito: el plan es texto visible y editable por
@@ -289,17 +350,25 @@ public struct PlanTarea: Codable, Equatable {
     public var texto: String
     public var fecha: Date
     public var proveedorID: UUID?
+    /// Version visible de la tarjeta de plan en el hilo (B3-A).
+    ///
+    /// El plan inicial es la version 1 y cada regeneracion o ajuste la sube.
+    /// Se guarda en la tarea para que reabrir el hilo muestre la misma version
+    /// y no una tarjeta que se reinicia a 1.
+    public var version: Int
 
     public init(
         pasos: [PasoPlan] = [],
         texto: String = "",
         fecha: Date = Date(),
-        proveedorID: UUID? = nil
+        proveedorID: UUID? = nil,
+        version: Int = 1
     ) {
         self.pasos = pasos
         self.texto = texto
         self.fecha = fecha
         self.proveedorID = proveedorID
+        self.version = version
     }
 
     public var estaVacio: Bool { pasos.isEmpty }
@@ -435,6 +504,7 @@ public struct PlanTarea: Codable, Equatable {
         case texto
         case fecha
         case proveedorID
+        case version
     }
 
     public init(from decoder: Decoder) throws {
@@ -443,6 +513,8 @@ public struct PlanTarea: Codable, Equatable {
         texto = try contenedor.decodeIfPresent(String.self, forKey: .texto) ?? ""
         fecha = try contenedor.decodeIfPresent(Date.self, forKey: .fecha) ?? Date()
         proveedorID = try contenedor.decodeIfPresent(UUID.self, forKey: .proveedorID)
+        // Un plan escrito antes de B3-A no trae version: es la 1.
+        version = try contenedor.decodeIfPresent(Int.self, forKey: .version) ?? 1
     }
 }
 
@@ -484,6 +556,25 @@ public struct Tarea: Codable, Identifiable, Equatable {
     /// cruzado entre modelos, no que se hayan ejecutado pruebas. Sin sintesis
     /// (detenida por tope, fallo o Detener) se queda en false.
     public var verificadoPorCruce: Bool
+    /// Turnos del hilo conversacional de la Tarea (B3-A).
+    ///
+    /// El primero es el encargo y alimenta `instruccion`; los siguientes son
+    /// ajustes del plan o mensajes posteriores. Se persisten para que reabrir
+    /// la tarea reproduzca la misma secuencia.
+    public var turnos: [TurnoTarea]
+    /// Ultimo error de la tarea, visible como elemento del hilo (E7).
+    ///
+    /// Se guarda, y no se deriva de `errorTarea` (que es global y transitorio),
+    /// para que salir y volver a entrar muestre el error en el punto exacto en
+    /// que ocurrio. Se limpia al generar un plan con exito y al empezar.
+    public var ultimoError: String?
+    /// Contador monótono de versiones del plan (B3-A).
+    ///
+    /// Vive en la tarea, no solo en el plan, porque una regeneracion fallida
+    /// invalida el plan (`plan = nil`) y la version no puede reiniciarse a 1:
+    /// la siguiente tarjeta tiene que ser la version anterior + 1. 0 significa
+    /// "esta tarea aun no publico ningun plan"; la primera version es la 1.
+    public var versionPlan: Int
     public var fechaCreacion: Date
     public var fechaActualizacion: Date
 
@@ -499,7 +590,10 @@ public struct Tarea: Codable, Identifiable, Equatable {
         resultado: String? = nil,
         verificadoPorCruce: Bool = false,
         fechaCreacion: Date = Date(),
-        fechaActualizacion: Date = Date()
+        fechaActualizacion: Date = Date(),
+        turnos: [TurnoTarea] = [],
+        ultimoError: String? = nil,
+        versionPlan: Int = 0
     ) {
         self.id = id
         self.instruccion = instruccion
@@ -513,6 +607,9 @@ public struct Tarea: Codable, Identifiable, Equatable {
         self.verificadoPorCruce = verificadoPorCruce
         self.fechaCreacion = fechaCreacion
         self.fechaActualizacion = fechaActualizacion
+        self.turnos = turnos
+        self.ultimoError = ultimoError
+        self.versionPlan = versionPlan
     }
 
     /// Titulo de una linea para la lista, derivado de la instruccion.
@@ -558,6 +655,26 @@ public struct Tarea: Codable, Identifiable, Equatable {
             return limpia
         }
         return resto
+    }
+
+    /// Texto que recibe el planificador con el encargo y sus ajustes (B3-A).
+    ///
+    /// El primer turno es el encargo; cada turno posterior de planificacion se
+    /// manda como una linea «Ajuste: …» para que el modelo regenere el plan
+    /// con el cambio pedido sin perder el encargo original. Los turnos que
+    /// llegaron despues de ejecutar no entran: no reescriben el plan aprobado.
+    public var instruccionParaPlan: String {
+        let planificables = turnos.filter {
+            $0.rol == .usuario && !$0.despuesDeEjecutar
+        }
+        guard let encargo = planificables.first else { return instruccionEfectiva }
+        var lineas = [encargo.texto]
+        for ajuste in planificables.dropFirst() {
+            let texto = ajuste.texto.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !texto.isEmpty else { continue }
+            lineas.append("Ajuste: \(texto)")
+        }
+        return lineas.joined(separator: "\n\n")
     }
 
     /// Costo total de la tuberia /boost: la suma de los sellos de fase.
@@ -614,6 +731,9 @@ public struct Tarea: Codable, Identifiable, Equatable {
         case verificadoPorCruce
         case fechaCreacion
         case fechaActualizacion
+        case turnos
+        case ultimoError
+        case versionPlan
     }
 
     /// Decodificacion tolerante: una tarea escrita por una version anterior de
@@ -637,6 +757,10 @@ public struct Tarea: Codable, Identifiable, Equatable {
             Bool.self,
             forKey: .verificadoPorCruce
         ) ?? false
+        turnos = try contenedor.decodeIfPresent([TurnoTarea].self, forKey: .turnos) ?? []
+        ultimoError = try contenedor.decodeIfPresent(String.self, forKey: .ultimoError)
+        // Un archivo anterior a B3-A no trae contador: 0 = sin plan publicado.
+        versionPlan = try contenedor.decodeIfPresent(Int.self, forKey: .versionPlan) ?? 0
         let creada = try contenedor.decodeIfPresent(Date.self, forKey: .fechaCreacion) ?? Date()
         fechaCreacion = creada
         fechaActualizacion = try contenedor.decodeIfPresent(

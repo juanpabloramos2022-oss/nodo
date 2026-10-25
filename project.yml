@@ -48,8 +48,8 @@ targets:
       path: Nodo/Info.plist
       properties:
         CFBundleDisplayName: Nodo
-        CFBundleShortVersionString: "0.3.1"
-        CFBundleVersion: "5"
+        CFBundleShortVersionString: "0.3.2"
+        CFBundleVersion: "6"
         CFBundleIconName: AppIcon
         LSRequiresIPhoneOS: true
         UIUserInterfaceStyle: Dark
@@ -72,8 +72,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nodo.ios
         PRODUCT_NAME: Nodo
-        MARKETING_VERSION: "0.3.1"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.3.2"
+        CURRENT_PROJECT_VERSION: "6"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
@@ -96,8 +96,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1"
         # Misma version que la app, solo para el Info.plist del bundle de tests.
-        MARKETING_VERSION: "0.3.1"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.3.2"
+        CURRENT_PROJECT_VERSION: "6"
 
   # Target de pruebas unitarias de la capa app. Usa la app como host para que
   # `@testable import Nodo` vea el estado y las vistas reales, y corre en el
@@ -125,8 +125,8 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nodo.app/Nodo"
         BUNDLE_LOADER: "$(TEST_HOST)"
         # Misma version que la app, solo para el Info.plist del bundle de tests.
-        MARKETING_VERSION: "0.3.1"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.3.2"
+        CURRENT_PROJECT_VERSION: "6"
 
 schemes:
   Nodo:

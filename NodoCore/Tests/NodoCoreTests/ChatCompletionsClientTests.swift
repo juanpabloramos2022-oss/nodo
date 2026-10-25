@@ -64,6 +64,67 @@ final class ChatCompletionsClientTests: XCTestCase {
         XCTAssertEqual(parametros["type"] as? String, "object")
     }
 
+    /// B2.1: las categorias tipadas viajan como `enum` en el esquema. Sin eso,
+    /// el modelo no sabe que valores estan permitidos y el rechazo del ejecutor
+    /// seria a ciegas.
+    func testLasCategoriasTipadasViajanComoEnumEnElEsquema() throws {
+        let peticion = try cliente(TransporteFalso()).construirPeticion(
+            mensajes: [ChatMessage(rol: .usuario, texto: "guarda")],
+            herramientas: [
+                Memoria.herramientaGuardar,
+                Memoria.herramientaActualizar,
+                Memoria.herramientaProponerSensible,
+                Memoria.herramientaBorrar
+            ]
+        )
+
+        let contenido = try cuerpo(peticion)
+        let herramientas = try XCTUnwrap(contenido["tools"] as? [[String: Any]])
+        XCTAssertEqual(herramientas.count, 4)
+        let funciones = herramientas.compactMap { $0["function"] as? [String: Any] }
+        XCTAssertEqual(
+            funciones.compactMap { $0["name"] as? String },
+            [
+                "save_memory",
+                "update_memory",
+                "propose_sensitive_memory",
+                "delete_memory"
+            ]
+        )
+
+        let guardar = try XCTUnwrap(
+            funciones.first { $0["name"] as? String == "save_memory" }
+        )
+        let propiedadesGuardar = try XCTUnwrap(
+            (guardar["parameters"] as? [String: Any])?["properties"]
+                as? [String: Any]
+        )
+        let categoria = try XCTUnwrap(
+            propiedadesGuardar["category"] as? [String: Any]
+        )
+        XCTAssertEqual(
+            categoria["enum"] as? [String],
+            ["durable_fact", "preference", "commitment"]
+        )
+        XCTAssertNil(
+            propiedadesGuardar["sensitive_category"],
+            "save_memory no puede declarar campo para una categoria sensible"
+        )
+
+        let borrar = try XCTUnwrap(
+            funciones.first { $0["name"] as? String == "delete_memory" }
+        )
+        let propiedadesBorrar = try XCTUnwrap(
+            (borrar["parameters"] as? [String: Any])?["properties"]
+                as? [String: Any]
+        )
+        XCTAssertEqual(Array(propiedadesBorrar.keys), ["entry_id"])
+        XCTAssertEqual(
+            (borrar["parameters"] as? [String: Any])?["required"] as? [String],
+            ["entry_id"]
+        )
+    }
+
     func testNoIncluyeToolsSiNoHayHerramientas() throws {
         let peticion = try cliente(TransporteFalso()).construirPeticion(
             mensajes: [ChatMessage(rol: .usuario, texto: "x")],
