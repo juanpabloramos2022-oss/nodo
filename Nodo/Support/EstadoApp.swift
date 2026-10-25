@@ -1508,6 +1508,25 @@ final class EstadoApp: ObservableObject {
         ResumenGasto.desde(libro: config.usoApp, ahora: ahora)
     }
 
+    /// Estadisticas locales de uso y gasto para la vista Gasto (IDEA5).
+    ///
+    /// Lee los sellos y los metadatos de las conversaciones PERSISTIDAS: los
+    /// hilos temporales quedan fuera por `Conversation.sePersiste`, asi que no
+    /// dejan ni un mensaje en el desglose. No se guarda ningun agregado: el
+    /// calculo ocurre al presentar la vista y nunca por token de streaming.
+    /// `conversaciones` y `ahora` se pueden pasar para que las pruebas sean
+    /// deterministas.
+    func estadisticasDeGasto(
+        en conversaciones: [Conversation]? = nil,
+        ahora: Date = Date()
+    ) -> EstadisticasGasto {
+        EstadisticasGasto.desde(
+            conversaciones: conversaciones ?? self.conversaciones,
+            proveedores: config.proveedores,
+            ahora: ahora
+        )
+    }
+
     /// Suma a los contadores y al libro de gasto el costo de un uso recibido.
     ///
     /// Es el punto UNICO de alimentacion: lo llaman los turnos normales

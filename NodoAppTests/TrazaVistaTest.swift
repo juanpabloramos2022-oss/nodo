@@ -3015,4 +3015,214 @@ final class TrazaVistaTest: XCTestCase {
         adjunto.lifetime = .keepAlways
         test.add(adjunto)
     }
+
+    // MARK: - (12) Traza de la partida IDEA5 (estadisticas locales)
+
+    /// Guion literal de IDEA5: un turno normal y sellos ya existentes.
+    ///
+    /// No hay llamada nueva a InferHub: el turno se reproduce con el transporte
+    /// guionizado y los sellos se siembran en conversaciones persistidas. El
+    /// Chat Temporal tambien se siembra y NO puede aparecer en el desglose.
+    private static let promptIDEA5 =
+        "¿Cuánto llevo gastado en este dispositivo?"
+    private static let respuestaIDEA5 =
+        "Tu gasto sellado local está en Mi Contexto, sección Gasto."
+
+    /// Fecha fija a mitad de mes: los tres tramos son estables en cualquier
+    /// zona horaria (dia 15/16).
+    private static let ahoraIDEA5 = Date(timeIntervalSince1970: 1_750_000_000)
+
+    /// Traza de IDEA5: la agregacion vive FUERA del hilo.
+    ///
+    /// El hilo queda en UserBubble + AssistantBubble. Abrir Gasto no anade ni
+    /// un elemento: se vuelve a capturar y el archivo no cambia ni un byte. La
+    /// evidencia de los agregados (Hoy / Este mes / Total historico con su
+    /// reparto por modelo) queda en `gasto-IDEA5.txt`, SIN bloque `TRAZA` (el
+    /// extractor solo acepta ui_transcript_<ID>.txt).
+    func testElGuionIDEA5ProduceLaTrazaDeEstadisticas() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        // Dos modelos con sellos propios: el reparto por modelo es el del guion.
+        var config = arnes.estado.config
+        config.proveedores[0].modelo = "inferhub/modelo-alfa"
+        let proveedorA = config.proveedores[0]
+        let proveedorB = ProviderConfig(
+            nombre: "Proveedor B",
+            baseURL: "https://api.b.test/v1",
+            modelo: "inferhub/modelo-beta"
+        )
+        config.proveedores.append(proveedorB)
+        arnes.estado.config = config
+
+        arnes.transporte.guionar(
+            texto: Self.respuestaIDEA5,
+            uso: UsoTokens(entrada: 40, salida: 12)
+        )
+        let inicio = Date(timeIntervalSince1970: 1_000)
+        let ruta = try Self.rutaDeTraza("ui_transcript_IDEA5.txt")
+        let sesion = try SesionTraza(ruta: ruta, inicio: inicio)
+
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        arnes.estado.enviar(Self.promptIDEA5)
+        try await arnes.esperarTurno()
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.etiquetasSuperiores(contenido),
+            ["UserBubble", "AssistantBubble"],
+            "La agregacion no es un elemento del hilo"
+        )
+        XCTAssertEqual(Self.cuenta(contenido, "TextSegment"), 1)
+        XCTAssertEqual(Self.cuenta(contenido, "MemoryLineNotice"), 0)
+        Self.comprobarConteosDeLaPuertaC(contenido)
+
+        // La agregacion se calcula al PRESENTAR la vista, sobre sellos ya
+        // existentes: el transporte no recibe ninguna llamada mas.
+        let sembradas = Self.conversacionesIDEA5(a: proveedorA, b: proveedorB)
+        let estadisticas = arnes.estado.estadisticasDeGasto(
+            en: sembradas,
+            ahora: Self.ahoraIDEA5
+        )
+        XCTAssertEqual(estadisticas.hoy.mensajes, 3)
+        XCTAssertEqual(estadisticas.hoy.usd, 2.25, accuracy: 1e-9)
+        XCTAssertEqual(estadisticas.mes.mensajes, 5)
+        XCTAssertEqual(estadisticas.mes.usd, 5.00, accuracy: 1e-9)
+        XCTAssertEqual(estadisticas.total.mensajes, 6)
+        XCTAssertEqual(estadisticas.total.usd, 8.00, accuracy: 1e-9)
+        XCTAssertEqual(
+            estadisticas.total.modelos.map(\.nombre),
+            ["modelo-alfa", "modelo-beta"]
+        )
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+
+        // Abrir Gasto no toca el hilo: capturar otra vez deja el archivo igual.
+        try sesion.capturar(arnes.estado.elementosVisiblesDelHilo(), en: inicio)
+        XCTAssertEqual(
+            try String(contentsOf: ruta, encoding: .utf8),
+            contenido,
+            "La agregacion vive fuera del hilo: el archivo no gana elementos"
+        )
+
+        // Evidencia de los agregados junto a la traza, sin bloque TRAZA.
+        let rutaGasto = ruta.deletingLastPathComponent()
+            .appendingPathComponent("gasto-IDEA5.txt")
+        try TrazaVista.escribir(
+            Self.lineasDeEstadisticas(estadisticas),
+            a: rutaGasto
+        )
+
+        Self.publicar(ruta, contenido, en: self)
+    }
+
+    /// Conversaciones sembradas del guion IDEA5: dos normales y una temporal.
+    ///
+    /// El mismo guion que reproduce `humos/replica_idea5.py`. Los sellos son
+    /// fijos, asi que los tres tramos y el reparto por modelo son deterministas.
+    private static func conversacionesIDEA5(
+        a: ProviderConfig,
+        b: ProviderConfig
+    ) -> [Conversation] {
+        let calendario = Calendar(identifier: .gregorian)
+        let otroDia = calendario.date(
+            byAdding: .day,
+            value: -1,
+            to: ahoraIDEA5
+        ) ?? ahoraIDEA5
+        let mesAnterior = calendario.date(
+            byAdding: .month,
+            value: -1,
+            to: ahoraIDEA5
+        ) ?? ahoraIDEA5
+
+        func sellado(
+            _ fecha: Date,
+            _ proveedorID: UUID?,
+            _ usd: Double
+        ) -> ChatMessage {
+            ChatMessage(
+                rol: .asistente,
+                texto: "Respuesta sellada.",
+                fecha: fecha,
+                tokensEntrada: 1_000,
+                tokensSalida: 500,
+                proveedorID: proveedorID,
+                costoSelladoUSD: usd
+            )
+        }
+
+        let normal1 = Conversation(
+            titulo: "Normal 1",
+            mensajes: [
+                sellado(ahoraIDEA5, a.id, 1.50),
+                sellado(ahoraIDEA5, b.id, 0.50),
+                sellado(otroDia, a.id, 2.00),
+                sellado(mesAnterior, a.id, 3.00)
+            ],
+            proveedorID: a.id
+        )
+        // El ultimo mensaje no trae proveedor propio: hereda el del chat.
+        let normal2 = Conversation(
+            titulo: "Normal 2",
+            mensajes: [
+                sellado(ahoraIDEA5, nil, 0.25),
+                sellado(otroDia, b.id, 0.75)
+            ],
+            proveedorID: b.id
+        )
+        // Chat Temporal: su sello NO puede entrar en ningun tramo.
+        let temporal = Conversation(
+            titulo: "Temporal",
+            mensajes: [sellado(ahoraIDEA5, a.id, 99.00)],
+            proveedorID: a.id,
+            esTemporal: true
+        )
+        return [normal1, normal2, temporal]
+    }
+
+    /// Lineas de evidencia de los agregados, identicas a la replica en Python.
+    private static func lineasDeEstadisticas(
+        _ estadisticas: EstadisticasGasto
+    ) -> [String] {
+        func dinero(_ valor: Double) -> String {
+            "$" + String(format: "%.4f", valor)
+        }
+        func mensajes(_ cuenta: Int) -> String {
+            "\(cuenta) " + (cuenta == 1 ? "mensaje" : "mensajes")
+        }
+        func tramo(_ etiqueta: String, _ valor: TramoEstadistica) -> [String] {
+            var salida = [
+                "\(etiqueta): \(mensajes(valor.mensajes)) | "
+                    + "total \(dinero(valor.usd))"
+            ]
+            if valor.modelos.isEmpty {
+                salida.append("  (sin sellos)")
+            } else {
+                for fila in valor.modelos {
+                    salida.append(
+                        "  \(fila.nombre): \(mensajes(fila.mensajes)) | "
+                            + "\(dinero(fila.usd))"
+                    )
+                }
+            }
+            return salida
+        }
+        var lineas = [
+            "== GASTO SELLADO LOCAL (IDEA5) ==",
+            "rotulo: \(EstadisticasGasto.rotulo)"
+        ]
+        lineas += tramo("hoy", estadisticas.hoy)
+        lineas += tramo("mes", estadisticas.mes)
+        lineas += tramo("total", estadisticas.total)
+        lineas.append("temporal: hilo temporal excluido del desglose")
+        return lineas
+    }
 }

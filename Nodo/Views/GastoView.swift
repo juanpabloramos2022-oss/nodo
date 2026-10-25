@@ -17,19 +17,24 @@ struct GastoView: View {
     @State private var topeTexto = ""
 
     var body: some View {
-        // El resumen se arma una sola vez por pasada: leer el libro crea un
-        // formateador de fecha por cada dia de la ventana de 30 dias.
-        pantalla(estado.resumenDeGasto())
+        // El resumen y las estadisticas se arman una sola vez por pasada, al
+        // presentar la vista. La agregacion IDEA5 NO vive en el streaming ni se
+        // guarda: se calcula aqui y solo aqui.
+        pantalla(estado.resumenDeGasto(), estado.estadisticasDeGasto())
             .onAppear { sincronizarCampoTope() }
     }
 
-    private func pantalla(_ resumen: ResumenGasto) -> some View {
+    private func pantalla(
+        _ resumen: ResumenGasto,
+        _ estadisticas: EstadisticasGasto
+    ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // IDEA4 va primero: es la configuracion del tope mensual y la
-                // lectura del acumulado contra el. IDEA5 agregara sus cifras
-                // como secciones nuevas de esta misma vista, sin duplicarla.
+                // lectura del acumulado contra el. IDEA5 es una seccion mas de
+                // esta misma vista, consecutiva a la Idea 4.
                 tarjetaTopeMensual(resumen)
+                tarjetaEstadisticas(estadisticas)
                 tarjetaHoy(resumen)
                 tarjetaMes(resumen)
                 tarjetaModelos(resumen)
@@ -166,6 +171,110 @@ struct GastoView: View {
 
     private func importeDelTope(_ valor: Double) -> String {
         "$" + String(format: "%.2f", valor)
+    }
+
+    // MARK: - Estadisticas locales (IDEA5)
+
+    /// Agregados locales de uso y gasto: Hoy, Este mes y Total historico.
+    ///
+    /// POR QUE vive en esta misma vista y no en otra pantalla: IDEA5 es
+    /// consecutiva a la Idea 4 y comparte la fuente sellada. El calculo ya
+    /// viene resuelto en `EstadisticasGasto` (NodoCore); aqui solo se pinta.
+    /// Las cifras jamas se presentan como factura del proveedor: el rotulo
+    /// visible es «Gasto sellado local».
+    private func tarjetaEstadisticas(_ estadisticas: EstadisticasGasto) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(EstadisticasGasto.rotulo)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Tema.textoSuave)
+                    .tracking(1.2)
+                    .accessibilityIdentifier("gasto-estadisticas-rotulo")
+
+                Text(
+                    "Agregado en este dispositivo sobre tus sellos. No es una "
+                        + "factura de tu proveedor."
+                )
+                .font(.caption2)
+                .foregroundStyle(Tema.textoSuave)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            tramoEstadistica("Hoy", estadisticas.hoy, clave: "hoy")
+            tramoEstadistica("Este mes", estadisticas.mes, clave: "mes")
+            tramoEstadistica(
+                "Total histórico",
+                estadisticas.total,
+                clave: "total"
+            )
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficie)
+        .clipShape(RoundedRectangle(cornerRadius: Tema.radio, style: .continuous))
+    }
+
+    /// Un tramo de las estadisticas: conteo total y reparto por modelo.
+    private func tramoEstadistica(
+        _ titulo: String,
+        _ tramo: TramoEstadistica,
+        clave: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(titulo.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Tema.textoSuave)
+                    .tracking(0.8)
+
+                Spacer(minLength: 8)
+
+                Text("\(tramo.mensajes) mensajes · \(importe(tramo.usd))")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("gasto-estadisticas-\(clave)")
+            }
+
+            if tramo.modelos.isEmpty {
+                Text("Todavía no hay sellos en este periodo.")
+                    .font(.caption2)
+                    .foregroundStyle(Tema.textoSuave)
+                    .accessibilityIdentifier("gasto-estadisticas-\(clave)-vacio")
+            } else {
+                ForEach(tramo.modelos) { fila in
+                    filaDeEstadistica(fila, clave: clave)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.superficieAlta)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// Una fila del reparto por modelo de un tramo.
+    private func filaDeEstadistica(
+        _ fila: FilaModeloEstadistica,
+        clave: String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(fila.nombre)
+                .font(.caption)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Text("\(fila.mensajes) mensajes")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Tema.textoSuave)
+
+            Text(importe(fila.usd))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.white)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("gasto-estadisticas-\(clave)-modelo-\(fila.clave)")
     }
 
     // MARK: - HOY
