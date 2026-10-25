@@ -28,24 +28,24 @@ struct PortapapelesSistema: Portapapeles {
 final class CopiadorCodigo: ObservableObject {
     @Published private(set) var copiado = false
 
-    let textoCrudo: String
     private let portapapeles: Portapapeles
     private let duracionConfirmacion: TimeInterval
     /// Numero de toques: una confirmacion vieja no apaga la de un toque nuevo.
     private var generacion = 0
 
     init(
-        textoCrudo: String,
         portapapeles: Portapapeles = PortapapelesSistema(),
         duracionConfirmacion: TimeInterval = 2.0
     ) {
-        self.textoCrudo = textoCrudo
         self.portapapeles = portapapeles
         self.duracionConfirmacion = duracionConfirmacion
     }
 
     /// Entrega el crudo exacto al portapapeles y muestra «Copiado».
-    func copiar() {
+    ///
+    /// El texto llega en cada toque (no se guarda en el init): si la respuesta
+    /// se regenera y el bloque cambia, el boton copia siempre el crudo vigente.
+    func copiar(_ textoCrudo: String) {
         portapapeles.escribir(textoCrudo)
         copiado = true
         generacion += 1
@@ -125,10 +125,7 @@ struct BloqueCodigo: View {
         self.lenguaje = lenguaje
         self.textoCrudo = textoCrudo
         _copiador = StateObject(
-            wrappedValue: CopiadorCodigo(
-                textoCrudo: textoCrudo,
-                portapapeles: portapapeles
-            )
+            wrappedValue: CopiadorCodigo(portapapeles: portapapeles)
         )
     }
 
@@ -169,7 +166,7 @@ struct BloqueCodigo: View {
                 Spacer(minLength: 0)
 
                 Button {
-                    copiador.copiar()
+                    copiador.copiar(textoCrudo)
                 } label: {
                     Text(copiador.copiado ? "Copiado" : "Copiar")
                         .font(.caption2.weight(.semibold))

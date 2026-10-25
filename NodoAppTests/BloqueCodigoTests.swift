@@ -101,6 +101,7 @@ final class BloqueCodigoTests: XCTestCase {
         ```
         """
         let elementos = try await proyectar(respuesta)
+        XCTAssertEqual(elementos.count, 2)
 
         guard case .burbujaAsistente(let segmentos) = elementos[1] else {
             return XCTFail("Falta la burbuja del asistente")
@@ -117,6 +118,7 @@ final class BloqueCodigoTests: XCTestCase {
 
     func testElBloqueSinLenguajeUsaLaCabeceraCodigo() async throws {
         let elementos = try await proyectar("```\nlet x = 1\n```")
+        XCTAssertEqual(elementos.count, 2)
 
         guard case .burbujaAsistente(let segmentos) = elementos[1],
               case .codigo(let lenguaje, let crudo) = segmentos[0] else {
@@ -148,13 +150,12 @@ final class BloqueCodigoTests: XCTestCase {
     func testElBotonCopiaSoloElCrudoYConfirmaCopiado() async throws {
         let doble = PortapapelesDoble()
         let copiador = CopiadorCodigo(
-            textoCrudo: Self.codigoSwift,
             portapapeles: doble,
             duracionConfirmacion: 0.05
         )
 
         XCTAssertFalse(copiador.copiado)
-        copiador.copiar()
+        copiador.copiar(Self.codigoSwift)
 
         XCTAssertEqual(doble.textos, [Self.codigoSwift])
         XCTAssertTrue(copiador.copiado)
@@ -169,14 +170,13 @@ final class BloqueCodigoTests: XCTestCase {
     func testUnToqueNuevoMantieneLaConfirmacion() async throws {
         let doble = PortapapelesDoble()
         let copiador = CopiadorCodigo(
-            textoCrudo: "let x = 1",
             portapapeles: doble,
             duracionConfirmacion: 0.4
         )
 
-        copiador.copiar()
+        copiador.copiar("let x = 1")
         try await Task.sleep(nanoseconds: 250_000_000)
-        copiador.copiar()
+        copiador.copiar("let x = 1")
 
         // La confirmacion vieja ya vencio, pero la nueva sigue viva.
         try await Task.sleep(nanoseconds: 250_000_000)

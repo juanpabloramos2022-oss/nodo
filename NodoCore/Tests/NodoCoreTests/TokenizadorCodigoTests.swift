@@ -101,8 +101,8 @@ final class TokenizadorCodigoTests: XCTestCase {
 
     func testCrudoVacioDevuelveListaVacia() {
         XCTAssertEqual(
-            TokenizadorCodigo.tokens(textoCrudo: "", lenguaje: "swift"),
-            []
+            TokenizadorCodigo.tokens(textoCrudo: "", lenguaje: "swift")?.count,
+            0
         )
     }
 
