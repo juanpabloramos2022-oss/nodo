@@ -67,6 +67,10 @@ HUMOS_EXIGIDOS = [
     # B2.4: freno sensible. Un turno con el prompt de salud del contrato: si
     # hay llamada de memoria, es una propuesta sensible y no un guardado.
     "b24-turno1.json",
+    # B2.5: tope de crecimiento. Un turno con la semilla de 50 cargada: el
+    # bloque inyecta 50 entradas y la creación se rechaza por tope, sin aviso
+    # de guardado en el hilo.
+    "b25-turno1.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -128,6 +132,9 @@ GUARDADOS_ESPERADOS = {
     # DENEGADA del turno 1 no deja linea; la propuesta de finanzas APROBADA del
     # turno 2 deja exactamente una. Total: 1.
     "B2.4": 1,
+    # B2.5 archiva 1 turno con la semilla de 50 cargada: la creacion se rechaza
+    # por tope, asi que no hay guardado y la traza no puede tener ninguna linea.
+    "B2.5": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).

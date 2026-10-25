@@ -320,6 +320,48 @@ class TrazaValidaTest(unittest.TestCase):
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
 
+    def test_b25_cierra_sin_lineas_de_memoria(self) -> None:
+        # B2.5 archiva 1 turno con la semilla de 50 cargada: el ejecutor
+        # rechaza la creacion por tope, no hubo guardado y la traza solo tiene
+        # las dos burbujas.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")',
+            '[t=0.2s] AssistantBubble("Entendido: tu color de prueba es el '
+            'verde.")',
+            '  [t=0.2s] TextSegment("Entendido: tu color de prueba es el '
+            'verde.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.5.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B2.5"), [])
+
+    def test_b25_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        # Una linea es el guardado que el tope tenia que haber rechazado.
+        lineas = [
+            '[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")',
+            '[t=0.1s] MemoryLineNotice(text: "Guardado en memoria: '
+            'mi color favorito de prueba es el verde", hasUndo: true)',
+            '[t=0.2s] AssistantBubble("Guardado.")',
+            '  [t=0.2s] TextSegment("Guardado.")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B2.5.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B2.5")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b25_exige_cero_lineas_y_su_humo_vivo(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.5"), 0)
+        self.assertIn("b25-turno1.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B2.5", verificador.PARTIDAS_CON_PUERTA_B)
+
+    def test_b25_no_debilita_las_expectativas_vigentes(self) -> None:
+        # B2.1 = 3, B2.2 = 0, B2.3 = 2 y B2.4 = 1 siguen intactas: la partida
+        # nueva solo suma su propia entrada.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.2"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
