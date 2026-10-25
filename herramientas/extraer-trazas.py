@@ -29,7 +29,7 @@ Reglas (deliberadamente ruidosas: la evidencia ausente nunca es silencio):
     resumenes de suites, `** TEST SUCCEEDED **`...) no se cuela en el .txt.
   - El nombre debe tener la forma `ui_transcript_<ID>.txt` o
     `ui_transcript_<ID>-<caso>.txt`, con `<ID>` un codigo de partida (P0.3,
-    B2.6, B4-COD...). Cualquier otro nombre es error.
+    B2.6, B4-COD, IDEA1...). Cualquier otro nombre es error.
   - Cero bloques es error (sin trazas no hay evidencia que revisar).
   - Un bloque vacio es error (una traza vacia no es evidencia).
   - Si un nombre se repite, gana el ultimo bloque y se avisa por stderr.
@@ -49,10 +49,12 @@ LOG_POR_DEFECTO = "xcodebuild-tests.log"
 # codigo de partida que ya usan `TrazaVistaTest` y la Puerta C; el `<caso>` es
 # el sufijo libre de las partidas que archivan una traza por caso. La forma se
 # valida sin cerrar la lista de partidas: una partida nueva no debe romper el
-# extractor, pero un nombre que no sea una traza si.
+# extractor, pero un nombre que no sea una traza si. Las partidas adicionales
+# de una version usan `IDEA<n>` (IDEA1, IDEA3...); el patron las admite todas
+# sin tocar este archivo otra vez.
 PATRON_NOMBRE_TRAZA = re.compile(
     r"^ui_transcript_"
-    r"(?P<id>P[0-9]+\.[0-9]+|B[0-9]+(?:\.[0-9]+)?(?:-[A-Za-z]+)?)"
+    r"(?P<id>P[0-9]+\.[0-9]+|B[0-9]+(?:\.[0-9]+)?(?:-[A-Za-z]+)?|IDEA[0-9]+)"
     r"(?:-(?P<caso>[A-Za-z0-9][A-Za-z0-9-]*))?"
     r"\.txt$"
 )

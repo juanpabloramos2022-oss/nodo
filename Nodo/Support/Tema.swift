@@ -33,9 +33,10 @@ enum Tema {
 /// ninguna representación posible en esta vista (`UI_INVARIANTS.md`, reglas 1-3).
 struct BurbujaMensaje: View {
     let mensaje: ChatMessage
-    /// Pie de la respuesta (tokens, costo, regenerar y copiar). Lo llevan
-    /// TODAS las respuestas del asistente que tienen consumo medido; el boton
-    /// de regenerar solo se muestra en la ultima (lo decide ChatView).
+    /// Pie de la respuesta (tokens, costo, lectura, regenerar y copiar). Lo
+    /// llevan TODAS las respuestas terminadas del asistente; sin consumo solo
+    /// desaparece el texto de consumo y el boton de regenerar sigue exigiendo
+    /// consumo (lo decide ChatView).
     var pie: PieRespuesta?
     /// Accion de "Ramificar chat desde aqui" (§5.4). Se ofrece sobre el
     /// contenedor de la burbuja, no sobre el texto: la seleccion de texto de
