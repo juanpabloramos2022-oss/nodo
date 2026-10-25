@@ -82,6 +82,10 @@ HUMOS_EXIGIDOS = [
     # bloque inyecta 50 entradas y la creación se rechaza por tope, sin aviso
     # de guardado en el hilo.
     "b25-turno1.json",
+    # B3-A: hilo conversacional de Tarea. Dos turnos: el encargo genera el plan
+    # sin herramientas y el ajuste produce la tarjeta v2, tambien sin tools.
+    "b3a-turno1.json",
+    "b3a-turno2.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -146,6 +150,9 @@ GUARDADOS_ESPERADOS = {
     # B2.5 archiva 1 turno con la semilla de 50 cargada: la creacion se rechaza
     # por tope, asi que no hay guardado y la traza no puede tener ninguna linea.
     "B2.5": 0,
+    # B3-A archiva 2 turnos del hilo de Tarea: el plan se genera en modo
+    # solo-texto, sin herramientas de memoria, asi que ningun turno deja linea.
+    "B3-A": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).

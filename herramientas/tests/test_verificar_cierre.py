@@ -362,6 +362,72 @@ class TrazaValidaTest(unittest.TestCase):
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
         self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
 
+    # --- B3-A: hilo conversacional de Tarea -------------------------------
+
+    def test_b3a_cierra_con_burbujas_tarjetas_y_cero_memoria(self) -> None:
+        # Guion literal de B3-A: encargo -> plan v1 -> ajuste -> plan v2.
+        # Ni una MemoryLineNotice: generar un plan no ejecuta herramientas.
+        lineas = [
+            '[t=0.0s] TaskHeader(estado: "Nueva tarea", pasoActual: 0, '
+            "pasosTotales: 0, costoSellado: \"0\")",
+            '[t=0.1s] TaskHeader(estado: "Planificando", pasoActual: 0, '
+            "pasosTotales: 0, costoSellado: \"0\")",
+            '[t=0.1s] UserBubble("Consulta https://example.com y proponé '
+            'guardar en Memoria una frase sobre ese dominio")',
+            '[t=0.2s] TaskHeader(estado: "Plan propuesto", pasoActual: 0, '
+            "pasosTotales: 0, costoSellado: \"0\")",
+            '[t=0.2s] PlanCard(pasos: ["Consultar el dominio", '
+            '"Proponer una frase"], version: 1, '
+            "acciones: [empezar, ajustar])",
+            '[t=0.3s] TaskHeader(estado: "Planificando", pasoActual: 0, '
+            "pasosTotales: 0, costoSellado: \"0\")",
+            '[t=0.3s] UserBubble("Que la frase sea corta")',
+            '[t=0.4s] TaskHeader(estado: "Plan propuesto", pasoActual: 0, '
+            "pasosTotales: 0, costoSellado: \"0\")",
+            '[t=0.4s] PlanCard(pasos: ["Consultar el dominio", '
+            '"Proponer una frase corta"], version: 2, '
+            "acciones: [empezar, ajustar])",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-A.txt", lineas)
+            self.assertEqual(verificador.verificar_traza(ruta, "B3-A"), [])
+
+    def test_b3a_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        lineas = [
+            '[t=0.0s] UserBubble("Consulta https://example.com")',
+            '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
+            "hasUndo: true)",
+            '[t=0.2s] PlanCard(pasos: ["Consultar"], version: 1, '
+            "acciones: [empezar, ajustar])",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-A.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B3-A")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
+    def test_b3a_exige_cero_lineas_y_sus_dos_humos(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-A"), 0)
+        self.assertIn("b3a-turno1.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("b3a-turno2.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B3-A", verificador.PARTIDAS_CON_PUERTA_B)
+        # La partida nueva no debilita a ninguna anterior.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.5"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+
+    def test_b3a_sin_tarjeta_de_plan_no_inventa_un_fallo_de_catalogo(self) -> None:
+        # El verificador no exige PlanCard por si mismo (esa expectativa vive
+        # en los tests del ViewModel); lo que SI no puede pasar es que una
+        # etiqueta fuera del catalogo se cuele en una traza de B3-A.
+        lineas = [
+            '[t=0.0s] UserBubble("Consulta https://example.com")',
+            '[t=0.1s] InstructionBox("Encargo")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(Path(tmp), "ui_transcript_B3-A.txt", lineas)
+            fallos = verificador.verificar_traza(ruta, "B3-A")
+            self.assertTrue(any("desconocida" in f for f in fallos), fallos)
+
     def test_p03_con_dos_lineas_de_memoria_falla_el_conteo_3(self) -> None:
         lineas = TRAZA_P03_VALIDA + [
             '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
