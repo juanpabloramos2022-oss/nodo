@@ -19,6 +19,22 @@ struct EstadoPrueba {
     /// Solo lo usa el estado `error-en-linea`: la app recorre su ruta normal de
     /// envio y la burbuja de error se pinta como consecuencia real del fallo.
     let motorFalla: Bool
+    /// Tareas sembradas en memoria para la pestana Tareas.
+    ///
+    /// Vacio en casi todos los estados: solo `tarea-aprobacion-pendiente`
+    /// necesita una tarea con libro y aprobacion viva.
+    let tareas: [Tarea]
+    /// Aprobacion vigente sembrada, si el estado la necesita.
+    ///
+    /// En un estado normal la crea el ToolLoop al pedir permiso; aqui se siembra
+    /// para poder probar con toque real la tarjeta del hilo sin red ni motor.
+    let solicitudAprobacion: SolicitudAprobacion?
+    /// Hilo que el estado de prueba da por abierto.
+    ///
+    /// Es el mismo valor que deja `TareaView` al aparecer. Se siembra para que
+    /// la red de seguridad de la raiz no presente la hoja modal encima de la
+    /// tarjeta antes de que el test navegue a la tarea.
+    let tareaEnPantalla: UUID?
 
     init(
         nombre: String,
@@ -26,7 +42,10 @@ struct EstadoPrueba {
         conversacion: Conversation,
         conversaciones: [Conversation],
         claveDePrueba: String? = nil,
-        motorFalla: Bool = false
+        motorFalla: Bool = false,
+        tareas: [Tarea] = [],
+        solicitudAprobacion: SolicitudAprobacion? = nil,
+        tareaEnPantalla: UUID? = nil
     ) {
         self.nombre = nombre
         self.config = config
@@ -34,6 +53,9 @@ struct EstadoPrueba {
         self.conversaciones = conversaciones
         self.claveDePrueba = claveDePrueba
         self.motorFalla = motorFalla
+        self.tareas = tareas
+        self.solicitudAprobacion = solicitudAprobacion
+        self.tareaEnPantalla = tareaEnPantalla
     }
 }
 
@@ -73,6 +95,12 @@ enum EstadosDePrueba {
         case errorEnLinea = "error-en-linea"
         /// Mi Contexto con Memoria, tope, skills y contadores de ejemplo.
         case miContexto = "mi-contexto"
+        /// Tarea en curso con una aprobacion pendiente en el hilo (deuda M2).
+        ///
+        /// Es el unico estado que siembra tareas: existe para probar con toque
+        /// real que la tarjeta de aprobacion se pinta junto a su fila y que sus
+        /// dos botones resuelven la decision.
+        case tareaAprobacionPendiente = "tarea-aprobacion-pendiente"
     }
 
     /// Devuelve el estado pedido por los argumentos de lanzamiento, o nil si la
@@ -272,6 +300,81 @@ enum EstadosDePrueba {
         proveedorID: proveedorChatID
     )
 
+    /// Tarea sembrada para la prueba CON TOQUE de la aprobacion en el hilo.
+    ///
+    /// El libro tiene dos pasos: el primero ya cerro con su costo sellado y el
+    /// segundo espera la decision. `estadoVisibleDePaso` proyecta esa fila como
+    /// «Esperando aprobación» porque `aprobacion == .pendiente`, que es la
+    /// misma condicion que usa el ToolLoop real.
+    private static let tareaAprobacionPendiente: Tarea = {
+        let plan = PlanTarea(
+            pasos: [
+                PasoPlan(orden: 1, texto: "Preparar el material de ejemplo."),
+                PasoPlan(orden: 2, texto: "Leer el enlace de ejemplo.")
+            ],
+            texto: "1. Preparar el material de ejemplo.\n"
+                + "2. Leer el enlace de ejemplo.",
+            fecha: fechaFija,
+            proveedorID: proveedorChatID,
+            version: 1
+        )
+
+        return Tarea(
+            id: id("00000000-0000-0000-0000-000000000050"),
+            instruccion: "Revisar el material de ejemplo",
+            estado: .enCurso,
+            pasos: [
+                Paso(
+                    id: id("00000000-0000-0000-0000-000000000052"),
+                    descripcion: "Preparar el material de ejemplo.",
+                    estado: .terminado,
+                    herramienta: "traer_url",
+                    argumentos: #"{"url":"https://ejemplo.test/material"}"#,
+                    resultado: "Material de ejemplo preparado.",
+                    url: "https://ejemplo.test/material",
+                    costoUSD: 0.012,
+                    fechaInicio: fechaFija,
+                    fechaFin: fechaFija.addingTimeInterval(2)
+                ),
+                Paso(
+                    id: id("00000000-0000-0000-0000-000000000053"),
+                    descripcion: "Leer el enlace de ejemplo.",
+                    estado: .pendiente,
+                    herramienta: "traer_url",
+                    argumentos: #"{"url":"https://ejemplo.test/informe"}"#,
+                    url: "https://ejemplo.test/informe",
+                    aprobacion: .pendiente,
+                    fechaInicio: fechaFija.addingTimeInterval(3)
+                )
+            ],
+            plan: plan,
+            proveedorID: proveedorChatID,
+            costoAcumuladoUSD: 0.012,
+            fechaCreacion: fechaFija,
+            fechaActualizacion: fechaFija.addingTimeInterval(3),
+            turnos: [
+                TurnoTarea(
+                    id: id("00000000-0000-0000-0000-000000000054"),
+                    rol: .usuario,
+                    texto: "Revisar el material de ejemplo",
+                    fecha: fechaFija
+                )
+            ]
+        )
+    }()
+
+    /// Solicitud vigente de la tarea sembrada.
+    ///
+    /// No hay ToolLoop vivo: el estado de prueba la siembra tal como la deja
+    /// `pedirAprobacion` antes de esperar la decision del dueno.
+    private static let solicitudAprobacionPendiente = SolicitudAprobacion(
+        id: id("00000000-0000-0000-0000-000000000051"),
+        tareaID: id("00000000-0000-0000-0000-000000000050"),
+        herramienta: "traer_url",
+        descripcion: "Leer el enlace de ejemplo",
+        detalle: #"{"url":"https://ejemplo.test/informe"}"#
+    )
+
     /// Memoria de ejemplo que se inyecta en el estado `chat`.
     private static let memoriaDeEjemplo = """
     Memoria de ejemplo: responde en español, con frases cortas y sin tecnicismos.
@@ -466,6 +569,19 @@ enum EstadosDePrueba {
                 config: configuracionMiContexto(),
                 conversacion: conversacionVaciaBienvenida,
                 conversaciones: [conversacionVaciaBienvenida]
+            )
+        case .tareaAprobacionPendiente:
+            return EstadoPrueba(
+                nombre: estado.rawValue,
+                config: configuracionChat(),
+                // El chat abierto no importa: la prueba navega a Tareas.
+                conversacion: conversacionVaciaBienvenida,
+                conversaciones: [conversacionVaciaBienvenida],
+                tareas: [tareaAprobacionPendiente],
+                solicitudAprobacion: solicitudAprobacionPendiente,
+                // Mismo valor que deja `TareaView` al abrir el hilo: la hoja
+                // modal de la raiz no tapa la tarjeta que se quiere probar.
+                tareaEnPantalla: tareaAprobacionPendiente.id
             )
         }
     }

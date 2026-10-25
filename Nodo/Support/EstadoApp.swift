@@ -430,9 +430,13 @@ final class EstadoApp: ObservableObject {
             // estado sembrado debe ser determinista y no ensuciar el telefono.
             self.ventanasPorModelo = [:]
             self.store = nil
-            // Las capturas no siembran tareas: la pestana Tareas es un espacio
-            // propio de TASK.1 y no forma parte del estado de prueba anterior.
-            self.tareas = []
+            // Solo el estado de la deuda M2 siembra tareas y una aprobacion
+            // viva; los demas estados dejan la pestana Tareas vacia.
+            self.tareas = prueba.tareas
+            self.solicitudAprobacion = prueba.solicitudAprobacion
+            // El hilo que el estado da por abierto evita que la red de
+            // seguridad de la raiz presente la hoja modal antes de navegar.
+            self.tareaEnPantalla = prueba.tareaEnPantalla
             sincronizarSkills()
             return
         }
@@ -2595,14 +2599,52 @@ final class EstadoApp: ObservableObject {
 
     private func resolverAprobacion(_ aprobada: Bool) {
         guard let continuacion = continuacionAprobacion else {
+            let solicitud = solicitudAprobacion
             solicitudAprobacion = nil
             idSolicitudAprobacion = nil
+            // Un estado sembrado no tiene ToolLoop que reanude. Se aplica al
+            // libro el efecto inmediato y determinista de la decision para que
+            // la fila del hilo refleje lo que el dueno acaba de elegir.
+            if estadoDePrueba != nil, let solicitud {
+                aplicarDecisionSembrada(aprobada, solicitud: solicitud)
+            }
             return
         }
         continuacionAprobacion = nil
         solicitudAprobacion = nil
         idSolicitudAprobacion = nil
         continuacion.resume(returning: aprobada)
+    }
+
+    /// Cierra en el libro sembrado el paso que esperaba la aprobacion.
+    ///
+    /// Reproduce SOLO lo que el ToolLoop hace en el acto: al denegar marca el
+    /// paso Denegado; al aprobar lo deja En curso, listo para ejecutar la
+    /// herramienta. Lo que sigue despues (resultado de la herramienta, otra
+    /// vuelta del modelo) necesita el bucle vivo y no se simula aqui.
+    private func aplicarDecisionSembrada(
+        _ aprobada: Bool,
+        solicitud: SolicitudAprobacion
+    ) {
+        guard tareas.contains(where: { $0.id == solicitud.tareaID }) else { return }
+        modificarTarea(id: solicitud.tareaID) { tarea in
+            guard let indice = tarea.pasos.firstIndex(
+                where: { $0.aprobacion == .pendiente }
+            ) else { return }
+            tarea.pasos[indice].aprobacion = aprobada
+                ? EstadoAprobacion.aprobada
+                : EstadoAprobacion.denegada
+            tarea.pasos[indice].estado = aprobada
+                ? EstadoPaso.enCurso
+                : EstadoPaso.denegado
+            if aprobada {
+                tarea.pasos[indice].resultado = nil
+                tarea.pasos[indice].fechaFin = nil
+            } else {
+                tarea.pasos[indice].resultado = "denegado por el dueño"
+                tarea.pasos[indice].fechaFin = Date()
+            }
+        }
     }
 
     // MARK: - Hoja de propuesta sensible de Chat (B2.4)
