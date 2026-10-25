@@ -1696,6 +1696,23 @@ final class EstadoApp: ObservableObject {
         conversacion = otra
     }
 
+    /// Conversacion que abre un toque sobre una fila de la lista (B4-BUS).
+    ///
+    /// POR QUE vive aqui y no en la vista: el destino de navegacion de la
+    /// pestana Chats se resuelve contra la LISTA persistida, no contra la
+    /// conversacion abierta, porque la ruta solo guarda ids. Se acepta tambien
+    /// la conversacion abierta y las recien creadas (aun sin guardar) para no
+    /// romper el camino de "+ Nuevo". Tocar un resultado de busqueda abre ESA
+    /// conversacion: es la diferencia deliberada 1 de §2.3 (no se salta al
+    /// mensaje exacto ni se resalta la palabra dentro del hilo).
+    func conversacionParaAbrir(
+        _ id: UUID,
+        nuevas: [UUID: Conversation] = [:]
+    ) -> Conversation? {
+        conversaciones.first(where: { $0.id == id })
+            ?? (conversacion.id == id ? conversacion : nuevas[id])
+    }
+
     /// Crea una conversacion nueva con el historial clonado hasta `mensaje`
     /// (inclusive) y entra directamente en ella (§5.4).
     ///
@@ -4755,31 +4772,67 @@ final class EstadoApp: ObservableObject {
         return resultado
     }
 
+    /// Filas de la pestana Chats para un termino de busqueda (B4-BUS).
+    ///
+    /// Es la proyeccion UNICA de la busqueda: cada fila trae el elemento
+    /// visible (titulo + vista previa, sin identificadores) y la conversacion
+    /// que abre el toque. La consulta la resuelve
+    /// `HistorialConversaciones.buscar`, la misma que usa la vista, asi que
+    /// orden, segmento y coincidencia tienen una sola fuente de verdad.
+    ///
+    /// Con el termino vacio devuelve la lista completa en su orden habitual
+    /// (fijadas primero y, dentro de cada grupo, actividad reciente): §2.2
+    /// exige que sin busqueda no falte ni se mueva ninguna conversacion.
+    func filasDeBusqueda(
+        _ termino: String,
+        en conversaciones: [Conversation]? = nil,
+        segmento: SegmentoChats? = nil
+    ) -> [FilaBusquedaVisible] {
+        let lista = conversaciones ?? self.conversaciones
+        let consulta = termino.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HistorialConversaciones.buscar(
+            lista,
+            termino: consulta,
+            segmento: segmento
+        ).map { conversacion in
+            FilaBusquedaVisible(
+                conversacion: conversacion,
+                elemento: .resultadoBusqueda(
+                    titulo: conversacion.titulo,
+                    vistaPrevia: Self.vistaPreviaDe(
+                        conversacion,
+                        termino: consulta
+                    )
+                )
+            )
+        }
+    }
+
     /// Que se ve en la pestana Chats para un termino de busqueda.
     ///
     /// Una fila se identifica por titulo y vista previa de texto, nunca por un
     /// identificador interno. Si no hay coincidencias se devuelve el estado
-    /// vacio explicito: la pestana no queda en blanco sin explicacion.
+    /// vacio explicito: la pestana no queda en blanco sin explicacion. Ese
+    /// estado vacio SOLO tiene sentido con un termino escrito: con el campo
+    /// vacio y ninguna conversacion la lista es la de siempre (vacia), no un
+    /// "sin resultados" de una busqueda que nadie hizo.
     func elementosVisiblesDeBusqueda(
         _ termino: String,
-        en conversaciones: [Conversation]? = nil
+        en conversaciones: [Conversation]? = nil,
+        segmento: SegmentoChats? = nil
     ) -> [ElementoBusquedaVisible] {
-        let lista = conversaciones ?? self.conversaciones
         let consulta = termino.trimmingCharacters(in: .whitespacesAndNewlines)
-        let coincidentes = lista.filter {
-            HistorialConversaciones.coincide($0, con: consulta)
+        let filas = filasDeBusqueda(
+            consulta,
+            en: conversaciones,
+            segmento: segmento
+        )
+
+        if filas.isEmpty {
+            return consulta.isEmpty ? [] : [.sinResultados(termino: consulta)]
         }
 
-        guard !coincidentes.isEmpty else {
-            return [.sinResultados(termino: consulta)]
-        }
-
-        return coincidentes.map { conversacion in
-            .resultadoBusqueda(
-                titulo: conversacion.titulo,
-                vistaPrevia: Self.vistaPreviaDe(conversacion, termino: consulta)
-            )
-        }
+        return filas.map(\.elemento)
     }
 
     /// Estado visible de la cabecera de una tarea.

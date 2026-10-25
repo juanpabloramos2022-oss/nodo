@@ -27,15 +27,11 @@ struct ChatsRaizView: View {
                 alTemporal: { nuevaTemporal() }
             )
             .navigationDestination(for: UUID.self) { id in
-                // El destino se resuelve contra la LISTA, no contra la
-                // conversacion abierta: la ruta solo guarda ids y la
-                // conversacion abierta puede ser otra (o ninguna). Un chat
-                // recien creado por /nuevo aun no esta guardado en la lista,
-                // asi que se acepta la conversacion abierta si su id coincide.
-                let conversacion = estado.conversaciones.first(where: { $0.id == id })
-                    ?? (estado.conversacion.id == id ? estado.conversacion : nuevas[id])
-
-                if let conversacion {
+                // El destino se resuelve con la misma regla que usa el estado
+                // (lista persistida, conversacion abierta o chat recien creado
+                // aun sin guardar). Un resultado de busqueda abre ESA
+                // conversacion; la ruta solo guarda ids.
+                if let conversacion = estado.conversacionParaAbrir(id, nuevas: nuevas) {
                     ChatView(
                         alGestionarModelos: {
                             bajarTeclado()

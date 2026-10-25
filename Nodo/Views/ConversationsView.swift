@@ -13,6 +13,12 @@ import NodoCore
 /// dentro de cada grupo, actividad reciente) y el segmento Activos/Archivados
 /// salen de NodoCore. La vista solo decide que segmento esta seleccionado y
 /// pinta los datos ya resueltos de cada fila.
+///
+/// B4-BUS: la busqueda tampoco se resuelve aqui. El campo escribe en `busqueda`
+/// y la vista pinta lo que devuelve la proyeccion de la app
+/// (`EstadoApp.filasDeBusqueda`), que es la misma consulta de solo lectura que
+/// usa `elementosVisiblesDeBusqueda`. Con el campo vacio esa proyeccion es la
+/// lista completa de siempre, en su orden habitual.
 struct ConversationsView: View {
     @EnvironmentObject private var estado: EstadoApp
     let alNuevo: (Bool) -> Void
@@ -30,17 +36,33 @@ struct ConversationsView: View {
     /// toque normal del mismo boton cree ademas un chat con memoria.
     @State private var ultimaPulsacionLarga: Date?
 
-    /// Conversaciones del segmento activo, ya filtradas por la busqueda y
-    /// ordenadas por el nucleo (fijadas arriba, luego actividad reciente).
-    private var conversacionesVisibles: [Conversation] {
-        let coincidentes = estado.conversaciones.filter {
-            HistorialConversaciones.coincide($0, con: busqueda)
+    /// Filas del segmento activo ya proyectadas: la consulta de busqueda
+    /// (solo lectura) mas el segmento y el orden del nucleo. Cada fila trae su
+    /// elemento visible (titulo + vista previa) y la conversacion que abre.
+    private var filasVisibles: [FilaBusquedaVisible] {
+        estado.filasDeBusqueda(busqueda, segmento: segmento)
+    }
+
+    /// Proyeccion visible de la busqueda. Se usa para el estado vacio
+    /// explicito, que es un elemento del catalogo (`SearchEmptyState`), no un
+    /// texto suelto de la vista.
+    private var proyeccionBusqueda: [ElementoBusquedaVisible] {
+        estado.elementosVisiblesDeBusqueda(busqueda, segmento: segmento)
+    }
+
+    /// Termino del estado vacio, o nil si hay filas que pintar.
+    private var terminoSinResultados: String? {
+        guard let primero = proyeccionBusqueda.first,
+              case .sinResultados(let termino) = primero
+        else {
+            return nil
         }
-        let delSegmento = HistorialConversaciones.enSegmento(
-            segmento,
-            de: coincidentes
-        )
-        return HistorialConversaciones.ordenar(delSegmento)
+        return termino
+    }
+
+    /// Termino escrito, ya recortado, tal como lo ve la proyeccion.
+    private var terminoEscrito: String {
+        busqueda.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -173,15 +195,16 @@ struct ConversationsView: View {
 
     private var lista: some View {
         List {
-            ForEach(conversacionesVisibles) { conversacion in
-                filaConAcciones(conversacion)
+            ForEach(filasVisibles, id: \.conversacion.id) { fila in
+                filaConAcciones(fila.conversacion, elemento: fila.elemento)
             }
 
-            if conversacionesVisibles.isEmpty {
-                Text("Sin resultados")
-                    .font(.footnote)
-                    .foregroundStyle(Tema.textoSuave)
+            // Sin coincidencias la pestana no queda en blanco: se pinta el
+            // estado vacio de la proyeccion con el termino buscado.
+            if let termino = terminoSinResultados {
+                SearchEmptyState(termino: termino)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -192,9 +215,12 @@ struct ConversationsView: View {
     }
 
     @ViewBuilder
-    private func filaConAcciones(_ conversacion: Conversation) -> some View {
+    private func filaConAcciones(
+        _ conversacion: Conversation,
+        elemento: ElementoBusquedaVisible
+    ) -> some View {
         NavigationLink(value: conversacion.id) {
-            fila(conversacion)
+            fila(conversacion, elemento: elemento)
         }
         .listRowBackground(Tema.superficie)
         // Deslizar a la derecha: Fijar/Desfijar. Renombrar vive en la
@@ -291,83 +317,51 @@ struct ConversationsView: View {
     }
 
     /// Fila en dos lineas: titulo + pastilla de costo, y vista previa + ultimo
-    /// modelo usado. Los datos salen de `datosFila` del nucleo; la vista no
+    /// modelo usado.
+    ///
+    /// El texto visible (titulo y vista previa) sale del elemento proyectado;
+    /// con el campo vacio la proyeccion devuelve la vista previa de siempre
+    /// (ultimo mensaje, 80 caracteres), asi que la lista sin busqueda se ve
+    /// exactamente igual que antes. Con un termino escrito la vista previa es
+    /// la del mensaje que coincide, para que el resultado se explique solo.
+    /// El costo y el modelo los resuelve `datosFila` del nucleo: la vista no
     /// calcula costos ni deduce modelos.
-    private func fila(_ conversacion: Conversation) -> some View {
+    private func fila(
+        _ conversacion: Conversation,
+        elemento: ElementoBusquedaVisible
+    ) -> some View {
         let datos = HistorialConversaciones.datosFila(
             de: conversacion,
             proveedores: estado.config.proveedores
         )
-        let vistaPrevia = datos.vistaPrevia.isEmpty
-            ? (conversacion.mensajes.isEmpty ? "Sin mensajes" : "…")
-            : datos.vistaPrevia
+        let vistaPrevia: String
+        let titulo: String
 
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                if estado.conversacion.id == conversacion.id {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(Tema.acento)
-                }
-
-                Text(conversacion.titulo)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-
-                if conversacion.fijada {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .accessibilityLabel("Fijado")
-                        .accessibilityIdentifier("fijado-fila")
-                }
-
-                Spacer(minLength: 8)
-
-                // Solo se pinta la pastilla cuando el nucleo pudo resolver el
-                // costo con los precios del proveedor de ESTE chat.
-                if let costo = datos.costo {
-                    Text("≈$\(String(format: "%.4f", costo))")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Tema.acento)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Tema.acento.opacity(0.15))
-                        .clipShape(Capsule())
-                        .layoutPriority(2)
-                        .accessibilityIdentifier("costo-fila")
-                }
-            }
-
-            HStack(spacing: 8) {
-                Text(vistaPrevia)
-                    .font(.caption)
-                    .foregroundStyle(Tema.textoSuave)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-
-                Spacer(minLength: 8)
-
-                // Etiqueta del ultimo modelo usado en esta conversacion, con
-                // el nombre limpio que ya resolvio el nucleo.
-                if !datos.modelo.isEmpty {
-                    Text(datos.modelo)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Tema.acento.opacity(0.9))
-                        .lineLimit(1)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(Tema.acento.opacity(0.12))
-                        .clipShape(Capsule())
-                        .layoutPriority(2)
-                        .accessibilityIdentifier("modelo-fila")
-                }
-            }
+        if case .resultadoBusqueda(let tituloProyectado, let previaProyectada) = elemento,
+           !terminoEscrito.isEmpty {
+            titulo = tituloProyectado
+            vistaPrevia = previaProyectada.isEmpty
+                ? Self.previstaDeRespaldo(conversacion)
+                : previaProyectada
+        } else {
+            titulo = conversacion.titulo
+            vistaPrevia = datos.vistaPrevia.isEmpty
+                ? Self.previstaDeRespaldo(conversacion)
+                : datos.vistaPrevia
         }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+
+        return SearchResultRow(
+            titulo: titulo,
+            vistaPrevia: vistaPrevia,
+            fijada: conversacion.fijada,
+            costo: datos.costo,
+            modelo: datos.modelo,
+            esActual: estado.conversacion.id == conversacion.id
+        )
+    }
+
+    /// Texto de respaldo de la segunda linea cuando no hay vista previa.
+    private static func previstaDeRespaldo(_ conversacion: Conversation) -> String {
+        conversacion.mensajes.isEmpty ? "Sin mensajes" : "…"
     }
 }

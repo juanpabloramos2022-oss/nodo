@@ -2145,6 +2145,132 @@ final class TrazaVistaTest: XCTestCase {
         )
     }
 
+    // MARK: - (6) Traza de la partida B4-BUS (busqueda local)
+
+    /// Prompt literal del contrato X de B4-BUS (nivel 2 de la ficha).
+    private static let promptB4BUS =
+        "Di solo esto: la palabra de prueba de búsqueda es ZAFIRO-4."
+
+    /// Respuesta de respaldo si no esta `NODO_HUMOS_DIR` con el JSON vivo.
+    ///
+    /// Es el texto archivado en `humos/b4bus-turno1.json`; el test usa el
+    /// archivo cuando existe y esta constante cuando CI corre sin humos.
+    private static let respuestaB4BUS =
+        "la palabra de prueba de búsqueda es ZAFIRO-4."
+
+    /// Traza de la busqueda: una fila con la conversacion sembrada y el estado
+    /// vacio de un termino ausente.
+    ///
+    /// El turno se reproduce con el JSON vivo archivado (o su texto literal en
+    /// CI) y deja la conversacion PERSISTIDA con ZAFIRO-4. Despues se busca
+    /// sobre el estado real de la app: la proyeccion devuelve exactamente esa
+    /// conversacion, el termino ausente devuelve el estado vacio y la busqueda
+    /// no genera ninguna peticion de red. La traza NO lleva ids ni UUIDs: la
+    /// fila se identifica por titulo y vista previa.
+    func testElGuionB4BUSProduceLaTrazaDeBusqueda() async throws {
+        let arnes = try ArnesApp()
+        defer { arnes.limpiar() }
+        arnes.estado.config.memoria = []
+        XCTAssertTrue(
+            arnes.estado.guardarClave("clave-de-prueba", para: arnes.proveedor)
+        )
+
+        if let archivo = Self.rutaDelHumo("b4bus-turno1.json") {
+            try arnes.transporte.guionarDesdeArchivo(archivo)
+        } else {
+            arnes.transporte.guionar(
+                texto: Self.respuestaB4BUS,
+                uso: UsoTokens(entrada: 30, salida: 12)
+            )
+        }
+
+        arnes.estado.enviar(Self.promptB4BUS)
+        try await arnes.esperarTurno()
+        XCTAssertEqual(arnes.transporte.guionesPendientes, 0)
+        XCTAssertEqual(arnes.transporte.cantidadDePeticiones, 1)
+
+        // La conversacion quedo persistida con la palabra sembrada.
+        arnes.estado.recargarConversaciones()
+        XCTAssertEqual(arnes.estado.conversaciones.count, 1)
+        let sembrada = try XCTUnwrap(arnes.estado.conversaciones.first)
+        XCTAssertTrue(
+            sembrada.mensajes.contains { $0.texto.contains("ZAFIRO-4") },
+            "El turno vivo deja ZAFIRO-4 en el historial persistido"
+        )
+
+        // Buscar: solo lectura y sin red.
+        let peticionesAntes = arnes.transporte.cantidadDePeticiones
+        let inicio = Date()
+        let encontradas = arnes.estado.elementosVisiblesDeBusqueda(
+            "ZAFIRO-4",
+            segmento: .activos
+        )
+        let ausente = arnes.estado.elementosVisiblesDeBusqueda(
+            "no-existe-9",
+            segmento: .activos
+        )
+        XCTAssertEqual(
+            arnes.transporte.cantidadDePeticiones,
+            peticionesAntes,
+            "Buscar no genera ninguna peticion de red"
+        )
+
+        XCTAssertEqual(
+            encontradas,
+            [
+                .resultadoBusqueda(
+                    titulo: sembrada.titulo,
+                    vistaPrevia: Self.promptB4BUS
+                )
+            ],
+            "Exactamente la conversacion sembrada, con su titulo y su vista previa"
+        )
+        XCTAssertEqual(ausente, [.sinResultados(termino: "no-existe-9")])
+
+        let ruta = try Self.rutaDeTraza("ui_transcript_B4-BUS.txt")
+        var lineas = TrazaVista.lineasBusqueda(
+            encontradas,
+            t: TrazaVista.tiempo(inicio, desde: inicio)
+        )
+        lineas += TrazaVista.lineasBusqueda(
+            ausente,
+            t: TrazaVista.tiempo(Date(), desde: inicio)
+        )
+        try TrazaVista.escribir(lineas, a: ruta)
+
+        let contenido = try String(contentsOf: ruta, encoding: .utf8)
+        XCTAssertEqual(
+            Self.cuenta(contenido, "SearchResultRow"),
+            1,
+            "Una fila: la conversacion sembrada"
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "SearchEmptyState"),
+            1,
+            "Y el estado vacio del termino ausente"
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "SearchResultRow(titulo: \"\(sembrada.titulo)\", "
+                    + "vistaPrevia: \"\(Self.promptB4BUS)\")"
+            ),
+            contenido
+        )
+        XCTAssertTrue(
+            contenido.contains(
+                "SearchEmptyState(termino: \"no-existe-9\")"
+            ),
+            contenido
+        )
+        XCTAssertEqual(
+            Self.cuenta(contenido, "MemoryLineNotice"),
+            0,
+            "La traza de busqueda no lleva lineas de memoria"
+        )
+        Self.comprobarConteosDeLaPuertaC(contenido)
+        Self.publicar(ruta, contenido, en: self)
+    }
+
     /// Un turno de B4-COD: prompt literal, respuesta viva guionizada y traza.
     ///
     /// La proyeccion tiene que entregar DOS bloques independientes con su
