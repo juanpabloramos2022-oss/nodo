@@ -91,6 +91,11 @@ HUMOS_EXIGIDOS = [
     # paso 2. Ambas llevan los desplazamientos de reloj de pared por evento.
     "b3b-corrida1-humo.json",
     "b3b-corrida2-humo.json",
+    # B4-COD: bloques de codigo. Dos turnos vivos con el prompt literal del
+    # contrato X (Python y Swift); cada respuesta trae su bloque cercado con
+    # lenguaje. La peticion pide combo/deepseek-v4-1-flash.
+    "b4cod-python.json",
+    "b4cod-swift.json",
     "task-humo-1.json",
     "task-humo-2.json",
     "task-humo-3.json",
@@ -162,6 +167,9 @@ GUARDADOS_ESPERADOS = {
     # escritura de memoria es la propuesta DENEGADA del paso 2, que no deja
     # linea de aviso (el conteo de guardados se refiere a escrituras reales).
     "B3-B": 0,
+    # B4-COD archiva dos trazas (una por caso, Python y Swift): ningun turno
+    # pide guardar en Memoria, asi que no puede aparecer ni una linea de aviso.
+    "B4-COD": 0,
 }
 
 # Lista CERRADA de nombres tecnicos de herramienta (conteo 4 de G-04).

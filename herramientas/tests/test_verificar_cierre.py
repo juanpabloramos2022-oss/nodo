@@ -969,5 +969,83 @@ class BateriaB26Test(unittest.TestCase):
             )
 
 
+    # --- B4-COD: bloques de codigo con resaltado y copiado -----------------
+
+    def test_b4cod_exige_cero_lineas_y_sus_dos_humos(self) -> None:
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B4-COD"), 0)
+        self.assertIn("b4cod-python.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("b4cod-swift.json", verificador.HUMOS_EXIGIDOS)
+        self.assertIn("B4-COD", verificador.PARTIDAS_CON_PUERTA_B)
+        # B4-COD archiva una traza por caso; no se duplica el conjunto.
+        self.assertIn("B4-COD", verificador.PARTIDAS_CON_VARIAS_TRAZAS)
+        self.assertEqual(
+            list(verificador.PARTIDAS_CON_VARIAS_TRAZAS).count("B4-COD"),
+            1,
+        )
+        # La partida nueva no debilita ninguna expectativa vigente.
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-B"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B3-A"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.5"), 0)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.4"), 1)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.3"), 2)
+        self.assertEqual(verificador.GUARDADOS_ESPERADOS.get("B2.1"), 3)
+
+    def test_b4cod_acepta_los_dos_nombres_por_caso(self) -> None:
+        for nombre in (
+            "ui_transcript_B4-COD-python.txt",
+            "ui_transcript_B4-COD-swift.txt",
+        ):
+            self.assertTrue(
+                verificador.nombre_traza_valido(nombre),
+                nombre,
+            )
+
+    def test_b4cod_traza_con_dos_bloques_cierra(self) -> None:
+        lineas = [
+            '[t=0.0s] UserBubble("Escribime una función en Python que sume '
+            'dos números enteros y devuélvela en un bloque de código.")',
+            '[t=0.1s] AssistantBubble("def sumar_enteros(a: int, b: int) '
+            '-> int:\\n    return a + b")',
+            '  [t=0.1s] CodeBlock(lenguaje: "python", textoCrudo: '
+            '"def sumar_enteros(a: int, b: int) -> int:\\n    return a + b")',
+            '  [t=0.1s] TextSegment("Uso:")',
+            '  [t=0.1s] CodeBlock(lenguaje: "python", textoCrudo: '
+            '"print(sumar_enteros(3, 5))  # 8")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(
+                Path(tmp), "ui_transcript_B4-COD-python.txt", lineas
+            )
+            self.assertEqual(verificador.verificar_traza(ruta, "B4-COD"), [])
+
+    def test_b4cod_codeblock_suelto_falla(self) -> None:
+        lineas = [
+            '[t=0.0s] UserBubble("Escribime una función en Swift")',
+            '[t=0.1s] CodeBlock(lenguaje: "swift", textoCrudo: "let x = 1")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(
+                Path(tmp), "ui_transcript_B4-COD-swift.txt", lineas
+            )
+            fallos = verificador.verificar_traza(ruta, "B4-COD")
+            self.assertTrue(
+                any("solo es valida anidada" in f for f in fallos), fallos
+            )
+
+    def test_b4cod_con_una_linea_de_memoria_falla_el_conteo_3(self) -> None:
+        lineas = [
+            '[t=0.0s] UserBubble("Escribime una función en Swift")',
+            '[t=0.1s] MemoryLineNotice(text: "Guarde en Memoria: x", '
+            "hasUndo: true)",
+            '[t=0.2s] AssistantBubble("let x = 1")',
+            '  [t=0.2s] CodeBlock(lenguaje: "swift", textoCrudo: "let x = 1")',
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = escribir(
+                Path(tmp), "ui_transcript_B4-COD-swift.txt", lineas
+            )
+            fallos = verificador.verificar_traza(ruta, "B4-COD")
+            self.assertTrue(any("Conteo 3" in f for f in fallos), fallos)
+
 if __name__ == "__main__":
     unittest.main()
