@@ -1,0 +1,7 @@
+[t=0.0s] UserBubble("¿Cómo hago un bucle for del 1 al 5 en Python?")
+[t=0.0s] AssistantBubble("En Python, el bucle más directo es con `range()`:\nfor i in range(1, 6):\n    print(i)\n`range(1, 6)` genera los números 1, 2, 3, 4, 5 (el límite superior nunca se incluye).\n\nAlgunas variantes útiles:\n# Del 1 al 5 en una sola línea (lista)\nnumeros = list(range(1, 6))   # [1, 2, 3, 4, 5]\n\n# Con paso 2: 1, 3, 5\nfor i in range(1, 6, 2):\n    print(i)\n\n# Si solo necesitas repetir 5 veces y el número no importa\nfor _ in range(5):\n    print(\"hola\")\nEl error típico es escribir `range(1, 5)`, que se queda en el 4.")
+  [t=0.0s] TextSegment("En Python, el bucle más directo es con `range()`:")
+  [t=0.0s] CodeBlock(lenguaje: "python", textoCrudo: "for i in range(1, 6):\n    print(i)")
+  [t=0.0s] TextSegment("`range(1, 6)` genera los números 1, 2, 3, 4, 5 (el límite superior nunca se incluye).\n\nAlgunas variantes útiles:")
+  [t=0.0s] CodeBlock(lenguaje: "python", textoCrudo: "# Del 1 al 5 en una sola línea (lista)\nnumeros = list(range(1, 6))   # [1, 2, 3, 4, 5]\n\n# Con paso 2: 1, 3, 5\nfor i in range(1, 6, 2):\n    print(i)\n\n# Si solo necesitas repetir 5 veces y el número no importa\nfor _ in range(5):\n    print(\"hola\")")
+  [t=0.0s] TextSegment("El error típico es escribir `range(1, 5)`, que se queda en el 4.")
