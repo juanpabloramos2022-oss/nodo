@@ -26,8 +26,8 @@ struct FilaAprobacionEnHilo: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(
-                "Si deniegas, no se escribirá nada y la tarea seguirá con la "
-                    + "respuesta «denegado por el dueño»."
+                "Si rechazas, no se escribirá nada y la tarea no ejecutará "
+                    + "la herramienta."
             )
             .font(.caption)
             .foregroundStyle(Tema.textoSuave)
@@ -37,11 +37,11 @@ struct FilaAprobacionEnHilo: View {
                 Button(role: .destructive) {
                     estado.denegarSolicitud()
                 } label: {
-                    Text("Denegar")
+                    Text("Rechazar")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityIdentifier("denegar-solicitud-hilo")
+                .accessibilityIdentifier("rechazar-solicitud-hilo")
 
                 Button {
                     estado.aprobarSolicitud()
