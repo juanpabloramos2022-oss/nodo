@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Mi color favorito de prueba es el verde")
+[t=0.0s] AssistantBubble("Entendido: tu color de prueba es el verde.")
+  [t=0.0s] TextSegment("Entendido: tu color de prueba es el verde.")
