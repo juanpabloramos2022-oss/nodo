@@ -4,8 +4,14 @@ import SwiftUI
 ///
 /// POR QUE se recrea aqui: DEM la retiro cuando el modo Tarea se desconecto y
 /// la hoja quedo inalcanzable. Vuelve con el mismo contrato de la app: no se
-/// puede arrastrar para cerrar sin decidir, Denegar no ejecuta nada y Aprobar
+/// puede arrastrar para cerrar sin decidir, Rechazar no ejecuta nada y Aprobar
 /// deja que el ToolLoop aplique la escritura.
+///
+/// Nomenclatura visible (SPEC §2.2, hallazgo Jules 3): las dos salidas son
+/// exactamente "Aprobar" o "Rechazar". Los nombres internos
+/// (`denegarSolicitud`) no se tocan: son codigo, no texto visible, y
+/// renombrarlos tocaria el nucleo y decenas de pruebas sin cambiar lo que
+/// ve el dueno.
 struct HojaAprobacionView: View {
     @EnvironmentObject private var estado: EstadoApp
 
@@ -47,7 +53,7 @@ struct HojaAprobacionView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
-                Text("Si deniegas, no se escribirá nada y la tarea seguirá con la respuesta «denegado por el dueño».")
+                Text("Si rechazas, no se escribirá nada y la tarea no ejecutará la herramienta.")
                     .font(.footnote)
                     .foregroundStyle(Tema.textoSuave)
                     .fixedSize(horizontal: false, vertical: true)
@@ -58,11 +64,11 @@ struct HojaAprobacionView: View {
                     Button(role: .destructive) {
                         estado.denegarSolicitud()
                     } label: {
-                        Text("Denegar")
+                        Text("Rechazar")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityIdentifier("denegar-solicitud")
+                    .accessibilityIdentifier("rechazar-solicitud")
 
                     Button {
                         estado.aprobarSolicitud()

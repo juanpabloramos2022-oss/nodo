@@ -25,6 +25,8 @@ struct ConexionesView: View {
     /// credencial se retira para no dejar una clave huerfana en el llavero.
     @State private var borradorDuplicado: ProviderConfig?
     @State private var mostrandoImportador = false
+    /// Hoja modal de Configuración MCP (SPEC §2.2): ya no es un NavigationLink.
+    @State private var mostrandoServidor = false
     /// Respaldo validado que espera la confirmacion del reemplazo total.
     ///
     /// BACK.2: nada se toca hasta que el dueno ve el resumen de conteos y
@@ -52,6 +54,9 @@ struct ConexionesView: View {
             .scrollDismissesKeyboard(.interactively)
             .sheet(item: $proveedorEnEdicion, onDismiss: limpiarBorrador) { proveedor in
                 EditorProveedorView(proveedor: proveedor)
+            }
+            .sheet(isPresented: $mostrandoServidor) {
+                ServerView()
             }
             .fileImporter(
                 isPresented: $mostrandoImportador,
@@ -272,8 +277,8 @@ struct ConexionesView: View {
     }
 
     private var tarjetaMCP: some View {
-        NavigationLink {
-            ServerView()
+        Button {
+            mostrandoServidor = true
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "server.rack")

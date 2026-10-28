@@ -13,7 +13,7 @@ import XCTest
 /// HALLAZGO (corrida CI 40182942035 sobre 79de6ec): en el arbol de
 /// accesibilidad REAL todos los elementos de la tarjeta exponen el identifier
 /// del contenedor `aprobacion-en-hilo`, botones incluidos; los identifiers
-/// `denegar-solicitud-hilo` / `aprobar-solicitud-hilo` que declara el producto
+/// `rechazar-solicitud-hilo` / `aprobar-solicitud-hilo` que declara el producto
 /// NO aparecen en ningun punto del arbol. El identifier del contenedor
 /// ENSOMBRECE al de sus botones, asi que `app.buttons["denegar-solicitud-hilo"]`
 /// no podia existir nunca: el fallo era del LOCALIZADOR del test, no del
@@ -46,10 +46,10 @@ final class CapturasAprobacionTests: XCTestCase {
         abrirTareaSembrada()
         afirmarTarjetaJuntoASuFila()
 
-        let denegar = app.buttons["Denegar"]
+        let denegar = app.buttons["Rechazar"]
         XCTAssertTrue(
             denegar.waitForExistence(timeout: 30),
-            "No aparecio el boton Denegar de la tarjeta en el hilo"
+            "No aparecio el boton Rechazar de la tarjeta en el hilo"
         )
         asegurarVisible(denegar)
         denegar.tap()
@@ -59,8 +59,8 @@ final class CapturasAprobacionTests: XCTestCase {
             "La tarjeta de aprobacion no desaparecio tras denegar"
         )
         esperarDesaparicionElemento(
-            app.buttons["Denegar"],
-            "El boton Denegar sigue en pantalla tras resolver la aprobacion"
+            app.buttons["Rechazar"],
+            "El boton Rechazar sigue en pantalla tras resolver la aprobacion"
         )
 
         // Denegar deja el paso 2 en «Denegado»: es el estado observable y
@@ -198,7 +198,7 @@ final class CapturasAprobacionTests: XCTestCase {
         let tarjeta = elemento("aprobacion-en-hilo")
         XCTAssertTrue(
             tarjeta.waitForExistence(timeout: 10)
-                || app.buttons["Denegar"].exists
+                || app.buttons["Rechazar"].exists
                 || app.buttons["Aprobar"].exists,
             "La tarjeta no expone 'aprobacion-en-hilo' ni sus botones"
         )
