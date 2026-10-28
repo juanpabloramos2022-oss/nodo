@@ -1,0 +1,2 @@
+[t=0.0s] SearchResultRow(titulo: "Di solo esto: la palabra de prueba de búsqueda e...", vistaPrevia: "Di solo esto: la palabra de prueba de búsqueda es ZAFIRO-4.")
+[t=0.0s] SearchEmptyState(termino: "no-existe-9")
