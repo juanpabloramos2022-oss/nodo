@@ -1,0 +1,4 @@
+[t=0.0s] UserBubble("Me gusta más el café de prueba sin azúcar")
+[t=0.0s] MemoryLineNotice(text: "Guardado en memoria: Prefiere el café sin azúcar.", hasUndo: true)
+[t=0.0s] AssistantBubble("Listo.")
+  [t=0.0s] TextSegment("Listo.")

@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("¿Cómo se dice «ventana» en portugués?")
+[t=0.0s] AssistantBubble("En portugués, «ventana» se dice **janela** (se pronuncia aproximadamente \"ya-NE-la\").")
+  [t=0.0s] TextSegment("En portugués, «ventana» se dice **janela** (se pronuncia aproximadamente \"ya-NE-la\").")
