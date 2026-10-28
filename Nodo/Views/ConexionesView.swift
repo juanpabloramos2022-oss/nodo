@@ -31,6 +31,7 @@ struct ConexionesView: View {
     /// confirma que quiere sustituir TODO su estado, no mezclarlo.
     @State private var respaldoPendiente: RespaldoConfiguracion?
     @State private var mostrandoConfirmacionRespaldo = false
+    @State private var mostrandoAcercaDe = false
 
     var body: some View {
         NavigationStack {
@@ -85,6 +86,20 @@ struct ConexionesView: View {
                 }
             } message: {
                 Text(mensajeConfirmacionRespaldo)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        mostrandoAcercaDe = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.body)
+                            .foregroundStyle(Tema.acento)
+                    }
+                }
+            }
+            .sheet(isPresented: $mostrandoAcercaDe) {
+                AboutView()
             }
         }
     }
