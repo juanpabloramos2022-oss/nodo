@@ -1,0 +1,3 @@
+[t=0.0s] UserBubble("Mi palabra clave de prueba es LUNA-7 y prefiero respuestas cortas, úsalo en esta conversación")
+[t=0.0s] AssistantBubble("Entendido: LUNA-7, respuestas cortas.")
+  [t=0.0s] TextSegment("Entendido: LUNA-7, respuestas cortas.")
